@@ -122,6 +122,11 @@ int CMenus::DoButton_Toggle(const void *pId, int Checked, const CUIRect *pRect, 
 
 int CMenus::DoButton_Menu(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, const unsigned Flags, const char *pImageName, int Corners, float Rounding, float FontFactor, ColorRGBA Color)
 {
+	return DoButton_MenuEx(pButtonContainer, pText, Checked, pRect, Flags, pImageName, Corners, Rounding, FontFactor, Color, false);
+}
+
+int CMenus::DoButton_MenuEx(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, const unsigned Flags, const char *pImageName, int Corners, float Rounding, float FontFactor, ColorRGBA Color, bool AlwaysColoredImage)
+{
 	CUIRect Text = *pRect;
 
 	if(Checked)
@@ -140,7 +145,7 @@ int CMenus::DoButton_Menu(CButtonContainer *pButtonContainer, const char *pText,
 		const CMenuImage *pImage = FindMenuImage(pImageName);
 		if(pImage)
 		{
-			Graphics()->TextureSet(Ui()->HotItem() == pButtonContainer ? pImage->m_OrgTexture : pImage->m_GreyTexture);
+			Graphics()->TextureSet((AlwaysColoredImage || Ui()->HotItem() == pButtonContainer) ? pImage->m_OrgTexture : pImage->m_GreyTexture);
 			Graphics()->WrapClamp();
 			Graphics()->QuadsBegin();
 			Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
