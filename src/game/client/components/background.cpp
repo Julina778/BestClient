@@ -99,9 +99,6 @@ void CBackground::OnMapLoad()
 
 void CBackground::OnRender()
 {
-	if(!m_Loaded)
-		return;
-
 	if(Client()->State() != IClient::STATE_ONLINE && Client()->State() != IClient::STATE_DEMOPLAYBACK)
 	{
 		m_MediaBackground.Unload();
@@ -132,6 +129,9 @@ void CBackground::OnRender()
 	}
 
 	if(g_Config.m_ClOverlayEntities != 100)
+		return;
+
+	if(!m_Loaded)
 		return;
 
 	CMapLayers::OnRender();

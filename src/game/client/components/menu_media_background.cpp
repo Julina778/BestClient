@@ -5,11 +5,159 @@
 #include <engine/shared/config.h>
 
 #include <algorithm>
+#include <limits>
 
 namespace
 {
 constexpr int MENU_MEDIA_MAX_VIDEO_FRAME_MS = 250;
 constexpr int MENU_MEDIA_DEFAULT_VIDEO_FRAME_MS = 33;
+
+bool DecodeFirstFrameFromFile(const char *pAbsolutePath, CImageInfo &ImageOut)
+{
+	ImageOut.Free();
+
+	if(pAbsolutePath == nullptr || pAbsolutePath[0] == '\0')
+		return false;
+
+	AVFormatContext *pFormatCtx = nullptr;
+	AVCodecContext *pCodecCtx = nullptr;
+	SwsContext *pSwsCtx = nullptr;
+	AVPacket *pPacket = nullptr;
+	AVFrame *pFrame = nullptr;
+	AVFrame *pFrameRgba = nullptr;
+	int VideoStream = -1;
+	bool Success = false;
+	int SrcW = 0;
+	int SrcH = 0;
+	size_t FrameBytes = 0;
+
+	auto CopyFrame = [&]() -> bool {
+		if(!pFrame || !pFrameRgba || !pSwsCtx || SrcW <= 0 || SrcH <= 0 || FrameBytes == 0)
+			return false;
+		if(av_frame_make_writable(pFrameRgba) < 0)
+			return false;
+		const int ScaledLines = sws_scale(pSwsCtx, pFrame->data, pFrame->linesize, 0, SrcH, pFrameRgba->data, pFrameRgba->linesize);
+		if(ScaledLines <= 0 || pFrameRgba->linesize[0] <= 0 || (size_t)pFrameRgba->linesize[0] < (size_t)SrcW * 4ull)
+			return false;
+
+		ImageOut.Free();
+		ImageOut.m_Width = SrcW;
+		ImageOut.m_Height = SrcH;
+		ImageOut.m_Format = CImageInfo::FORMAT_RGBA;
+		ImageOut.m_pData = (uint8_t *)malloc(FrameBytes);
+		if(!ImageOut.m_pData)
+			return false;
+
+		for(int y = 0; y < SrcH; ++y)
+		{
+			mem_copy(
+				ImageOut.m_pData + (size_t)y * (size_t)SrcW * 4ull,
+				pFrameRgba->data[0] + (size_t)y * (size_t)pFrameRgba->linesize[0],
+				(size_t)SrcW * 4ull);
+		}
+		return true;
+	};
+
+	do
+	{
+		if(avformat_open_input(&pFormatCtx, pAbsolutePath, nullptr, nullptr) != 0)
+			break;
+		if(avformat_find_stream_info(pFormatCtx, nullptr) < 0)
+			break;
+
+		VideoStream = av_find_best_stream(pFormatCtx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+		if(VideoStream < 0)
+			break;
+
+		const AVStream *pStream = pFormatCtx->streams[VideoStream];
+		const AVCodec *pCodec = avcodec_find_decoder(pStream->codecpar->codec_id);
+		if(!pCodec)
+			break;
+
+		pCodecCtx = avcodec_alloc_context3(pCodec);
+		if(!pCodecCtx || avcodec_parameters_to_context(pCodecCtx, pStream->codecpar) < 0 || avcodec_open2(pCodecCtx, pCodec, nullptr) < 0)
+			break;
+
+		SrcW = pCodecCtx->width;
+		SrcH = pCodecCtx->height;
+		if(SrcW <= 0 || SrcH <= 0)
+			break;
+		if((size_t)SrcW > std::numeric_limits<size_t>::max() / ((size_t)SrcH * 4ull))
+			break;
+		FrameBytes = (size_t)SrcW * (size_t)SrcH * 4ull;
+		if(FrameBytes == 0)
+			break;
+
+		pSwsCtx = sws_getContext(SrcW, SrcH, pCodecCtx->pix_fmt, SrcW, SrcH, AV_PIX_FMT_RGBA, SWS_BILINEAR, nullptr, nullptr, nullptr);
+		if(!pSwsCtx)
+			break;
+
+		pPacket = av_packet_alloc();
+		pFrame = av_frame_alloc();
+		pFrameRgba = av_frame_alloc();
+		if(!pPacket || !pFrame || !pFrameRgba)
+			break;
+
+		pFrameRgba->format = AV_PIX_FMT_RGBA;
+		pFrameRgba->width = SrcW;
+		pFrameRgba->height = SrcH;
+		if(av_frame_get_buffer(pFrameRgba, 1) < 0)
+			break;
+
+		while(av_read_frame(pFormatCtx, pPacket) >= 0)
+		{
+			if(pPacket->stream_index == VideoStream)
+			{
+				if(avcodec_send_packet(pCodecCtx, pPacket) < 0)
+				{
+					av_packet_unref(pPacket);
+					break;
+				}
+				while(avcodec_receive_frame(pCodecCtx, pFrame) == 0)
+				{
+					if(CopyFrame())
+					{
+						Success = true;
+						break;
+					}
+				}
+			}
+			av_packet_unref(pPacket);
+			if(Success)
+				break;
+		}
+
+		if(!Success && avcodec_send_packet(pCodecCtx, nullptr) >= 0)
+		{
+			while(avcodec_receive_frame(pCodecCtx, pFrame) == 0)
+			{
+				if(CopyFrame())
+				{
+					Success = true;
+					break;
+				}
+			}
+		}
+	} while(false);
+
+	if(!Success)
+		ImageOut.Free();
+
+	if(pFrameRgba)
+		av_frame_free(&pFrameRgba);
+	if(pFrame)
+		av_frame_free(&pFrame);
+	if(pPacket)
+		av_packet_free(&pPacket);
+	if(pSwsCtx)
+		sws_freeContext(pSwsCtx);
+	if(pCodecCtx)
+		avcodec_free_context(&pCodecCtx);
+	if(pFormatCtx)
+		avformat_close_input(&pFormatCtx);
+
+	return Success;
+}
 }
 
 CMenuMediaBackground::~CMenuMediaBackground()
@@ -107,8 +255,20 @@ bool CMenuMediaBackground::LoadStaticMedia(const char *pPath, int StorageType)
 		CImageInfo Image;
 		if(!m_pGraphics->LoadPng(Image, pPath, StorageType))
 		{
-			SetError("Failed to load PNG.");
-			return false;
+			void *pPngData = nullptr;
+			unsigned PngDataSize = 0;
+			if(!m_pStorage->ReadFile(pPath, StorageType, &pPngData, &PngDataSize))
+			{
+				SetError("Failed to load PNG.");
+				return false;
+			}
+			const bool Decoded = MediaDecoder::DecodeImageToRgba(m_pGraphics, static_cast<unsigned char *>(pPngData), PngDataSize, pPath, Image);
+			free(pPngData);
+			if(!Decoded)
+			{
+				SetError("Failed to load PNG.");
+				return false;
+			}
 		}
 
 		MediaDecoder::UnloadFrames(m_pGraphics, m_vFrames);
@@ -142,13 +302,51 @@ bool CMenuMediaBackground::LoadStaticMedia(const char *pPath, int StorageType)
 	}
 
 	const bool AnimatedImage = MediaDecoder::IsLikelyAnimatedImageExtension(Ext);
-	const bool Success = AnimatedImage ?
-		MediaDecoder::DecodeAnimatedImage(m_pGraphics, static_cast<unsigned char *>(pData), DataSize, pPath, m_vFrames, m_Animated, m_Width, m_Height, m_AnimationStart, 15000) :
-		MediaDecoder::DecodeStaticImage(m_pGraphics, static_cast<unsigned char *>(pData), DataSize, pPath, m_vFrames, m_Animated, m_Width, m_Height, m_AnimationStart);
+	bool Success = false;
+	if(AnimatedImage)
+	{
+		Success = MediaDecoder::DecodeAnimatedImage(m_pGraphics, static_cast<unsigned char *>(pData), DataSize, pPath, m_vFrames, m_Animated, m_Width, m_Height, m_AnimationStart, 15000);
+		if(!Success)
+			Success = MediaDecoder::DecodeStaticImage(m_pGraphics, static_cast<unsigned char *>(pData), DataSize, pPath, m_vFrames, m_Animated, m_Width, m_Height, m_AnimationStart);
+	}
+	else
+	{
+		Success = MediaDecoder::DecodeStaticImage(m_pGraphics, static_cast<unsigned char *>(pData), DataSize, pPath, m_vFrames, m_Animated, m_Width, m_Height, m_AnimationStart);
+		if(!Success)
+			Success = MediaDecoder::DecodeAnimatedImage(m_pGraphics, static_cast<unsigned char *>(pData), DataSize, pPath, m_vFrames, m_Animated, m_Width, m_Height, m_AnimationStart, 15000);
+	}
 	free(pData);
 
 	if(!Success)
 	{
+		char aAbsolutePath[IO_MAX_PATH_LENGTH];
+		m_pStorage->GetCompletePath(StorageType, pPath, aAbsolutePath, sizeof(aAbsolutePath));
+
+		CImageInfo FallbackImage;
+		if(DecodeFirstFrameFromFile(aAbsolutePath, FallbackImage))
+		{
+			MediaDecoder::UnloadFrames(m_pGraphics, m_vFrames);
+			const int ImageWidth = (int)FallbackImage.m_Width;
+			const int ImageHeight = (int)FallbackImage.m_Height;
+			SMediaFrame Frame;
+			Frame.m_Texture = m_pGraphics->LoadTextureRawMove(FallbackImage, 0, pPath);
+			if(!Frame.m_Texture.IsValid())
+			{
+				FallbackImage.Free();
+				SetError("Failed to upload image.");
+				return false;
+			}
+
+			m_vFrames.push_back(Frame);
+			m_Animated = false;
+			m_Width = ImageWidth;
+			m_Height = ImageHeight;
+			m_AnimationStart = time_get();
+			m_IsLoaded = true;
+			SetStatus("Loaded image.");
+			return true;
+		}
+
 		SetError("Failed to decode image.");
 		return false;
 	}
