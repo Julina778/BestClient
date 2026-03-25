@@ -3232,98 +3232,129 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		const float LineSize = 20.0f;
 		const float HeadlineFontSize = 20.0f;
 		const float MarginSmall = 5.0f;
-		const float MarginSection = 10.0f;
+		const float MarginBetweenSections = 30.0f;
+		const float MarginBetweenViews = 30.0f;
+		const ColorRGBA BlockColor = ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f);
 
 		const bool IsOnline = Client()->State() == IClient::STATE_ONLINE;
 		const bool IsFngServer = IsOnline && GameClient()->m_GameInfo.m_PredictFNG;
 		const bool Is0xFServer = IsOnline && str_comp_nocase(GameClient()->m_GameInfo.m_aGameType, "0xf") == 0;
 		const bool IsBlockedCameraServer = IsFngServer || Is0xFServer;
 
-		CUIRect Label;
+		CUIRect LeftView, RightView;
+		MainView.VSplitMid(&LeftView, &RightView, MarginBetweenViews);
+		LeftView.VSplitLeft(MarginSmall, nullptr, &LeftView);
+		RightView.VSplitRight(MarginSmall, &RightView, nullptr);
+		(void)LeftView;
 
-		// Camera Drift
-		MainView.HSplitTop(LineSize, &Label, &MainView);
-		Ui()->DoLabel(&Label, Localize("Camera Drift"), HeadlineFontSize, TEXTALIGN_ML);
-		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
+		CUIRect Column = RightView;
 
-		if(DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcCameraDrift, Localize("Camera Drift"), &g_Config.m_BcCameraDrift, &MainView, LineSize))
+		auto BeginBlock = [&](float ContentHeight, CUIRect &Content) {
+			CUIRect Block;
+			Column.HSplitTop(ContentHeight + MarginSmall * 2.0f, &Block, &Column);
+			Block.Draw(BlockColor, IGraphics::CORNER_ALL, 10.0f);
+			Block.Margin(MarginSmall, &Content);
+		};
+
+		// Camera Drift (right column block)
 		{
-			if(IsBlockedCameraServer && g_Config.m_BcCameraDrift)
+			const int ExtraLines = g_Config.m_BcCameraDrift ? 3 : 0;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraLines * LineSize;
+			CUIRect Content, Label, Row;
+			BeginBlock(ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Camera Drift"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			if(DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcCameraDrift, Localize("Camera Drift"), &g_Config.m_BcCameraDrift, &Content, LineSize))
 			{
-				g_Config.m_BcCameraDrift = 0;
-				GameClient()->Echo(Localize("[[red]] This feature is disabled on this server"));
+				if(IsBlockedCameraServer && g_Config.m_BcCameraDrift)
+				{
+					g_Config.m_BcCameraDrift = 0;
+					GameClient()->Echo(Localize("[[red]] This feature is disabled on this server"));
+				}
+			}
+
+			if(g_Config.m_BcCameraDrift)
+			{
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcCameraDriftAmount, &g_Config.m_BcCameraDriftAmount, &Row, Localize("Camera drift amount"), 1, 200);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcCameraDriftSmoothness, &g_Config.m_BcCameraDriftSmoothness, &Row, Localize("Camera drift smoothness"), 1, 20);
+
+				CUIRect DirectionLabel, DirectionButtons, DirectionForward, DirectionBackward;
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Row.VSplitLeft(150.0f, &DirectionLabel, &DirectionButtons);
+				Ui()->DoLabel(&DirectionLabel, Localize("Drift direction"), 14.0f, TEXTALIGN_ML);
+				DirectionButtons.VSplitMid(&DirectionForward, &DirectionBackward, MarginSmall);
+
+				static int s_CameraDriftForwardButton = 0;
+				static int s_CameraDriftBackwardButton = 0;
+				if(DoButton_CheckBox(&s_CameraDriftForwardButton, Localize("Forward"), !g_Config.m_BcCameraDriftReverse, &DirectionForward))
+					g_Config.m_BcCameraDriftReverse = 0;
+				if(DoButton_CheckBox(&s_CameraDriftBackwardButton, Localize("Backward"), g_Config.m_BcCameraDriftReverse, &DirectionBackward))
+					g_Config.m_BcCameraDriftReverse = 1;
 			}
 		}
+		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
-		if(g_Config.m_BcCameraDrift)
+		// Dynamic FOV (right column block)
 		{
-			CUIRect Button;
-			MainView.HSplitTop(LineSize, &Button, &MainView);
-			Ui()->DoScrollbarOption(&g_Config.m_BcCameraDriftAmount, &g_Config.m_BcCameraDriftAmount, &Button, Localize("Camera drift amount"), 1, 200);
+			const int ExtraLines = g_Config.m_BcDynamicFov ? 2 : 0;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraLines * LineSize;
+			CUIRect Content, Label, Row;
+			BeginBlock(ContentHeight, Content);
 
-			MainView.HSplitTop(LineSize, &Button, &MainView);
-			Ui()->DoScrollbarOption(&g_Config.m_BcCameraDriftSmoothness, &g_Config.m_BcCameraDriftSmoothness, &Button, Localize("Camera drift smoothness"), 1, 20);
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Dynamic FOV"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
-			CUIRect DirectionLabel, DirectionButtons, DirectionForward, DirectionBackward;
-			MainView.HSplitTop(LineSize, &Button, &MainView);
-			Button.VSplitLeft(150.0f, &DirectionLabel, &DirectionButtons);
-			Ui()->DoLabel(&DirectionLabel, Localize("Drift direction"), 14.0f, TEXTALIGN_ML);
-			DirectionButtons.VSplitMid(&DirectionForward, &DirectionBackward, MarginSmall);
-
-			static int s_CameraDriftForwardButton = 0;
-			static int s_CameraDriftBackwardButton = 0;
-			if(DoButton_CheckBox(&s_CameraDriftForwardButton, Localize("Forward"), !g_Config.m_BcCameraDriftReverse, &DirectionForward))
-				g_Config.m_BcCameraDriftReverse = 0;
-			if(DoButton_CheckBox(&s_CameraDriftBackwardButton, Localize("Backward"), g_Config.m_BcCameraDriftReverse, &DirectionBackward))
-				g_Config.m_BcCameraDriftReverse = 1;
-		}
-
-		MainView.HSplitTop(MarginSection, nullptr, &MainView);
-
-		// Dynamic FOV
-		MainView.HSplitTop(LineSize, &Label, &MainView);
-		Ui()->DoLabel(&Label, Localize("Dynamic FOV"), HeadlineFontSize, TEXTALIGN_ML);
-		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
-
-		if(DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcDynamicFov, Localize("Dynamic FOV"), &g_Config.m_BcDynamicFov, &MainView, LineSize))
-		{
-			if(IsBlockedCameraServer && g_Config.m_BcDynamicFov)
+			if(DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcDynamicFov, Localize("Dynamic FOV"), &g_Config.m_BcDynamicFov, &Content, LineSize))
 			{
-				g_Config.m_BcDynamicFov = 0;
-				GameClient()->Echo(Localize("[[red]] This feature is disabled on this server"));
+				if(IsBlockedCameraServer && g_Config.m_BcDynamicFov)
+				{
+					g_Config.m_BcDynamicFov = 0;
+					GameClient()->Echo(Localize("[[red]] This feature is disabled on this server"));
+				}
+			}
+
+			if(g_Config.m_BcDynamicFov)
+			{
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcDynamicFovAmount, &g_Config.m_BcDynamicFovAmount, &Row, Localize("Dynamic FOV amount"), 1, 200);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcDynamicFovSmoothness, &g_Config.m_BcDynamicFovSmoothness, &Row, Localize("Dynamic FOV smoothness"), 1, 20);
 			}
 		}
+		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
-		if(g_Config.m_BcDynamicFov)
+		// Afterimage (right column block)
 		{
-			CUIRect Button;
-			MainView.HSplitTop(LineSize, &Button, &MainView);
-			Ui()->DoScrollbarOption(&g_Config.m_BcDynamicFovAmount, &g_Config.m_BcDynamicFovAmount, &Button, Localize("Dynamic FOV amount"), 1, 200);
+			const int ExtraLines = g_Config.m_BcAfterimage ? 3 : 0;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraLines * LineSize;
+			CUIRect Content, Label, Row;
+			BeginBlock(ContentHeight, Content);
 
-			MainView.HSplitTop(LineSize, &Button, &MainView);
-			Ui()->DoScrollbarOption(&g_Config.m_BcDynamicFovSmoothness, &g_Config.m_BcDynamicFovSmoothness, &Button, Localize("Dynamic FOV smoothness"), 1, 20);
-		}
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Afterimage"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
-		MainView.HSplitTop(MarginSection, nullptr, &MainView);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcAfterimage, Localize("Enable Afterimage"), &g_Config.m_BcAfterimage, &Content, LineSize);
 
-		// Afterimage
-		MainView.HSplitTop(LineSize, &Label, &MainView);
-		Ui()->DoLabel(&Label, Localize("Afterimage"), HeadlineFontSize, TEXTALIGN_ML);
-		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
+			if(g_Config.m_BcAfterimage)
+			{
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcAfterimageFrames, &g_Config.m_BcAfterimageFrames, &Row, Localize("Afterimage frames"), 2, 20);
 
-		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcAfterimage, Localize("Enable Afterimage"), &g_Config.m_BcAfterimage, &MainView, LineSize);
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcAfterimageAlpha, &g_Config.m_BcAfterimageAlpha, &Row, Localize("Afterimage alpha"), 1, 100);
 
-		if(g_Config.m_BcAfterimage)
-		{
-			CUIRect Button;
-			MainView.HSplitTop(LineSize, &Button, &MainView);
-			Ui()->DoScrollbarOption(&g_Config.m_BcAfterimageFrames, &g_Config.m_BcAfterimageFrames, &Button, Localize("Afterimage frames"), 2, 20);
-
-			MainView.HSplitTop(LineSize, &Button, &MainView);
-			Ui()->DoScrollbarOption(&g_Config.m_BcAfterimageAlpha, &g_Config.m_BcAfterimageAlpha, &Button, Localize("Afterimage alpha"), 1, 100);
-
-			MainView.HSplitTop(LineSize, &Button, &MainView);
-			Ui()->DoScrollbarOption(&g_Config.m_BcAfterimageSpacing, &g_Config.m_BcAfterimageSpacing, &Button, Localize("Afterimage spacing"), 1, 64);
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcAfterimageSpacing, &g_Config.m_BcAfterimageSpacing, &Row, Localize("Afterimage spacing"), 1, 64);
+			}
 		}
 	}
 	else if(s_CurTab == BESTCLIENT_TAB_GAMEPLAY)
