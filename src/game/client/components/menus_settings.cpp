@@ -3197,6 +3197,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 	{
 		BESTCLIENT_TAB_VISUALS = 0,
 		BESTCLIENT_TAB_GAMEPLAY,
+		BESTCLIENT_TAB_FUN,
 		BESTCLIENT_TAB_OTHERS,
 		NUM_BESTCLIENT_TABS,
 	};
@@ -3209,7 +3210,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 	const float TabWidth = TabBar.w / (float)NUM_BESTCLIENT_TABS;
 	const char *apTabNames[NUM_BESTCLIENT_TABS] = {
 		Localize("Visuals"),
-		"gameplay",
+		Localize("Gameplay"),
+		Localize("Fun"),
 		Localize("Others"),
 	};
 
@@ -3232,6 +3234,10 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 	else if(s_CurTab == BESTCLIENT_TAB_GAMEPLAY)
 	{
 		// Intentionally empty for now.
+	}
+	else if(s_CurTab == BESTCLIENT_TAB_FUN)
+	{
+		RenderSettingsBestClientFun(MainView);
 	}
 	else if(s_CurTab == BESTCLIENT_TAB_OTHERS)
 	{

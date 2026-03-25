@@ -2574,6 +2574,7 @@ if(CLIENT)
     components/menus.h
     components/menus_browser.cpp
     components/menus_demo.cpp
+    components/menus_games.cpp
     components/menus_ingame.cpp
     components/menus_ingame_touch_controls.cpp
     components/menus_ingame_touch_controls.h
