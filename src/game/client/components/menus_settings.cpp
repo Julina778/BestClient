@@ -3721,26 +3721,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		}
 		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
-		// Switch weapon (right column block)
-		{
-			const float ContentHeight = LineSize + MarginSmall + 2.0f * LineSize;
-			CUIRect Content, Label, Row;
-			BeginBlock(Column, ContentHeight, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, Localize("Switch Weapon"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-			Content.HSplitTop(LineSize, &Row, &Content);
-			if(DoButton_CheckBox(&g_Config.m_ClAutoswitchWeapons, Localize("Switch weapon on pickup"), g_Config.m_ClAutoswitchWeapons, &Row))
-				g_Config.m_ClAutoswitchWeapons ^= 1;
-
-			Content.HSplitTop(LineSize, &Row, &Content);
-			if(DoButton_CheckBox(&g_Config.m_ClAutoswitchWeaponsOutOfAmmo, Localize("Switch weapon when out of ammo"), g_Config.m_ClAutoswitchWeaponsOutOfAmmo, &Row))
-				g_Config.m_ClAutoswitchWeaponsOutOfAmmo ^= 1;
-		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-
 		// Aspect ratio (right column block)
 		{
 			const int AspectMode = g_Config.m_BcCustomAspectRatioMode >= 0 ? g_Config.m_BcCustomAspectRatioMode : (g_Config.m_BcCustomAspectRatio > 0 ? 1 : 0);
