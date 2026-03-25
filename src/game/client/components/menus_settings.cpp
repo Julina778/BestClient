@@ -1592,6 +1592,7 @@ void CMenus::RenderSettings(CUIRect MainView)
 		SETTINGS_DDNET,
 		SETTINGS_ASSETS,
 		SETTINGS_TCLIENT,
+		SETTINGS_BESTCLIENT,
 		SETTINGS_PROFILES,
 		SETTINGS_CONFIGS,
 	};
@@ -1606,6 +1607,7 @@ void CMenus::RenderSettings(CUIRect MainView)
 		Localize("DDNet"),
 		Localize("Assets"),
 		TCLocalize("TClient"),
+		"bestclient",
 		Localize("Profiles"),
 		Localize("Configs")};
 
@@ -1678,6 +1680,10 @@ void CMenus::RenderSettings(CUIRect MainView)
 	{
 		GameClient()->m_MenuBackground.ChangePosition(13);
 		RenderSettingsTClient(MainView);
+	}
+	else if(g_Config.m_UiSettingsPage == SETTINGS_BESTCLIENT)
+	{
+		GameClient()->m_MenuBackground.ChangePosition(CMenuBackground::POS_SETTINGS_RESERVED0);
 	}
 	else if(g_Config.m_UiSettingsPage == SETTINGS_PROFILES)
 	{
