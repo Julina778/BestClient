@@ -3719,6 +3719,119 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				Ui()->DoScrollbarOption(&g_Config.m_BcAfterimageSpacing, &g_Config.m_BcAfterimageSpacing, &Row, Localize("Afterimage spacing"), 1, 64);
 			}
 		}
+		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+
+		// Switch weapon (right column block)
+		{
+			const float ContentHeight = LineSize + MarginSmall + 2.0f * LineSize;
+			CUIRect Content, Label, Row;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Switch Weapon"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			Content.HSplitTop(LineSize, &Row, &Content);
+			if(DoButton_CheckBox(&g_Config.m_ClAutoswitchWeapons, Localize("Switch weapon on pickup"), g_Config.m_ClAutoswitchWeapons, &Row))
+				g_Config.m_ClAutoswitchWeapons ^= 1;
+
+			Content.HSplitTop(LineSize, &Row, &Content);
+			if(DoButton_CheckBox(&g_Config.m_ClAutoswitchWeaponsOutOfAmmo, Localize("Switch weapon when out of ammo"), g_Config.m_ClAutoswitchWeaponsOutOfAmmo, &Row))
+				g_Config.m_ClAutoswitchWeaponsOutOfAmmo ^= 1;
+		}
+		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+
+		// Aspect ratio (right column block)
+		{
+			const int AspectMode = g_Config.m_BcCustomAspectRatioMode >= 0 ? g_Config.m_BcCustomAspectRatioMode : (g_Config.m_BcCustomAspectRatio > 0 ? 1 : 0);
+			const bool IsCustomMode = AspectMode == 2;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + (IsCustomMode ? (MarginSmall + LineSize) : 0.0f);
+			CUIRect Content, Label, Row;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Aspect Ratio"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			const char *apAspectPresetNames[5] = {
+				Localize("Off (default)"),
+				"5:4",
+				"4:3",
+				"3:2",
+				Localize("Custom"),
+			};
+			static const std::array<int, 4> s_aAspectPresetValues = {0, 125, 133, 150};
+			static CUi::SDropDownState s_AspectPresetState;
+			static CScrollRegion s_AspectPresetScrollRegion;
+			s_AspectPresetState.m_SelectionPopupContext.m_pScrollRegion = &s_AspectPresetScrollRegion;
+
+			auto GetAspectPresetIndex = [&]() -> int {
+				const int CurrentMode = g_Config.m_BcCustomAspectRatioMode >= 0 ? g_Config.m_BcCustomAspectRatioMode : (g_Config.m_BcCustomAspectRatio > 0 ? 1 : 0);
+				const int CustomPresetIndex = (int)std::size(apAspectPresetNames) - 1;
+				if(CurrentMode <= 0 || g_Config.m_BcCustomAspectRatio == 0)
+					return 0;
+				if(CurrentMode == 2)
+					return CustomPresetIndex;
+
+				for(size_t i = 1; i < s_aAspectPresetValues.size(); ++i)
+				{
+					if(g_Config.m_BcCustomAspectRatio == s_aAspectPresetValues[i])
+						return (int)i;
+				}
+
+				int BestIndex = 1;
+				int BestDiff = absolute(g_Config.m_BcCustomAspectRatio - s_aAspectPresetValues[BestIndex]);
+				for(size_t i = 2; i < s_aAspectPresetValues.size(); ++i)
+				{
+					const int CurDiff = absolute(g_Config.m_BcCustomAspectRatio - s_aAspectPresetValues[i]);
+					if(CurDiff < BestDiff)
+					{
+						BestDiff = CurDiff;
+						BestIndex = (int)i;
+					}
+				}
+				return BestIndex;
+			};
+
+			const int CurrentPreset = GetAspectPresetIndex();
+			CUIRect PresetLabel, PresetDropDown;
+			Content.HSplitTop(LineSize, &Row, &Content);
+			Row.VSplitLeft(170.0f, &PresetLabel, &PresetDropDown);
+			Ui()->DoLabel(&PresetLabel, Localize("Preset"), 14.0f, TEXTALIGN_ML);
+			const int NewPreset = Ui()->DoDropDown(&PresetDropDown, CurrentPreset, apAspectPresetNames, (int)std::size(apAspectPresetNames), s_AspectPresetState);
+			const int CustomPresetIndex = (int)std::size(apAspectPresetNames) - 1;
+			if(NewPreset != CurrentPreset)
+			{
+				if(NewPreset == 0)
+				{
+					g_Config.m_BcCustomAspectRatioMode = 0;
+					g_Config.m_BcCustomAspectRatio = 0;
+				}
+				else if(NewPreset == CustomPresetIndex)
+				{
+					g_Config.m_BcCustomAspectRatioMode = 2;
+					if(g_Config.m_BcCustomAspectRatio < 100)
+						g_Config.m_BcCustomAspectRatio = 177;
+				}
+				else
+				{
+					g_Config.m_BcCustomAspectRatioMode = 1;
+					g_Config.m_BcCustomAspectRatio = s_aAspectPresetValues[NewPreset];
+				}
+				GameClient()->m_TClient.SetForcedAspect();
+			}
+
+			const int EffectiveAspectMode = g_Config.m_BcCustomAspectRatioMode >= 0 ? g_Config.m_BcCustomAspectRatioMode : (g_Config.m_BcCustomAspectRatio > 0 ? 1 : 0);
+			if(EffectiveAspectMode == 2)
+			{
+				Content.HSplitTop(MarginSmall, nullptr, &Content);
+				Content.HSplitTop(LineSize, &Row, &Content);
+				const int OldAspectValue = g_Config.m_BcCustomAspectRatio;
+				Ui()->DoScrollbarOption(&g_Config.m_BcCustomAspectRatio, &g_Config.m_BcCustomAspectRatio, &Row, Localize("Stretch"), 100, 300);
+				if(g_Config.m_BcCustomAspectRatio != OldAspectValue)
+					GameClient()->m_TClient.SetForcedAspect();
+			}
+		}
 
 		const float RightColumnEndY = Column.y;
 		CUIRect ScrollRegion;

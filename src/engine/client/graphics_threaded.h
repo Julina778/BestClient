@@ -1277,6 +1277,7 @@ public:
 };
 
 extern bool g_GraphicsForcedAspect;
+extern int g_GraphicsCustomAspect;
 
 typedef std::function<const char *(const char *, const char *)> TTranslateFunc;
 extern IGraphicsBackend *CreateGraphicsBackend(TTranslateFunc &&TranslateFunc);
