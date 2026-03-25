@@ -31,6 +31,31 @@ MACRO_CONFIG_INT(BcChatTypingAnimation, bc_chat_typing_animation, 1, 0, 1, CFGFL
 MACRO_CONFIG_INT(BcChatTypingAnimationMs, bc_chat_typing_animation_ms, 180, 1, 500, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Chat typing animation time (in ms)")
 MACRO_CONFIG_INT(BcChatAnimationType, bc_chat_animation_type, 3, 1, 4, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Chat animation type")
 
+// Music player
+MACRO_CONFIG_INT(BcMusicPlayer, bc_music_player, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable Music Player HUD element")
+MACRO_CONFIG_INT(BcMusicPlayerShowWhenPaused, bc_music_player_show_when_paused, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Keep Music Player visible while playback is paused")
+MACRO_CONFIG_INT(BcMusicPlayerColorMode, bc_music_player_color_mode, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player color mode (0=static color, 1=cover blur color)")
+MACRO_CONFIG_COL(BcMusicPlayerStaticColor, bc_music_player_static_color, 128, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Static color for the music player when static color mode is selected")
+
+// Cava / audio visualizer
+MACRO_CONFIG_INT(BcCavaEnable, bc_cava_enable, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable Cava HUD visualizer (system output via loopback/monitor)")
+MACRO_CONFIG_INT(BcCavaCaptureDevice, bc_cava_capture_device, -1, -1, 64, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Cava capture device index (-1=auto)")
+MACRO_CONFIG_INT(BcCavaDockBottom, bc_cava_dock_bottom, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Dock Cava visualizer to bottom edge and stretch full width")
+MACRO_CONFIG_INT(BcCavaX, bc_cava_x, 250, 0, 500, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Cava HUD position X in canvas units (0..500)")
+MACRO_CONFIG_INT(BcCavaY, bc_cava_y, 236, 0, 300, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Cava HUD position Y in canvas units (0..300)")
+MACRO_CONFIG_INT(BcCavaW, bc_cava_w, 160, 20, 500, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Cava HUD width in canvas units (0..500)")
+MACRO_CONFIG_INT(BcCavaH, bc_cava_h, 48, 10, 200, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Cava HUD height in canvas units (0..200)")
+MACRO_CONFIG_INT(BcCavaBars, bc_cava_bars, 40, 4, 128, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Number of Cava frequency bars")
+MACRO_CONFIG_INT(BcCavaFftSize, bc_cava_fft_size, 2048, 1024, 4096, CFGFLAG_CLIENT | CFGFLAG_SAVE, "FFT size for Cava (1024/2048/4096)")
+MACRO_CONFIG_INT(BcCavaLowHz, bc_cava_low_hz, 50, 20, 500, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Low cutoff frequency in Hz for Cava")
+MACRO_CONFIG_INT(BcCavaHighHz, bc_cava_high_hz, 16000, 1000, 20000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "High cutoff frequency in Hz for Cava")
+MACRO_CONFIG_INT(BcCavaGain, bc_cava_gain, 120, 50, 300, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Cava gain in percent")
+MACRO_CONFIG_INT(BcCavaAttack, bc_cava_attack, 60, 1, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Cava bar attack speed (1..100)")
+MACRO_CONFIG_INT(BcCavaDecay, bc_cava_decay, 40, 1, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Cava bar decay speed (1..100)")
+MACRO_CONFIG_COL(BcCavaColor, bc_cava_color, 0xFF968C80U, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_COLALPHA, "Bar color for Cava visualizer")
+MACRO_CONFIG_INT(BcCavaBackground, bc_cava_background, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Draw background behind Cava visualizer")
+MACRO_CONFIG_COL(BcCavaBackgroundColor, bc_cava_background_color, 0x66000000U, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_COLALPHA, "Background color for Cava visualizer")
+
 // Media background
 MACRO_CONFIG_INT(BcMenuMediaBackground, bc_menu_media_background, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable custom media background in offline menus")
 MACRO_CONFIG_INT(BcGameMediaBackground, bc_game_media_background, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable custom media background in game background rendering")
@@ -89,3 +114,6 @@ MACRO_CONFIG_COL(Bc3dParticlesColor, bc_3d_particles_color, 4294967295, CFGFLAG_
 MACRO_CONFIG_INT(Bc3dParticlesGlow, bc_3d_particles_glow, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable 3D particles glow")
 MACRO_CONFIG_INT(Bc3dParticlesGlowAlpha, bc_3d_particles_glow_alpha, 35, 1, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Glow alpha of 3D particles (1-100)")
 MACRO_CONFIG_INT(Bc3dParticlesGlowOffset, bc_3d_particles_glow_offset, 2, 1, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Glow offset for 3D particles")
+
+// Debug
+MACRO_CONFIG_INT(DbgCava, dbg_cava, 0, 0, 2, CFGFLAG_CLIENT, "Debug Cava/Audio visualizer (1=overlay, 2=overlay+logs)")

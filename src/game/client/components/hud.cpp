@@ -119,6 +119,9 @@ void CHud::OnInit()
 
 void CHud::RenderGameTimer()
 {
+	if(g_Config.m_BcMusicPlayer != 0)
+		return;
+
 	float Half = m_Width / 2.0f;
 
 	if(!(GameClient()->m_Snap.m_pGameInfoObj->m_GameStateFlags & GAMESTATEFLAG_SUDDENDEATH))

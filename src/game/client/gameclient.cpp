@@ -164,6 +164,7 @@ void CGameClient::OnConsoleInit()
 					      &m_PlayerIndicator, // TClient
 					      &m_Mod, // TClient
 					      &m_CustomCommunities, // TClient
+					      &m_MusicPlayer,
 					      &m_Hud,
 					      &m_Spectator,
 					      &m_Emoticon,
@@ -172,6 +173,7 @@ void CGameClient::OnConsoleInit()
 					      &m_WarList, // TClient
 					      &m_StatusBar, // TClient
 					      &m_InfoMessages,
+					      &m_AudioVisualizer,
 					      &m_Chat,
 					      &m_Broadcast,
 					      &m_ImportantAlert,

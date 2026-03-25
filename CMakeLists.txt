@@ -753,6 +753,7 @@ if(TARGET_OS STREQUAL "windows")
   list(APPEND PLATFORM_LIBS advapi32.lib) # Reg* and Crypt* functions
   list(APPEND PLATFORM_LIBS bcrypt.lib userenv.lib) # for Rust (https://github.com/rust-lang/rust/issues/91974)
   list(APPEND PLATFORM_LIBS ole32.lib) # CoInitialize(Ex)
+  list(APPEND PLATFORM_LIBS runtimeobject.lib) # RoGetActivationFactory / WinRT
   list(APPEND PLATFORM_LIBS shell32.lib)
   list(APPEND PLATFORM_LIBS ntdll.lib) # https://github.com/ddnet/ddnet/issues/6725
   list(APPEND PLATFORM_LIBS uuid.lib) # FOLDERID_RoamingAppData
@@ -2521,10 +2522,16 @@ if(CLIENT)
     components/bestclient/3d_particles.h
     components/bestclient/afterimage.cpp
     components/bestclient/afterimage.h
+    components/bestclient/audio_capture_device_score.cpp
+    components/bestclient/audio_capture_device_score.h
+    components/bestclient/audio_visualizer.cpp
+    components/bestclient/audio_visualizer.h
     components/bestclient/chat_bubbles.cpp
     components/bestclient/chat_bubbles.h
     components/bestclient/magic_particles.cpp
     components/bestclient/magic_particles.h
+    components/bestclient/music_player.cpp
+    components/bestclient/music_player.h
     components/bestclient/orbit_aura.cpp
     components/bestclient/orbit_aura.h
     components/bestclient/subsystem_runtime.h
@@ -2564,6 +2571,8 @@ if(CLIENT)
     components/ghost.h
     components/hud.cpp
     components/hud.h
+    components/hud_layout.cpp
+    components/hud_layout.h
     components/important_alert.cpp
     components/important_alert.h
     components/infomessages.cpp

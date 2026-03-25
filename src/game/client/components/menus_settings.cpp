@@ -3887,6 +3887,77 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		}
 		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
+		// Music player (right column block)
+		{
+			const float ColorPickerLineSize = 25.0f;
+			const float ColorPickerLabelSize = 13.0f;
+			const float ColorPickerSpacing = 5.0f;
+			static float s_MusicPlayerPhase = 0.0f;
+			static float s_MusicPlayerStaticColorPhase = 0.0f;
+			const bool MusicPlayerEnabled = g_Config.m_BcMusicPlayer != 0;
+			const bool StaticColorOn = MusicPlayerEnabled && g_Config.m_BcMusicPlayerColorMode == 0;
+			UpdateRevealPhase(s_MusicPlayerPhase, MusicPlayerEnabled);
+			if(BCUiAnimations::Enabled())
+				BCUiAnimations::UpdatePhase(s_MusicPlayerStaticColorPhase, StaticColorOn ? 1.0f : 0.0f, Client()->RenderFrameTime(), 0.16f);
+			else
+				s_MusicPlayerStaticColorPhase = StaticColorOn ? 1.0f : 0.0f;
+
+			const float StaticColorTargetHeight = ColorPickerLineSize + ColorPickerSpacing;
+			const float ExtraTargetHeight = LineSize + StaticColorTargetHeight * s_MusicPlayerStaticColorPhase;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraTargetHeight * s_MusicPlayerPhase;
+			CUIRect Content, Label, Row, Visible;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Music Player"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMusicPlayer, Localize("Enable music player"), &g_Config.m_BcMusicPlayer, &Content, LineSize);
+
+			const float ExpandedHeight = ExtraTargetHeight * s_MusicPlayerPhase;
+			if(ExpandedHeight > 0.0f)
+			{
+				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExtraTargetHeight};
+
+				CUIRect ModeLabel, ModeDropDown;
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Row.VSplitLeft(120.0f, &ModeLabel, &ModeDropDown);
+				Ui()->DoLabel(&ModeLabel, Localize("Color mode"), 14.0f, TEXTALIGN_ML);
+
+				static CUi::SDropDownState s_MusicPlayerColorModeState;
+				static CScrollRegion s_MusicPlayerColorModeScrollRegion;
+				s_MusicPlayerColorModeState.m_SelectionPopupContext.m_pScrollRegion = &s_MusicPlayerColorModeScrollRegion;
+				const char *apMusicPlayerColorModes[2] = {
+					Localize("Static color"),
+					Localize("Cover color"),
+				};
+				g_Config.m_BcMusicPlayerColorMode = std::clamp(g_Config.m_BcMusicPlayerColorMode, 0, 1);
+				g_Config.m_BcMusicPlayerColorMode = Ui()->DoDropDown(&ModeDropDown, g_Config.m_BcMusicPlayerColorMode, apMusicPlayerColorModes, (int)std::size(apMusicPlayerColorModes), s_MusicPlayerColorModeState);
+
+				const float StaticColorHeight = StaticColorTargetHeight * s_MusicPlayerStaticColorPhase;
+				if(StaticColorHeight > 0.0f)
+				{
+					CUIRect StaticVisible;
+					Expand.HSplitTop(StaticColorHeight, &StaticVisible, &Expand);
+					Ui()->ClipEnable(&StaticVisible);
+					SScopedClip StaticClipGuard{Ui()};
+
+					CUIRect StaticExpand = {StaticVisible.x, StaticVisible.y, StaticVisible.w, StaticColorTargetHeight};
+					static CButtonContainer s_MusicPlayerStaticColorButton;
+					DoLine_ColorPicker(&s_MusicPlayerStaticColorButton, ColorPickerLineSize, ColorPickerLabelSize, ColorPickerSpacing, &StaticExpand, Localize("Static color"), &g_Config.m_BcMusicPlayerStaticColor, ColorRGBA(0.34f, 0.53f, 0.79f, 1.0f), false);
+				}
+			}
+		}
+		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+
 		// Animations (right column block)
 		{
 			static float s_AnimationsBlockPhase = 0.0f;

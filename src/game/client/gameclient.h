@@ -30,8 +30,10 @@
 #include "components/background.h"
 #include "components/bestclient/3d_particles.h"
 #include "components/bestclient/afterimage.h"
+#include "components/bestclient/audio_visualizer.h"
 #include "components/bestclient/chat_bubbles.h"
 #include "components/bestclient/magic_particles.h"
+#include "components/bestclient/music_player.h"
 #include "components/bestclient/orbit_aura.h"
 #include "components/binds.h"
 #include "components/broadcast.h"
@@ -219,6 +221,8 @@ public:
 	CMagicParticles m_MagicParticles;
 	COrbitAura m_OrbitAura;
 	CChatBubbles m_ChatBubbles;
+	CAudioVisualizer m_AudioVisualizer;
+	CMusicPlayer m_MusicPlayer;
 
 	CTooltips m_Tooltips;
 
