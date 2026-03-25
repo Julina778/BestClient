@@ -907,6 +907,7 @@ void CMenus::OnInit()
 	Console()->Chain("demo_speed", ConchainDemoSpeed, this);
 
 	m_TextureBlob = Graphics()->LoadTexture("blob.png", IStorage::TYPE_ALL);
+	m_MenuMediaBackground.Init(Graphics(), Storage());
 	m_MainMenuLogoTexture = Graphics()->LoadTexture("bestclient/gui_logo.png", IStorage::TYPE_ALL);
 	if(!m_MainMenuLogoTexture.IsValid() || m_MainMenuLogoTexture.IsNullTexture())
 		m_MainMenuLogoTexture = Graphics()->LoadTexture("BestClient/gui_logo.png", IStorage::TYPE_ALL);
@@ -1068,13 +1069,18 @@ void CMenus::Render()
 
 	if(ClientState == IClient::STATE_ONLINE || ClientState == IClient::STATE_DEMOPLAYBACK)
 	{
+		m_MenuMediaBackground.Unload();
 		ms_ColorTabbarInactive = ms_ColorTabbarInactiveIngame;
 		ms_ColorTabbarActive = ms_ColorTabbarActiveIngame;
 		ms_ColorTabbarHover = ms_ColorTabbarHoverIngame;
 	}
 	else
 	{
-		if(!GameClient()->m_MenuBackground.Render())
+		const float ScreenHeight = 300.0f;
+		const float ScreenWidth = ScreenHeight * Graphics()->ScreenAspect();
+		m_MenuMediaBackground.SyncFromConfig();
+		m_MenuMediaBackground.Update();
+		if(!m_MenuMediaBackground.Render(ScreenWidth, ScreenHeight) && !GameClient()->m_MenuBackground.Render())
 		{
 			RenderBackground();
 		}
@@ -2424,10 +2430,12 @@ void CMenus::SetActive(bool Active)
 
 void CMenus::OnReset()
 {
+	m_MenuMediaBackground.Unload();
 }
 
 void CMenus::OnShutdown()
 {
+	m_MenuMediaBackground.Shutdown();
 	m_CommunityIcons.Shutdown();
 }
 

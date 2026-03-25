@@ -30,6 +30,7 @@
 #include "components/background.h"
 #include "components/bestclient/3d_particles.h"
 #include "components/bestclient/afterimage.h"
+#include "components/bestclient/chat_bubbles.h"
 #include "components/bestclient/magic_particles.h"
 #include "components/bestclient/orbit_aura.h"
 #include "components/binds.h"
@@ -217,6 +218,7 @@ public:
 	CAfterimage m_Afterimage;
 	CMagicParticles m_MagicParticles;
 	COrbitAura m_OrbitAura;
+	CChatBubbles m_ChatBubbles;
 
 	CTooltips m_Tooltips;
 

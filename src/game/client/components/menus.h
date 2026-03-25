@@ -17,6 +17,7 @@
 #include <game/client/component.h>
 #include <game/client/components/community_icons.h>
 #include <game/client/components/mapimages.h>
+#include <game/client/components/menu_media_background.h>
 #include <game/client/components/menus_ingame_touch_controls.h>
 #include <game/client/components/menus_settings_controls.h>
 #include <game/client/components/menus_start.h>
@@ -74,6 +75,7 @@ private:
 	std::optional<std::chrono::nanoseconds> m_SkinPartsList7LastRefreshTime;
 
 	int m_DirectionQuadContainerIndex;
+	CMenuMediaBackground m_MenuMediaBackground;
 
 	// menus_settings_assets.cpp
 public:

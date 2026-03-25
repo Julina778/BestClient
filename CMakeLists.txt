@@ -2521,10 +2521,13 @@ if(CLIENT)
     components/bestclient/3d_particles.h
     components/bestclient/afterimage.cpp
     components/bestclient/afterimage.h
+    components/bestclient/chat_bubbles.cpp
+    components/bestclient/chat_bubbles.h
     components/bestclient/magic_particles.cpp
     components/bestclient/magic_particles.h
     components/bestclient/orbit_aura.cpp
     components/bestclient/orbit_aura.h
+    components/bestclient/subsystem_runtime.h
     components/binds.cpp
     components/binds.h
     components/broadcast.cpp
@@ -2577,8 +2580,12 @@ if(CLIENT)
     components/maplayers.h
     components/mapsounds.cpp
     components/mapsounds.h
+    components/media_decoder.cpp
+    components/media_decoder.h
     components/menu_background.cpp
     components/menu_background.h
+    components/menu_media_background.cpp
+    components/menu_media_background.h
     components/menus.cpp
     components/menus.h
     components/menus_browser.cpp

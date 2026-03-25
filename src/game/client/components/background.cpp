@@ -32,10 +32,16 @@ void CBackground::OnInit()
 {
 	m_pBackgroundMap = CreateMap();
 	m_pMap = m_pBackgroundMap.get();
+	m_MediaBackground.Init(Graphics(), Storage());
 
 	m_pImages->OnInterfacesInit(GameClient());
 	if(g_Config.m_ClBackgroundEntities[0] != '\0' && str_comp(g_Config.m_ClBackgroundEntities, CURRENT_MAP))
 		LoadBackground();
+}
+
+void CBackground::OnShutdown()
+{
+	m_MediaBackground.Shutdown();
 }
 
 void CBackground::LoadBackground()
@@ -97,7 +103,33 @@ void CBackground::OnRender()
 		return;
 
 	if(Client()->State() != IClient::STATE_ONLINE && Client()->State() != IClient::STATE_DEMOPLAYBACK)
+	{
+		m_MediaBackground.Unload();
 		return;
+	}
+
+	m_MediaBackground.SyncFromConfig(g_Config.m_BcGameMediaBackground, g_Config.m_BcMenuMediaBackgroundPath);
+	m_MediaBackground.Update();
+	if(g_Config.m_BcGameMediaBackground)
+	{
+		float ViewWidth = 0.0f;
+		float ViewHeight = 0.0f;
+		Graphics()->CalcScreenParams(Graphics()->ScreenAspect(), GetCurCamera()->m_Zoom, &ViewWidth, &ViewHeight);
+
+		CMenuMediaBackground::SRenderContext RenderContext;
+		RenderContext.m_CameraCenterX = GetCurCamera()->m_Center.x;
+		RenderContext.m_CameraCenterY = GetCurCamera()->m_Center.y;
+		RenderContext.m_ViewWidth = ViewWidth;
+		RenderContext.m_ViewHeight = ViewHeight;
+		RenderContext.m_WorldOffset = (float)g_Config.m_BcGameMediaBackgroundOffset / 100.0f;
+		if(GameClient()->Layers() != nullptr && GameClient()->Layers()->GameLayer() != nullptr)
+		{
+			RenderContext.m_MapWidth = GameClient()->Layers()->GameLayer()->m_Width * 32.0f;
+			RenderContext.m_MapHeight = GameClient()->Layers()->GameLayer()->m_Height * 32.0f;
+		}
+
+		m_MediaBackground.Render(ViewWidth, ViewHeight, &RenderContext);
+	}
 
 	if(g_Config.m_ClOverlayEntities != 100)
 		return;

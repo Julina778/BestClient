@@ -21,6 +21,7 @@
 
 #include <game/client/animstate.h>
 #include <game/client/components/chat.h>
+#include <game/client/components/media_decoder.h>
 #include <game/client/components/menu_background.h>
 #include <game/client/components/sounds.h>
 #include <game/client/gameclient.h>
@@ -3421,6 +3422,185 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					Content.HSplitTop(LineSize, &Row, &Content);
 					Ui()->DoScrollbarOption(&g_Config.m_Bc3dParticlesGlowOffset, &g_Config.m_Bc3dParticlesGlowOffset, &Row, Localize("Glow offset"), 1, 20);
 				}
+			}
+		}
+		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+
+		// Media background (left column block)
+		{
+			const float ContentHeight = LineSize + MarginSmall + 7.0f * LineSize + MarginSmall;
+			CUIRect Content, Label, Row;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Media Background"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			const bool MenuMediaChanged = DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMenuMediaBackground, Localize("Enable to main menu"), &g_Config.m_BcMenuMediaBackground, &Content, LineSize);
+			const bool GameMediaChanged = DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcGameMediaBackground, Localize("Enable to game background"), &g_Config.m_BcGameMediaBackground, &Content, LineSize);
+			if(MenuMediaChanged || GameMediaChanged)
+				m_MenuMediaBackground.ReloadFromConfig();
+
+			struct SMenuMediaFileListContext
+			{
+				std::vector<std::string> *m_pLabels;
+				std::vector<std::string> *m_pPaths;
+			};
+
+			auto MenuMediaFileListScan = [](const char *pName, int IsDir, int StorageType, void *pUser) {
+				(void)StorageType;
+				if(IsDir)
+					return 0;
+
+				auto *pContext = static_cast<SMenuMediaFileListContext *>(pUser);
+				const std::string Ext = MediaDecoder::ExtractExtensionLower(pName);
+				const bool SupportedImage = Ext == "png" || Ext == "jpg" || Ext == "jpeg" || Ext == "webp" || Ext == "bmp" || Ext == "avif" || Ext == "gif";
+				const bool SupportedVideo = Ext == "mp4" || Ext == "webm" || Ext == "mov" || Ext == "m4v" || Ext == "mkv" || Ext == "avi";
+				if(!SupportedImage && !SupportedVideo)
+					return 0;
+
+				pContext->m_pLabels->emplace_back(pName);
+				pContext->m_pPaths->emplace_back(std::string("BestClient/backgrounds/") + pName);
+				return 0;
+			};
+
+			Storage()->CreateFolder("BestClient", IStorage::TYPE_SAVE);
+			Storage()->CreateFolder("BestClient/backgrounds", IStorage::TYPE_SAVE);
+
+			static std::vector<std::string> s_vMenuMediaFileLabels;
+			static std::vector<std::string> s_vMenuMediaFilePaths;
+			s_vMenuMediaFileLabels.clear();
+			s_vMenuMediaFilePaths.clear();
+			SMenuMediaFileListContext MenuMediaContext{&s_vMenuMediaFileLabels, &s_vMenuMediaFilePaths};
+			Storage()->ListDirectory(IStorage::TYPE_SAVE, "BestClient/backgrounds", MenuMediaFileListScan, &MenuMediaContext);
+
+			std::vector<int> vSortedIndices(s_vMenuMediaFileLabels.size());
+			for(size_t i = 0; i < vSortedIndices.size(); ++i)
+				vSortedIndices[i] = (int)i;
+			std::sort(vSortedIndices.begin(), vSortedIndices.end(), [&](int Left, int Right) {
+				return str_comp_nocase(s_vMenuMediaFileLabels[Left].c_str(), s_vMenuMediaFileLabels[Right].c_str()) < 0;
+			});
+
+			static std::vector<std::string> s_vMenuMediaDropDownLabels;
+			static std::vector<const char *> s_vMenuMediaDropDownLabelPtrs;
+			s_vMenuMediaDropDownLabels.clear();
+			s_vMenuMediaDropDownLabelPtrs.clear();
+			for(int SortedIndex : vSortedIndices)
+				s_vMenuMediaDropDownLabels.push_back(s_vMenuMediaFileLabels[SortedIndex]);
+			for(const std::string &LabelString : s_vMenuMediaDropDownLabels)
+				s_vMenuMediaDropDownLabelPtrs.push_back(LabelString.c_str());
+
+			int SelectedMediaFile = -1;
+			for(size_t i = 0; i < vSortedIndices.size(); ++i)
+			{
+				const int SortedIndex = vSortedIndices[i];
+				if(str_comp(g_Config.m_BcMenuMediaBackgroundPath, s_vMenuMediaFilePaths[SortedIndex].c_str()) == 0)
+				{
+					SelectedMediaFile = (int)i;
+					break;
+				}
+			}
+
+			CUIRect MediaPathRow, MediaFileDropDown, MediaReloadButton, MediaFolderButton;
+			Content.HSplitTop(LineSize, &MediaPathRow, &Content);
+			MediaPathRow.VSplitRight(20.0f, &MediaPathRow, &MediaFolderButton);
+			MediaPathRow.VSplitRight(MarginSmall, &MediaPathRow, nullptr);
+			MediaPathRow.VSplitRight(20.0f, &MediaPathRow, &MediaReloadButton);
+			MediaPathRow.VSplitRight(MarginSmall, &MediaPathRow, nullptr);
+			MediaFileDropDown = MediaPathRow;
+
+			if(s_vMenuMediaDropDownLabelPtrs.empty())
+			{
+				static CButtonContainer s_MenuMediaEmptyButton;
+				DoButton_Menu(&s_MenuMediaEmptyButton, Localize("No media files in backgrounds folder"), -1, &MediaFileDropDown);
+			}
+			else
+			{
+				static CUi::SDropDownState s_MenuMediaFileDropDownState;
+				static CScrollRegion s_MenuMediaFileDropDownScrollRegion;
+				s_MenuMediaFileDropDownState.m_SelectionPopupContext.m_pScrollRegion = &s_MenuMediaFileDropDownScrollRegion;
+				const int NewSelectedMediaFile = Ui()->DoDropDown(&MediaFileDropDown, SelectedMediaFile, s_vMenuMediaDropDownLabelPtrs.data(), s_vMenuMediaDropDownLabelPtrs.size(), s_MenuMediaFileDropDownState);
+				if(NewSelectedMediaFile != SelectedMediaFile && NewSelectedMediaFile >= 0 && NewSelectedMediaFile < (int)vSortedIndices.size())
+				{
+					const int SortedIndex = vSortedIndices[NewSelectedMediaFile];
+					str_copy(g_Config.m_BcMenuMediaBackgroundPath, s_vMenuMediaFilePaths[SortedIndex].c_str(), sizeof(g_Config.m_BcMenuMediaBackgroundPath));
+					m_MenuMediaBackground.ReloadFromConfig();
+				}
+			}
+
+			static CButtonContainer s_MenuMediaReloadButton;
+			if(Ui()->DoButton_FontIcon(&s_MenuMediaReloadButton, FontIcon::ARROW_ROTATE_RIGHT, 0, &MediaReloadButton, BUTTONFLAG_LEFT))
+				m_MenuMediaBackground.ReloadFromConfig();
+
+			static CButtonContainer s_MenuMediaFolderButton;
+			if(Ui()->DoButton_FontIcon(&s_MenuMediaFolderButton, FontIcon::FOLDER, 0, &MediaFolderButton, BUTTONFLAG_LEFT))
+			{
+				Storage()->CreateFolder("BestClient", IStorage::TYPE_SAVE);
+				Storage()->CreateFolder("BestClient/backgrounds", IStorage::TYPE_SAVE);
+				char aBuf[IO_MAX_PATH_LENGTH];
+				Storage()->GetCompletePath(IStorage::TYPE_SAVE, "BestClient/backgrounds", aBuf, sizeof(aBuf));
+				Client()->ViewFile(aBuf);
+			}
+
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			char aMediaFolderPath[IO_MAX_PATH_LENGTH];
+			Storage()->GetCompletePath(IStorage::TYPE_SAVE, "BestClient/backgrounds", aMediaFolderPath, sizeof(aMediaFolderPath));
+
+			char aSelectedMediaPath[IO_MAX_PATH_LENGTH + 32];
+			if(g_Config.m_BcMenuMediaBackgroundPath[0] != '\0')
+				str_format(aSelectedMediaPath, sizeof(aSelectedMediaPath), "%s %s", Localize("Selected:"), g_Config.m_BcMenuMediaBackgroundPath);
+			else
+				str_format(aSelectedMediaPath, sizeof(aSelectedMediaPath), "%s %s", Localize("Selected:"), Localize("none"));
+
+			char aFolderLabel[IO_MAX_PATH_LENGTH + 32];
+			str_format(aFolderLabel, sizeof(aFolderLabel), "%s %s", Localize("Folder:"), aMediaFolderPath);
+
+			Content.HSplitTop(LineSize, &Row, &Content);
+			Ui()->DoLabel(&Row, aFolderLabel, 11.0f, TEXTALIGN_ML);
+			Content.HSplitTop(LineSize, &Row, &Content);
+			Ui()->DoLabel(&Row, aSelectedMediaPath, 11.0f, TEXTALIGN_ML);
+
+			Content.HSplitTop(LineSize, &Row, &Content);
+			Ui()->DoScrollbarOption(&g_Config.m_BcGameMediaBackgroundOffset, &g_Config.m_BcGameMediaBackgroundOffset, &Row, Localize("Map offset"), 0, 100, &CUi::ms_LinearScrollbarScale, 0u, "%");
+			GameClient()->m_Tooltips.DoToolTip(&g_Config.m_BcGameMediaBackgroundOffset, &Row, Localize("0 keeps the image fixed to the screen. 100 fixes it to the map for a full parallax effect."));
+
+			Content.HSplitTop(LineSize, &Row, &Content);
+			if(m_MenuMediaBackground.HasError())
+				TextRender()->TextColor(ColorRGBA(1.0f, 0.45f, 0.45f, 1.0f));
+			else if(m_MenuMediaBackground.IsLoaded())
+				TextRender()->TextColor(ColorRGBA(0.55f, 1.0f, 0.55f, 1.0f));
+			Ui()->DoLabel(&Row, m_MenuMediaBackground.StatusText(), 11.0f, TEXTALIGN_ML);
+			TextRender()->TextColor(TextRender()->DefaultTextColor());
+		}
+		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+
+		// Chat bubbles (left column block)
+		{
+			const bool ChatBubblesEnabled = g_Config.m_BcChatBubbles != 0;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + (ChatBubblesEnabled ? (MarginSmall + 6.0f * LineSize) : 0.0f);
+			CUIRect Content, Label, Row;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Chat Bubbles"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatBubbles, Localize("Chat Bubbles"), &g_Config.m_BcChatBubbles, &Content, LineSize);
+			if(ChatBubblesEnabled)
+			{
+				Content.HSplitTop(MarginSmall, nullptr, &Content);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatBubblesDemo, Localize("Show Chatbubbles in demo"), &g_Config.m_BcChatBubblesDemo, &Content, LineSize);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatBubblesSelf, Localize("Show Chatbubbles above you"), &g_Config.m_BcChatBubblesSelf, &Content, LineSize);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleSize, &g_Config.m_BcChatBubbleSize, &Row, Localize("Chat Bubble Size"), 20, 30);
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleShowTime, &g_Config.m_BcChatBubbleShowTime, &Row, Localize("Show the Bubbles for"), 200, 1000);
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleFadeIn, &g_Config.m_BcChatBubbleFadeIn, &Row, Localize("fade in for"), 15, 100);
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleFadeOut, &g_Config.m_BcChatBubbleFadeOut, &Row, Localize("fade out for"), 15, 100);
 			}
 		}
 
