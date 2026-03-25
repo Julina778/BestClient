@@ -28,7 +28,10 @@
 
 // components
 #include "components/background.h"
+#include "components/bestclient/3d_particles.h"
 #include "components/bestclient/afterimage.h"
+#include "components/bestclient/magic_particles.h"
+#include "components/bestclient/orbit_aura.h"
 #include "components/binds.h"
 #include "components/broadcast.h"
 #include "components/camera.h"
@@ -210,7 +213,10 @@ public:
 
 	CRaceDemo m_RaceDemo;
 	CGhost m_Ghost;
+	C3DParticles m_3DParticles;
 	CAfterimage m_Afterimage;
+	CMagicParticles m_MagicParticles;
+	COrbitAura m_OrbitAura;
 
 	CTooltips m_Tooltips;
 

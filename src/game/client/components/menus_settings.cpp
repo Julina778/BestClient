@@ -3245,23 +3245,187 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		MainView.VSplitMid(&LeftView, &RightView, MarginBetweenViews);
 		LeftView.VSplitLeft(MarginSmall, nullptr, &LeftView);
 		RightView.VSplitRight(MarginSmall, &RightView, nullptr);
-		(void)LeftView;
 
-		CUIRect Column = RightView;
-
-		auto BeginBlock = [&](float ContentHeight, CUIRect &Content) {
+		auto BeginBlock = [&](CUIRect &ColumnRef, float ContentHeight, CUIRect &Content) {
 			CUIRect Block;
-			Column.HSplitTop(ContentHeight + MarginSmall * 2.0f, &Block, &Column);
+			ColumnRef.HSplitTop(ContentHeight + MarginSmall * 2.0f, &Block, &ColumnRef);
 			Block.Draw(BlockColor, IGraphics::CORNER_ALL, 10.0f);
 			Block.Margin(MarginSmall, &Content);
 		};
+
+		CUIRect Column = LeftView;
+
+		// Magic particles (left column block)
+		{
+			const int ExtraLines = g_Config.m_BcMagicParticles ? 5 : 0;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraLines * LineSize;
+			CUIRect Content, Label, Row;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Magic Particles"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMagicParticles, Localize("Magic Particles"), &g_Config.m_BcMagicParticles, &Content, LineSize);
+
+			if(g_Config.m_BcMagicParticles)
+			{
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcMagicParticlesCount, &g_Config.m_BcMagicParticlesCount, &Row, Localize("Particles count"), 1, 100);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcMagicParticlesRadius, &g_Config.m_BcMagicParticlesRadius, &Row, Localize("Radius"), 1, 1000);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcMagicParticlesSize, &g_Config.m_BcMagicParticlesSize, &Row, Localize("Size"), 1, 50);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcMagicParticlesAlphaDelay, &g_Config.m_BcMagicParticlesAlphaDelay, &Row, Localize("Alpha delay"), 1, 100);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				CUIRect TypeLabel, TypeSelect;
+				Row.VSplitLeft(150.0f, &TypeLabel, &TypeSelect);
+				Ui()->DoLabel(&TypeLabel, Localize("Particle type"), 14.0f, TEXTALIGN_ML);
+
+				static CUi::SDropDownState s_MagicParticlesTypeState;
+				const char *apMagicParticleTypes[4] = {
+					Localize("Slice"),
+					Localize("Ball"),
+					Localize("Smoke"),
+					Localize("Shell"),
+				};
+				g_Config.m_BcMagicParticlesType = Ui()->DoDropDown(&TypeSelect, g_Config.m_BcMagicParticlesType - 1, apMagicParticleTypes, (int)std::size(apMagicParticleTypes), s_MagicParticlesTypeState) + 1;
+			}
+		}
+		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+
+		// Orbit aura (left column block)
+		{
+			const bool OrbitEnabled = g_Config.m_BcOrbitAura != 0;
+			const int ExtraLines = OrbitEnabled ? (g_Config.m_BcOrbitAuraIdle ? 6 : 5) : 0;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraLines * LineSize;
+			CUIRect Content, Label, Row;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Orbit Aura"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcOrbitAura, Localize("Orbit Aura"), &g_Config.m_BcOrbitAura, &Content, LineSize);
+
+			if(OrbitEnabled)
+			{
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcOrbitAuraIdle, Localize("Enable in idle mode"), &g_Config.m_BcOrbitAuraIdle, &Content, LineSize);
+
+				if(g_Config.m_BcOrbitAuraIdle)
+				{
+					Content.HSplitTop(LineSize, &Row, &Content);
+					Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraIdleTimer, &g_Config.m_BcOrbitAuraIdleTimer, &Row, Localize("Idle delay"), 1, 30);
+				}
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraRadius, &g_Config.m_BcOrbitAuraRadius, &Row, Localize("Aura radius"), 8, 200);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraParticles, &g_Config.m_BcOrbitAuraParticles, &Row, Localize("Particles"), 2, 120);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraAlpha, &g_Config.m_BcOrbitAuraAlpha, &Row, Localize("Aura alpha"), 0, 100);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraSpeed, &g_Config.m_BcOrbitAuraSpeed, &Row, Localize("Aura speed"), 10, 200);
+			}
+		}
+		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+
+		// 3D particles (left column block)
+		{
+			const float ColorPickerLineSize = 25.0f;
+			const float ColorPickerLabelSize = 13.0f;
+			const float ColorPickerSpacing = 5.0f;
+			const bool ParticlesEnabled = g_Config.m_Bc3dParticles != 0;
+			const bool ShowCustomColor = ParticlesEnabled && g_Config.m_Bc3dParticlesColorMode == 1;
+			const bool ShowGlowOptions = ParticlesEnabled && g_Config.m_Bc3dParticlesGlow != 0;
+			const float ExtraHeight = ParticlesEnabled ?
+				(7.0f * LineSize + (ShowCustomColor ? ColorPickerLineSize + ColorPickerSpacing : 0.0f) + (ShowGlowOptions ? 2.0f * LineSize : 0.0f)) :
+				0.0f;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraHeight;
+			CUIRect Content, Label, Row;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("3D Particles"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_Bc3dParticles, Localize("3D Particles"), &g_Config.m_Bc3dParticles, &Content, LineSize);
+
+			if(ParticlesEnabled)
+			{
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_Bc3dParticlesCount, &g_Config.m_Bc3dParticlesCount, &Row, Localize("Particles count"), 1, 200);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				CUIRect TypeLabel, TypeSelect;
+				Row.VSplitLeft(150.0f, &TypeLabel, &TypeSelect);
+				Ui()->DoLabel(&TypeLabel, Localize("Particle type"), 14.0f, TEXTALIGN_ML);
+
+				static CUi::SDropDownState s_3DParticlesTypeState;
+				const char *ap3DParticleTypes[3] = {
+					Localize("Cube"),
+					Localize("Heart"),
+					Localize("Mixed"),
+				};
+				g_Config.m_Bc3dParticlesType = Ui()->DoDropDown(&TypeSelect, g_Config.m_Bc3dParticlesType - 1, ap3DParticleTypes, (int)std::size(ap3DParticleTypes), s_3DParticlesTypeState) + 1;
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_Bc3dParticlesSizeMax, &g_Config.m_Bc3dParticlesSizeMax, &Row, Localize("Size"), 2, 200);
+				g_Config.m_Bc3dParticlesSizeMin = std::max(2, g_Config.m_Bc3dParticlesSizeMax - 3);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_Bc3dParticlesSpeed, &g_Config.m_Bc3dParticlesSpeed, &Row, Localize("Speed"), 1, 500);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_Bc3dParticlesAlpha, &g_Config.m_Bc3dParticlesAlpha, &Row, Localize("Alpha"), 1, 100);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				CUIRect ColorModeLabel, ColorModeSelect;
+				Row.VSplitLeft(150.0f, &ColorModeLabel, &ColorModeSelect);
+				Ui()->DoLabel(&ColorModeLabel, Localize("Color mode"), 14.0f, TEXTALIGN_ML);
+
+				static CUi::SDropDownState s_3DParticlesColorModeState;
+				const char *ap3DParticleColorModes[2] = {
+					Localize("Custom"),
+					Localize("Random"),
+				};
+				g_Config.m_Bc3dParticlesColorMode = Ui()->DoDropDown(&ColorModeSelect, g_Config.m_Bc3dParticlesColorMode - 1, ap3DParticleColorModes, (int)std::size(ap3DParticleColorModes), s_3DParticlesColorModeState) + 1;
+
+				if(g_Config.m_Bc3dParticlesColorMode == 1)
+				{
+					static CButtonContainer s_3DParticlesColorButton;
+					DoLine_ColorPicker(&s_3DParticlesColorButton, ColorPickerLineSize, ColorPickerLabelSize, ColorPickerSpacing, &Content, Localize("Color"), &g_Config.m_Bc3dParticlesColor, ColorRGBA(1.0f, 1.0f, 1.0f), false);
+				}
+
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_Bc3dParticlesGlow, Localize("Glow"), &g_Config.m_Bc3dParticlesGlow, &Content, LineSize);
+
+				if(g_Config.m_Bc3dParticlesGlow)
+				{
+					Content.HSplitTop(LineSize, &Row, &Content);
+					Ui()->DoScrollbarOption(&g_Config.m_Bc3dParticlesGlowAlpha, &g_Config.m_Bc3dParticlesGlowAlpha, &Row, Localize("Glow alpha"), 1, 100);
+
+					Content.HSplitTop(LineSize, &Row, &Content);
+					Ui()->DoScrollbarOption(&g_Config.m_Bc3dParticlesGlowOffset, &g_Config.m_Bc3dParticlesGlowOffset, &Row, Localize("Glow offset"), 1, 20);
+				}
+			}
+		}
+
+		Column = RightView;
 
 		// Camera Drift (right column block)
 		{
 			const int ExtraLines = g_Config.m_BcCameraDrift ? 3 : 0;
 			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraLines * LineSize;
 			CUIRect Content, Label, Row;
-			BeginBlock(ContentHeight, Content);
+			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
 			Ui()->DoLabel(&Label, Localize("Camera Drift"), HeadlineFontSize, TEXTALIGN_ML);
@@ -3305,7 +3469,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			const int ExtraLines = g_Config.m_BcDynamicFov ? 2 : 0;
 			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraLines * LineSize;
 			CUIRect Content, Label, Row;
-			BeginBlock(ContentHeight, Content);
+			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
 			Ui()->DoLabel(&Label, Localize("Dynamic FOV"), HeadlineFontSize, TEXTALIGN_ML);
@@ -3336,7 +3500,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			const int ExtraLines = g_Config.m_BcAfterimage ? 3 : 0;
 			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraLines * LineSize;
 			CUIRect Content, Label, Row;
-			BeginBlock(ContentHeight, Content);
+			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
 			Ui()->DoLabel(&Label, Localize("Afterimage"), HeadlineFontSize, TEXTALIGN_ML);

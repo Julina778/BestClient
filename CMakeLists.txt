@@ -2517,8 +2517,14 @@ if(CLIENT)
     component.h
     components/background.cpp
     components/background.h
+    components/bestclient/3d_particles.cpp
+    components/bestclient/3d_particles.h
     components/bestclient/afterimage.cpp
     components/bestclient/afterimage.h
+    components/bestclient/magic_particles.cpp
+    components/bestclient/magic_particles.h
+    components/bestclient/orbit_aura.cpp
+    components/bestclient/orbit_aura.h
     components/binds.cpp
     components/binds.h
     components/broadcast.cpp
