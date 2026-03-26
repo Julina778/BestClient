@@ -4614,7 +4614,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		CUIRect Column = LeftView;
 		Column.HSplitTop(10.0f, nullptr, &Column);
 		{
-			static char s_aBindCommand[BINDSYSTEM_MAX_CMD] = "";
+			static char s_aBindCommand[FAST_ACTIONS_MAX_CMD] = "";
 			static int s_SelectedBindIndex = 0;
 			static int s_LastSelectedBindIndex = -1;
 
@@ -4631,7 +4631,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, Localize("BindSystem"), HeadlineFontSize, TEXTALIGN_ML);
+			Ui()->DoLabel(&Label, Localize("Fast Actions"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			int HoveringIndex = -1;
@@ -4649,7 +4649,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			Graphics()->DrawRect(Center.x - LineHalfWidth, Center.y - LineHeight / 2.0f, LineHalfWidth * 2.0f, LineHeight, ColorRGBA(0.0f, 0.0f, 0.0f, 0.3f), IGraphics::CORNER_ALL, 8.0f);
 
 			const vec2 MouseDelta = Ui()->MousePos() - Center;
-			const int SegmentCount = static_cast<int>(GameClient()->m_BindSystem.m_vBinds.size());
+			const int SegmentCount = static_cast<int>(GameClient()->m_FastActions.m_vBinds.size());
 			const bool HoverInsideLine = absolute(MouseDelta.x) <= LineHalfWidth && absolute(MouseDelta.y) <= SelectBandHalfHeight;
 			if(HoverInsideLine && SegmentCount > 0)
 			{
@@ -4659,19 +4659,19 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				if(Ui()->MouseButtonClicked(0) || Ui()->MouseButtonClicked(2))
 				{
 					s_SelectedBindIndex = HoveringIndex;
-					str_copy(s_aBindCommand, GameClient()->m_BindSystem.m_vBinds[HoveringIndex].m_aCommand);
+					str_copy(s_aBindCommand, GameClient()->m_FastActions.m_vBinds[HoveringIndex].m_aCommand);
 				}
 			}
 
 			s_SelectedBindIndex = std::clamp(s_SelectedBindIndex, 0, maximum(0, SegmentCount - 1));
 			if(s_SelectedBindIndex != s_LastSelectedBindIndex &&
-				s_SelectedBindIndex < static_cast<int>(GameClient()->m_BindSystem.m_vBinds.size()))
+				s_SelectedBindIndex < static_cast<int>(GameClient()->m_FastActions.m_vBinds.size()))
 			{
-				str_copy(s_aBindCommand, GameClient()->m_BindSystem.m_vBinds[s_SelectedBindIndex].m_aCommand);
+				str_copy(s_aBindCommand, GameClient()->m_FastActions.m_vBinds[s_SelectedBindIndex].m_aCommand);
 				s_LastSelectedBindIndex = s_SelectedBindIndex;
 			}
 
-			for(int i = 0; i < static_cast<int>(GameClient()->m_BindSystem.m_vBinds.size()); i++)
+			for(int i = 0; i < static_cast<int>(GameClient()->m_FastActions.m_vBinds.size()); i++)
 			{
 				TextRender()->TextColor(ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f));
 				float SegmentFontSize = FontSize * 1.1f;
@@ -4685,8 +4685,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					SegmentFontSize = FontSize * 1.35f;
 				}
 
-				const CBindSystem::CBind Bind = GameClient()->m_BindSystem.m_vBinds[i];
-				const float Pos01 = GameClient()->m_BindSystem.m_vBinds.size() <= 1 ? 0.5f : (float)i / (float)(GameClient()->m_BindSystem.m_vBinds.size() - 1);
+				const CFastActions::CBind Bind = GameClient()->m_FastActions.m_vBinds[i];
+				const float Pos01 = GameClient()->m_FastActions.m_vBinds.size() <= 1 ? 0.5f : (float)i / (float)(GameClient()->m_FastActions.m_vBinds.size() - 1);
 				const vec2 Pos = vec2(Center.x - TextHalfRange + Pos01 * (TextHalfRange * 2.0f), Center.y);
 				const CUIRect Rect = CUIRect{Pos.x - LabelW / 2.0f, Pos.y - LabelH / 2.0f, LabelW, LabelH};
 				Ui()->DoLabel(&Rect, Bind.m_aName, SegmentFontSize, TEXTALIGN_MC);
@@ -4708,16 +4708,16 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			s_BindInput.SetEmptyText(Localize("Command"));
 			Ui()->DoEditBox(&s_BindInput, &Button, EditBoxFontSize);
 
-			if(s_SelectedBindIndex < static_cast<int>(GameClient()->m_BindSystem.m_vBinds.size()))
-				str_copy(GameClient()->m_BindSystem.m_vBinds[s_SelectedBindIndex].m_aCommand, s_aBindCommand);
+			if(s_SelectedBindIndex < static_cast<int>(GameClient()->m_FastActions.m_vBinds.size()))
+				str_copy(GameClient()->m_FastActions.m_vBinds[s_SelectedBindIndex].m_aCommand, s_aBindCommand);
 
 			static CButtonContainer s_ClearButton;
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 			Content.HSplitTop(LineSize, &Button, &Content);
 			if(DoButton_Menu(&s_ClearButton, Localize("Clear command"), 0, &Button) &&
-				s_SelectedBindIndex < static_cast<int>(GameClient()->m_BindSystem.m_vBinds.size()))
+				s_SelectedBindIndex < static_cast<int>(GameClient()->m_FastActions.m_vBinds.size()))
 			{
-				GameClient()->m_BindSystem.m_vBinds[s_SelectedBindIndex].m_aCommand[0] = '\0';
+				GameClient()->m_FastActions.m_vBinds[s_SelectedBindIndex].m_aCommand[0] = '\0';
 				s_aBindCommand[0] = '\0';
 			}
 
@@ -4729,7 +4729,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			Content.HSplitTop(LineSize, &Label, &Content);
 			static CButtonContainer s_ReaderButtonWheel;
 			static CButtonContainer s_ClearButtonWheel;
-			DoLine_KeyReader(Label, s_ReaderButtonWheel, s_ClearButtonWheel, Localize("BindSystem key"), "+bs");
+			DoLine_KeyReader(Label, s_ReaderButtonWheel, s_ClearButtonWheel, Localize("Fast Actions key"), "+fa");
 		}
 
 		const float LeftColumnEndY = Column.y;

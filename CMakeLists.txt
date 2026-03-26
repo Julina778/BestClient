@@ -2528,8 +2528,8 @@ if(CLIENT)
     components/bestclient/audio_visualizer.h
     components/bestclient/bestclient.cpp
     components/bestclient/bestclient.h
-    components/bestclient/bindsystem.cpp
-    components/bestclient/bindsystem.h
+    components/bestclient/fast_actions.cpp
+    components/bestclient/fast_actions.h
     components/bestclient/chat_bubbles.cpp
     components/bestclient/chat_bubbles.h
     components/bestclient/magic_particles.cpp

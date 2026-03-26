@@ -1,4 +1,4 @@
-#include "bindsystem.h"
+#include "fast_actions.h"
 
 #include <base/math.h>
 
@@ -18,13 +18,13 @@
 
 namespace
 {
-void EnsureFixedBindSlots(std::vector<CBindSystem::CBind> &vBinds)
+void EnsureFixedBindSlots(std::vector<CFastActions::CBind> &vBinds)
 {
-	if(vBinds.size() != BINDSYSTEM_FIXED_SLOTS)
-		vBinds.resize(BINDSYSTEM_FIXED_SLOTS);
-	for(int i = 0; i < BINDSYSTEM_FIXED_SLOTS; i++)
+	if(vBinds.size() != FAST_ACTIONS_FIXED_SLOTS)
+		vBinds.resize(FAST_ACTIONS_FIXED_SLOTS);
+	for(int i = 0; i < FAST_ACTIONS_FIXED_SLOTS; i++)
 	{
-		char aName[BINDSYSTEM_MAX_NAME];
+		char aName[FAST_ACTIONS_MAX_NAME];
 		str_format(aName, sizeof(aName), "%d", i + 1);
 		str_copy(vBinds[i].m_aName, aName);
 	}
@@ -39,7 +39,7 @@ int SlotFromName(const char *pName)
 	if(*pEnd != '\0')
 		return -1;
 	const int Index = (int)Value - 1;
-	return Index >= 0 && Index < BINDSYSTEM_FIXED_SLOTS ? Index : -1;
+	return Index >= 0 && Index < FAST_ACTIONS_FIXED_SLOTS ? Index : -1;
 }
 
 int KeyToSlotIndex(int Key)
@@ -63,20 +63,20 @@ int KeyToSlotIndex(int Key)
 }
 } // namespace
 
-CBindSystem::CBindSystem()
+CFastActions::CFastActions()
 {
 	OnReset();
 }
 
-void CBindSystem::ConBsExecuteHover(IConsole::IResult *pResult, void *pUserData)
+void CFastActions::ConFaExecuteHover(IConsole::IResult *pResult, void *pUserData)
 {
-	CBindSystem *pThis = (CBindSystem *)pUserData;
+	CFastActions *pThis = (CFastActions *)pUserData;
 	pThis->ExecuteHoveredBind();
 }
 
-void CBindSystem::ConOpenBs(IConsole::IResult *pResult, void *pUserData)
+void CFastActions::ConOpenFa(IConsole::IResult *pResult, void *pUserData)
 {
-	CBindSystem *pThis = (CBindSystem *)pUserData;
+	CFastActions *pThis = (CFastActions *)pUserData;
 	if(pThis->Client()->State() != IClient::STATE_DEMOPLAYBACK)
 	{
 		if(pThis->GameClient()->m_Emoticon.IsActive())
@@ -97,44 +97,44 @@ void CBindSystem::ConOpenBs(IConsole::IResult *pResult, void *pUserData)
 	}
 }
 
-void CBindSystem::ConAddBsLegacy(IConsole::IResult *pResult, void *pUserData)
+void CFastActions::ConAddFaLegacy(IConsole::IResult *pResult, void *pUserData)
 {
 	int BindPos = pResult->GetInteger(0);
-	if(BindPos < 0 || BindPos >= BINDSYSTEM_FIXED_SLOTS)
+	if(BindPos < 0 || BindPos >= FAST_ACTIONS_FIXED_SLOTS)
 		return;
 
 	const char *aCommand = pResult->GetString(2);
 
-	CBindSystem *pThis = static_cast<CBindSystem *>(pUserData);
+	CFastActions *pThis = static_cast<CFastActions *>(pUserData);
 	EnsureFixedBindSlots(pThis->m_vBinds);
 	str_copy(pThis->m_vBinds[BindPos].m_aCommand, aCommand);
 }
 
-void CBindSystem::ConAddBs(IConsole::IResult *pResult, void *pUserData)
+void CFastActions::ConAddFa(IConsole::IResult *pResult, void *pUserData)
 {
 	const char *aName = pResult->GetString(0);
 	const char *aCommand = pResult->GetString(1);
 
-	CBindSystem *pThis = static_cast<CBindSystem *>(pUserData);
+	CFastActions *pThis = static_cast<CFastActions *>(pUserData);
 	pThis->AddBind(aName, aCommand);
 }
 
-void CBindSystem::ConRemoveBs(IConsole::IResult *pResult, void *pUserData)
+void CFastActions::ConRemoveFa(IConsole::IResult *pResult, void *pUserData)
 {
 	const char *aName = pResult->GetString(0);
 	const char *aCommand = pResult->GetString(1);
 
-	CBindSystem *pThis = static_cast<CBindSystem *>(pUserData);
+	CFastActions *pThis = static_cast<CFastActions *>(pUserData);
 	pThis->RemoveBind(aName, aCommand);
 }
 
-void CBindSystem::ConRemoveAllBsBinds(IConsole::IResult *pResult, void *pUserData)
+void CFastActions::ConRemoveAllFaBinds(IConsole::IResult *pResult, void *pUserData)
 {
-	CBindSystem *pThis = static_cast<CBindSystem *>(pUserData);
+	CFastActions *pThis = static_cast<CFastActions *>(pUserData);
 	pThis->RemoveAllBinds();
 }
 
-void CBindSystem::AddBind(const char *pName, const char *pCommand)
+void CFastActions::AddBind(const char *pName, const char *pCommand)
 {
 	EnsureFixedBindSlots(m_vBinds);
 	if(pCommand[0] == '\0')
@@ -143,7 +143,7 @@ void CBindSystem::AddBind(const char *pName, const char *pCommand)
 	int Slot = SlotFromName(pName);
 	if(Slot < 0)
 	{
-		for(int i = 0; i < BINDSYSTEM_FIXED_SLOTS; i++)
+		for(int i = 0; i < FAST_ACTIONS_FIXED_SLOTS; i++)
 		{
 			if(m_vBinds[i].m_aCommand[0] == '\0')
 			{
@@ -158,7 +158,7 @@ void CBindSystem::AddBind(const char *pName, const char *pCommand)
 	str_copy(m_vBinds[Slot].m_aCommand, pCommand);
 }
 
-void CBindSystem::RemoveBind(const char *pName, const char *pCommand)
+void CFastActions::RemoveBind(const char *pName, const char *pCommand)
 {
 	EnsureFixedBindSlots(m_vBinds);
 	const int Slot = SlotFromName(pName);
@@ -169,7 +169,7 @@ void CBindSystem::RemoveBind(const char *pName, const char *pCommand)
 		return;
 	}
 
-	for(int i = 0; i < BINDSYSTEM_FIXED_SLOTS; i++)
+	for(int i = 0; i < FAST_ACTIONS_FIXED_SLOTS; i++)
 	{
 		if(str_comp(m_vBinds[i].m_aCommand, pCommand) == 0)
 		{
@@ -179,22 +179,22 @@ void CBindSystem::RemoveBind(const char *pName, const char *pCommand)
 	}
 }
 
-void CBindSystem::RemoveBind(int Index)
+void CFastActions::RemoveBind(int Index)
 {
 	EnsureFixedBindSlots(m_vBinds);
-	if(Index >= BINDSYSTEM_FIXED_SLOTS || Index < 0)
+	if(Index >= FAST_ACTIONS_FIXED_SLOTS || Index < 0)
 		return;
 	m_vBinds[Index].m_aCommand[0] = '\0';
 }
 
-void CBindSystem::RemoveAllBinds()
+void CFastActions::RemoveAllBinds()
 {
 	EnsureFixedBindSlots(m_vBinds);
-	for(int i = 0; i < BINDSYSTEM_FIXED_SLOTS; i++)
+	for(int i = 0; i < FAST_ACTIONS_FIXED_SLOTS; i++)
 		m_vBinds[i].m_aCommand[0] = '\0';
 }
 
-void CBindSystem::OnConsoleInit()
+void CFastActions::OnConsoleInit()
 {
 	EnsureFixedBindSlots(m_vBinds);
 
@@ -202,16 +202,16 @@ void CBindSystem::OnConsoleInit()
 	if(pConfigManager)
 		pConfigManager->RegisterCallback(ConfigSaveCallback, this, ConfigDomain::BESTCLIENT);
 
-	Console()->Register("+bs", "", CFGFLAG_CLIENT, ConOpenBs, this, "Open BindSystem selector");
-	Console()->Register("+bs_execute_hover", "", CFGFLAG_CLIENT, ConBsExecuteHover, this, "Execute hovered BindSystem bind");
+	Console()->Register("+fa", "", CFGFLAG_CLIENT, ConOpenFa, this, "Open Fast Actions selector");
+	Console()->Register("+fa_execute_hover", "", CFGFLAG_CLIENT, ConFaExecuteHover, this, "Execute hovered Fast Actions bind");
 
-	Console()->Register("bs", "i[index] s[name] s[command]", CFGFLAG_CLIENT, ConAddBsLegacy, this, "Set BindSystem slot bind");
-	Console()->Register("add_bs", "s[name] s[command]", CFGFLAG_CLIENT, ConAddBs, this, "Add a bind to BindSystem");
-	Console()->Register("remove_bs", "s[name] s[command]", CFGFLAG_CLIENT, ConRemoveBs, this, "Remove a bind from BindSystem");
-	Console()->Register("delete_all_bs_binds", "", CFGFLAG_CLIENT, ConRemoveAllBsBinds, this, "Removes all BindSystem binds");
+	Console()->Register("fa", "i[index] s[name] s[command]", CFGFLAG_CLIENT, ConAddFaLegacy, this, "Set Fast Actions slot bind");
+	Console()->Register("add_fa", "s[name] s[command]", CFGFLAG_CLIENT, ConAddFa, this, "Add a bind to Fast Actions");
+	Console()->Register("remove_fa", "s[name] s[command]", CFGFLAG_CLIENT, ConRemoveFa, this, "Remove a bind from Fast Actions");
+	Console()->Register("delete_all_fa_binds", "", CFGFLAG_CLIENT, ConRemoveAllFaBinds, this, "Removes all Fast Actions binds");
 }
 
-void CBindSystem::OnReset()
+void CFastActions::OnReset()
 {
 	EnsureFixedBindSlots(m_vBinds);
 	m_WasActive = false;
@@ -221,12 +221,12 @@ void CBindSystem::OnReset()
 	m_AnimationTime = 0.0f;
 }
 
-void CBindSystem::OnRelease()
+void CFastActions::OnRelease()
 {
 	m_Active = false;
 }
 
-bool CBindSystem::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
+bool CFastActions::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
 {
 	(void)x;
 	(void)y;
@@ -234,7 +234,7 @@ bool CBindSystem::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
 	return false;
 }
 
-bool CBindSystem::OnInput(const IInput::CEvent &Event)
+bool CFastActions::OnInput(const IInput::CEvent &Event)
 {
 	if(IsActive() && Event.m_Flags & IInput::FLAG_PRESS && Event.m_Key == KEY_ESCAPE)
 	{
@@ -244,7 +244,7 @@ bool CBindSystem::OnInput(const IInput::CEvent &Event)
 	if(IsActive() && Event.m_Flags & IInput::FLAG_PRESS)
 	{
 		const int Slot = KeyToSlotIndex(Event.m_Key);
-		if(Slot >= 0 && Slot < BINDSYSTEM_FIXED_SLOTS)
+		if(Slot >= 0 && Slot < FAST_ACTIONS_FIXED_SLOTS)
 		{
 			m_SelectedBind = Slot;
 			m_DisplayBind = Slot;
@@ -254,7 +254,7 @@ bool CBindSystem::OnInput(const IInput::CEvent &Event)
 	return false;
 }
 
-void CBindSystem::OnRender()
+void CFastActions::OnRender()
 {
 	if(Client()->State() != IClient::STATE_ONLINE && Client()->State() != IClient::STATE_DEMOPLAYBACK)
 		return;
@@ -270,7 +270,7 @@ void CBindSystem::OnRender()
 	static const float s_FontSize = 16.0f;
 
 	const float AnimationTime = (float)g_Config.m_TcAnimateWheelTime / 1000.0f;
-	const bool SelectedBindValid = m_SelectedBind >= 0 && m_SelectedBind < BINDSYSTEM_FIXED_SLOTS;
+	const bool SelectedBindValid = m_SelectedBind >= 0 && m_SelectedBind < FAST_ACTIONS_FIXED_SLOTS;
 	const bool ShouldBeVisible = m_Active && SelectedBindValid;
 	std::array<float, 2> aAnimationPhase;
 	if(AnimationTime <= 0.0f)
@@ -310,7 +310,7 @@ void CBindSystem::OnRender()
 			return;
 		}
 
-		if(m_DisplayBind < 0 || m_DisplayBind >= BINDSYSTEM_FIXED_SLOTS)
+		if(m_DisplayBind < 0 || m_DisplayBind >= FAST_ACTIONS_FIXED_SLOTS)
 			return;
 
 		m_WasActive = true;
@@ -320,7 +320,7 @@ void CBindSystem::OnRender()
 		aAnimationPhase[1] = aAnimationPhase[0] * aAnimationPhase[0];
 	}
 
-	if(m_DisplayBind < 0 || m_DisplayBind >= BINDSYSTEM_FIXED_SLOTS)
+	if(m_DisplayBind < 0 || m_DisplayBind >= FAST_ACTIONS_FIXED_SLOTS)
 		return;
 
 	const CUIRect Screen = *Ui()->Screen();
@@ -328,7 +328,7 @@ void CBindSystem::OnRender()
 	Ui()->MapScreen();
 
 	const CBind &SelectedBind = m_vBinds[m_DisplayBind];
-	char aText[BINDSYSTEM_MAX_CMD + 16];
+	char aText[FAST_ACTIONS_MAX_CMD + 16];
 	if(SelectedBind.m_aCommand[0] != '\0')
 		str_copy(aText, SelectedBind.m_aCommand);
 	else
@@ -347,14 +347,14 @@ void CBindSystem::OnRender()
 	TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
 }
 
-void CBindSystem::ExecuteBind(int Bind)
+void CFastActions::ExecuteBind(int Bind)
 {
-	if(Bind >= 0 && Bind < BINDSYSTEM_FIXED_SLOTS && m_vBinds[Bind].m_aCommand[0] != '\0')
+	if(Bind >= 0 && Bind < FAST_ACTIONS_FIXED_SLOTS && m_vBinds[Bind].m_aCommand[0] != '\0')
 	{
 		const char *pCommand = m_vBinds[Bind].m_aCommand;
 		if(pCommand[0] == '/')
 		{
-			char aBuf[BINDSYSTEM_MAX_CMD * 2 + 16] = "";
+			char aBuf[FAST_ACTIONS_MAX_CMD * 2 + 16] = "";
 			char *pEnd = aBuf + sizeof(aBuf);
 			char *pDst;
 			str_append(aBuf, "say \"");
@@ -370,29 +370,29 @@ void CBindSystem::ExecuteBind(int Bind)
 	}
 }
 
-void CBindSystem::ExecuteHoveredBind()
+void CFastActions::ExecuteHoveredBind()
 {
 	if(m_SelectedBind >= 0)
 		Console()->ExecuteLine(m_vBinds[m_SelectedBind].m_aCommand, IConsole::CLIENT_ID_UNSPECIFIED);
 }
 
-void CBindSystem::ConfigSaveCallback(IConfigManager *pConfigManager, void *pUserData)
+void CFastActions::ConfigSaveCallback(IConfigManager *pConfigManager, void *pUserData)
 {
-	CBindSystem *pThis = (CBindSystem *)pUserData;
+	CFastActions *pThis = (CFastActions *)pUserData;
 	EnsureFixedBindSlots(pThis->m_vBinds);
 
-	for(int i = 0; i < BINDSYSTEM_FIXED_SLOTS; i++)
+	for(int i = 0; i < FAST_ACTIONS_FIXED_SLOTS; i++)
 	{
 		const CBind &Bind = pThis->m_vBinds[i];
 		if(Bind.m_aCommand[0] == '\0')
 			continue;
 
-		char aBuf[BINDSYSTEM_MAX_CMD * 2] = "";
+		char aBuf[FAST_ACTIONS_MAX_CMD * 2] = "";
 		char *pEnd = aBuf + sizeof(aBuf);
 		char *pDst;
 		char aSlotName[16];
 		str_format(aSlotName, sizeof(aSlotName), "%d", i + 1);
-		str_format(aBuf, sizeof(aBuf), "bs %d \"%s\" \"", i, aSlotName);
+		str_format(aBuf, sizeof(aBuf), "fa %d \"%s\" \"", i, aSlotName);
 		pDst = aBuf + str_length(aBuf);
 		str_escape(&pDst, Bind.m_aCommand, pEnd);
 		str_append(aBuf, "\"");

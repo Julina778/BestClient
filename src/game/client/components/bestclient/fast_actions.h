@@ -1,5 +1,5 @@
-#ifndef GAME_CLIENT_COMPONENTS_BestClient_BINDSYSTEM_H
-#define GAME_CLIENT_COMPONENTS_BestClient_BINDSYSTEM_H
+#ifndef GAME_CLIENT_COMPONENTS_BESTCLIENT_FAST_ACTIONS_H
+#define GAME_CLIENT_COMPONENTS_BESTCLIENT_FAST_ACTIONS_H
 
 #include <base/str.h>
 
@@ -13,16 +13,16 @@ class IConfigManager;
 
 enum
 {
-	BINDSYSTEM_MAX_NAME = 64,
-	BINDSYSTEM_MAX_CMD = 1024,
-	BINDSYSTEM_MAX_BINDS = 64,
-	BINDSYSTEM_FIXED_SLOTS = 6
+	FAST_ACTIONS_MAX_NAME = 64,
+	FAST_ACTIONS_MAX_CMD = 1024,
+	FAST_ACTIONS_MAX_BINDS = 64,
+	FAST_ACTIONS_FIXED_SLOTS = 6
 };
 
-class CBindSystem : public CComponent
+class CFastActions : public CComponent
 {
 	float m_AnimationTime = 0.0f;
-	float m_aAnimationTimeItems[BINDSYSTEM_MAX_BINDS] = {0};
+	float m_aAnimationTimeItems[FAST_ACTIONS_MAX_BINDS] = {0};
 
 	bool m_Active = false;
 	bool m_WasActive = false;
@@ -30,12 +30,12 @@ class CBindSystem : public CComponent
 	int m_SelectedBind;
 	int m_DisplayBind;
 
-	static void ConOpenBs(IConsole::IResult *pResult, void *pUserData);
-	static void ConAddBsLegacy(IConsole::IResult *pResult, void *pUserData);
-	static void ConAddBs(IConsole::IResult *pResult, void *pUserData);
-	static void ConRemoveBs(IConsole::IResult *pResult, void *pUserData);
-	static void ConRemoveAllBsBinds(IConsole::IResult *pResult, void *pUserData);
-	static void ConBsExecuteHover(IConsole::IResult *pResult, void *pUserData);
+	static void ConOpenFa(IConsole::IResult *pResult, void *pUserData);
+	static void ConAddFaLegacy(IConsole::IResult *pResult, void *pUserData);
+	static void ConAddFa(IConsole::IResult *pResult, void *pUserData);
+	static void ConRemoveFa(IConsole::IResult *pResult, void *pUserData);
+	static void ConRemoveAllFaBinds(IConsole::IResult *pResult, void *pUserData);
+	static void ConFaExecuteHover(IConsole::IResult *pResult, void *pUserData);
 
 	static void ConfigSaveCallback(IConfigManager *pConfigManager, void *pUserData);
 
@@ -43,8 +43,8 @@ public:
 	class CBind
 	{
 	public:
-		char m_aName[BINDSYSTEM_MAX_NAME] = "EMPTY";
-		char m_aCommand[BINDSYSTEM_MAX_CMD] = "";
+		char m_aName[FAST_ACTIONS_MAX_NAME] = "EMPTY";
+		char m_aCommand[FAST_ACTIONS_MAX_CMD] = "";
 
 		bool operator==(const CBind &Other) const
 		{
@@ -54,7 +54,7 @@ public:
 
 	std::vector<CBind> m_vBinds;
 
-	CBindSystem();
+	CFastActions();
 	int Sizeof() const override { return sizeof(*this); }
 
 	void OnReset() override;

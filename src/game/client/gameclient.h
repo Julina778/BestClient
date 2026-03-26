@@ -32,7 +32,7 @@
 #include "components/bestclient/afterimage.h"
 #include "components/bestclient/audio_visualizer.h"
 #include "components/bestclient/bestclient.h"
-#include "components/bestclient/bindsystem.h"
+#include "components/bestclient/fast_actions.h"
 #include "components/bestclient/chat_bubbles.h"
 #include "components/bestclient/magic_particles.h"
 #include "components/bestclient/music_player.h"
@@ -226,7 +226,7 @@ public:
 	CChatBubbles m_ChatBubbles;
 	CAudioVisualizer m_AudioVisualizer;
 	CMusicPlayer m_MusicPlayer;
-	CBindSystem m_BindSystem;
+	CFastActions m_FastActions;
 	CBestClient m_BestClient;
 
 	CTooltips m_Tooltips;
