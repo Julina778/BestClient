@@ -93,6 +93,7 @@ class CHud : public CComponent
 		float m_Angle = 0.0f;
 	};
 	class CMovementInformation GetMovementInformation(int ClientId, int Conn) const;
+	bool HasPlayerBelowOnSameX(int ClientId, const CMovementInformation &Info) const;
 
 	void RenderGameTimer();
 	void RenderPauseNotification();

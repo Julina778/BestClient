@@ -3473,7 +3473,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 		// Misc (left column block)
 		{
-			const float ContentHeight = LineSize + MarginSmall + 3.0f * LineSize;
+			const float ContentHeight = LineSize + MarginSmall + 4.0f * LineSize;
 			CUIRect Content, Label;
 			BeginBlock(Column, ContentHeight, Content);
 
@@ -3488,6 +3488,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcEmoticonShadow, Localize("Тень у эмоций"), &g_Config.m_BcEmoticonShadow, &Content, LineSize);
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatSaveDraft, Localize("Сохранять недописанное сообщение"), &g_Config.m_BcChatSaveDraft, &Content, LineSize);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcShowhudDummyCoordIndicator, TCLocalize("Show player below indicator"), &g_Config.m_BcShowhudDummyCoordIndicator, &Content, LineSize);
 		}
 		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 

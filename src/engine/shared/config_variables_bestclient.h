@@ -43,6 +43,9 @@ MACRO_CONFIG_INT(BcChatAnimationType, bc_chat_animation_type, 3, 1, 4, CFGFLAG_C
 MACRO_CONFIG_INT(BcSettingsLayout, bc_settings_layout, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Settings layout (0 = new, 1 = old)")
 MACRO_CONFIG_INT(BcEmoticonShadow, bc_emoticon_shadow, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Draw shadow behind emoticons")
 MACRO_CONFIG_INT(BcChatSaveDraft, bc_chat_save_draft, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Keep unfinished chat input when closing chat")
+MACRO_CONFIG_INT(BcShowhudDummyCoordIndicator, bc_showhud_dummy_coord_indicator, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show player-below indicator in ingame HUD")
+MACRO_CONFIG_COL(BcShowhudDummyCoordIndicatorColor, bc_showhud_dummy_coord_indicator_color, 255, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Player-below indicator color")
+MACRO_CONFIG_COL(BcShowhudDummyCoordIndicatorSameHeightColor, bc_showhud_dummy_coord_indicator_same_height_color, 65407, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Player-below indicator color when aligned vertically")
 
 // Auto team lock
 MACRO_CONFIG_INT(BcAutoTeamLock, bc_auto_team_lock, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Automatically lock your team after joining it")

@@ -1614,9 +1614,20 @@ inline int CHud::GetDigitsIndex(int Value, int Max)
 
 inline float CHud::GetMovementInformationBoxHeight()
 {
-	if(GameClient()->m_Snap.m_SpecInfo.m_Active && (GameClient()->m_Snap.m_SpecInfo.m_SpectatorId == SPEC_FREEVIEW || GameClient()->m_aClients[GameClient()->m_Snap.m_SpecInfo.m_SpectatorId].m_SpecCharPresent))
-		return g_Config.m_ClShowhudPlayerPosition ? 3.0f * MOVEMENT_INFORMATION_LINE_HEIGHT + 2.0f : 0.0f;
+	const int ClientId = GameClient()->m_Snap.m_SpecInfo.m_Active ? GameClient()->m_Snap.m_SpecInfo.m_SpectatorId : GameClient()->m_Snap.m_LocalClientId;
+	const bool HasValidClientId = ClientId >= 0 && ClientId < MAX_CLIENTS;
+	const bool ShowDummyCoordIndicator = g_Config.m_BcShowhudDummyCoordIndicator && HasValidClientId;
+
+	if(GameClient()->m_Snap.m_SpecInfo.m_Active && (ClientId == SPEC_FREEVIEW || (HasValidClientId && GameClient()->m_aClients[ClientId].m_SpecCharPresent)))
+	{
+		float BoxHeight = g_Config.m_ClShowhudPlayerPosition ? 3.0f * MOVEMENT_INFORMATION_LINE_HEIGHT + 2.0f : 0.0f;
+		if(ShowDummyCoordIndicator)
+			BoxHeight += MOVEMENT_INFORMATION_LINE_HEIGHT;
+		return BoxHeight;
+	}
 	float BoxHeight = 3.0f * MOVEMENT_INFORMATION_LINE_HEIGHT * (g_Config.m_ClShowhudPlayerPosition + g_Config.m_ClShowhudPlayerSpeed) + 2.0f * MOVEMENT_INFORMATION_LINE_HEIGHT * g_Config.m_ClShowhudPlayerAngle;
+	if(ShowDummyCoordIndicator)
+		BoxHeight += MOVEMENT_INFORMATION_LINE_HEIGHT;
 	if(g_Config.m_ClShowhudPlayerPosition || g_Config.m_ClShowhudPlayerSpeed || g_Config.m_ClShowhudPlayerAngle)
 	{
 		BoxHeight += 2.0f;
@@ -1698,13 +1709,39 @@ CHud::CMovementInformation CHud::GetMovementInformation(int ClientId, int Conn) 
 	return Out;
 }
 
+bool CHud::HasPlayerBelowOnSameX(int ClientId, const CMovementInformation &Info) const
+{
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return false;
+
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if(i == ClientId || !GameClient()->m_aClients[i].m_Active || !GameClient()->m_Snap.m_aCharacters[i].m_Active)
+			continue;
+
+		const CNetObj_PlayerInfo *pInfo = GameClient()->m_Snap.m_apPlayerInfos[i];
+		if(!pInfo || pInfo->m_Team == TEAM_SPECTATORS)
+			continue;
+
+		const CMovementInformation OtherInfo = GetMovementInformation(i, i == GameClient()->m_aLocalIds[1]);
+		if(std::fabs(Info.m_Pos.x - OtherInfo.m_Pos.x) < 0.01f && OtherInfo.m_Pos.y > Info.m_Pos.y)
+			return true;
+	}
+
+	return false;
+}
+
 void CHud::RenderMovementInformation()
 {
 	const int ClientId = GameClient()->m_Snap.m_SpecInfo.m_Active ? GameClient()->m_Snap.m_SpecInfo.m_SpectatorId : GameClient()->m_Snap.m_LocalClientId;
-	const bool PosOnly = ClientId == SPEC_FREEVIEW || (GameClient()->m_aClients[ClientId].m_SpecCharPresent);
+	const bool HasValidClientId = ClientId >= 0 && ClientId < MAX_CLIENTS;
+	const bool ShowDummyCoordIndicator = g_Config.m_BcShowhudDummyCoordIndicator && HasValidClientId;
+	const bool PosOnly = ClientId == SPEC_FREEVIEW || (HasValidClientId && GameClient()->m_aClients[ClientId].m_SpecCharPresent);
+	if(!HasValidClientId && ClientId != SPEC_FREEVIEW)
+		return;
 	// Draw the information depending on settings: Position, speed and target angle
 	// This display is only to present the available information from the last snapshot, not to interpolate or predict
-	if(!g_Config.m_ClShowhudPlayerPosition && (PosOnly || (!g_Config.m_ClShowhudPlayerSpeed && !g_Config.m_ClShowhudPlayerAngle)))
+	if(!g_Config.m_ClShowhudPlayerPosition && (PosOnly || (!g_Config.m_ClShowhudPlayerSpeed && !g_Config.m_ClShowhudPlayerAngle)) && !ShowDummyCoordIndicator)
 	{
 		return;
 	}
@@ -1774,10 +1811,34 @@ void CHud::RenderMovementInformation()
 	Graphics()->DrawRect(StartX, StartY, BoxWidth, BoxHeight, ColorRGBA(0.0f, 0.0f, 0.0f, 0.4f), IGraphics::CORNER_L, 5.0f);
 
 	const CMovementInformation Info = GetMovementInformation(ClientId, g_Config.m_ClDummy);
+	const bool HasPlayerBelow = ShowDummyCoordIndicator && ClientId != SPEC_FREEVIEW && HasPlayerBelowOnSameX(ClientId, Info);
 
 	float y = StartY + LineSpacer * 2.0f;
 	const float LeftX = StartX + 2.0f;
 	const float RightX = m_Width - 2.0f;
+	auto RenderPlayerBelowIndicator = [&]() {
+		if(!ShowDummyCoordIndicator)
+			return;
+
+		const ColorRGBA IndicatorNormalColor = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_BcShowhudDummyCoordIndicatorColor));
+		const ColorRGBA IndicatorSameHeightColor = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_BcShowhudDummyCoordIndicatorSameHeightColor));
+		const ColorRGBA IndicatorColor = HasPlayerBelow ? IndicatorSameHeightColor : IndicatorNormalColor;
+
+		TextRender()->Text(LeftX, y, Fontsize, Localize("Player below"), -1.0f);
+
+		const float CircleX = RightX - 3.0f;
+		const float CircleY = y + 3.0f;
+		const float GlowAlpha = IndicatorColor.a * 0.35f;
+
+		Graphics()->TextureClear();
+		Graphics()->QuadsBegin();
+		Graphics()->SetColor(IndicatorColor.r, IndicatorColor.g, IndicatorColor.b, GlowAlpha);
+		Graphics()->DrawCircle(CircleX, CircleY, 3.0f, 16);
+		Graphics()->SetColor(IndicatorColor.r, IndicatorColor.g, IndicatorColor.b, IndicatorColor.a);
+		Graphics()->DrawCircle(CircleX, CircleY, 1.8f, 16);
+		Graphics()->QuadsEnd();
+		Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+	};
 
 	if(g_Config.m_ClShowhudPlayerPosition)
 	{
@@ -1823,7 +1884,10 @@ void CHud::RenderMovementInformation()
 	}
 
 	if(PosOnly)
+	{
+		RenderPlayerBelowIndicator();
 		return;
+	}
 
 	if(g_Config.m_ClShowhudPlayerSpeed)
 	{
@@ -1880,6 +1944,8 @@ void CHud::RenderMovementInformation()
 			TextRender()->Text(RightX - TextRender()->TextWidth(Fontsize, aBuf), y, Fontsize, aBuf, -1.0f);
 		}
 	}
+
+	RenderPlayerBelowIndicator();
 }
 
 void CHud::RenderSpectatorHud()
