@@ -4222,8 +4222,21 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		const float FontSize = 14.0f;
 		const float EditBoxFontSize = 14.0f;
 		const float MarginSmall = 5.0f;
+		const float MarginBetweenSections = 30.0f;
 		const float MarginBetweenViews = 30.0f;
 		const ColorRGBA BlockColor = ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f);
+		const auto ModuleUiRevealAnimationsEnabled = [&]() {
+			return BCUiAnimations::Enabled() && g_Config.m_BcModuleUiRevealAnimation != 0;
+		};
+		const auto ModuleUiRevealAnimationDuration = [&]() {
+			return BCUiAnimations::MsToSeconds(g_Config.m_BcModuleUiRevealAnimationMs);
+		};
+		const auto UpdateRevealPhase = [&](float &Phase, bool Expanded) {
+			if(ModuleUiRevealAnimationsEnabled())
+				BCUiAnimations::UpdatePhase(Phase, Expanded ? 1.0f : 0.0f, Client()->RenderFrameTime(), ModuleUiRevealAnimationDuration());
+			else
+				Phase = Expanded ? 1.0f : 0.0f;
+		};
 
 		static CScrollRegion s_BestClientGameplayScrollRegion;
 		vec2 GameplayScrollOffset(0.0f, 0.0f);
@@ -4390,10 +4403,13 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		Column.HSplitTop(10.0f, nullptr, &Column);
 
 		{
+			static float s_SpeedrunPhase = 0.0f;
 			const bool SpeedrunExpanded = g_Config.m_BcSpeedrunTimer != 0;
-			const float ContentHeight = LineSize + MarginSmall + LineSize +
-				(SpeedrunExpanded ? (LineSize * 5.0f + MarginSmall * 6.0f) : 0.0f);
-			CUIRect Content, Label, Button;
+			UpdateRevealPhase(s_SpeedrunPhase, SpeedrunExpanded);
+			const float ExpandedTargetHeight = LineSize * 5.0f + MarginSmall * 6.0f;
+			const float ExpandedHeight = ExpandedTargetHeight * s_SpeedrunPhase;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedHeight;
+			CUIRect Content, Label, Button, Visible;
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
@@ -4401,7 +4417,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcSpeedrunTimer, Localize("Enable speedrun timer"), &g_Config.m_BcSpeedrunTimer, &Content, LineSize);
-			if(g_Config.m_BcSpeedrunTimer)
+			if(ExpandedHeight > 0.0f)
 			{
 				if(g_Config.m_BcSpeedrunTimerHours == 0 &&
 					g_Config.m_BcSpeedrunTimerMinutes == 0 &&
@@ -4417,24 +4433,33 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					g_Config.m_BcSpeedrunTimerSeconds = TotalLegacySeconds % 60;
 				}
 
-				Content.HSplitTop(MarginSmall, nullptr, &Content);
-				Content.HSplitTop(LineSize, &Button, &Content);
+				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExpandedTargetHeight};
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				Expand.HSplitTop(LineSize, &Button, &Expand);
 				Ui()->DoScrollbarOption(&g_Config.m_BcSpeedrunTimerHours, &g_Config.m_BcSpeedrunTimerHours, &Button, Localize("Hours"), 0, 99);
-				Content.HSplitTop(MarginSmall, nullptr, &Content);
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
 
-				Content.HSplitTop(LineSize, &Button, &Content);
+				Expand.HSplitTop(LineSize, &Button, &Expand);
 				Ui()->DoScrollbarOption(&g_Config.m_BcSpeedrunTimerMinutes, &g_Config.m_BcSpeedrunTimerMinutes, &Button, Localize("Minutes"), 0, 59);
-				Content.HSplitTop(MarginSmall, nullptr, &Content);
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
 
-				Content.HSplitTop(LineSize, &Button, &Content);
+				Expand.HSplitTop(LineSize, &Button, &Expand);
 				Ui()->DoScrollbarOption(&g_Config.m_BcSpeedrunTimerSeconds, &g_Config.m_BcSpeedrunTimerSeconds, &Button, Localize("Seconds"), 0, 59);
-				Content.HSplitTop(MarginSmall, nullptr, &Content);
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
 
-				Content.HSplitTop(LineSize, &Button, &Content);
+				Expand.HSplitTop(LineSize, &Button, &Expand);
 				Ui()->DoScrollbarOption(&g_Config.m_BcSpeedrunTimerMilliseconds, &g_Config.m_BcSpeedrunTimerMilliseconds, &Button, Localize("Milliseconds"), 0, 999, &CUi::ms_LinearScrollbarScale, 0, "ms");
-				Content.HSplitTop(MarginSmall, nullptr, &Content);
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
 
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcSpeedrunTimerAutoDisable, Localize("Auto disable after time end"), &g_Config.m_BcSpeedrunTimerAutoDisable, &Content, LineSize);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcSpeedrunTimerAutoDisable, Localize("Auto disable after time end"), &g_Config.m_BcSpeedrunTimerAutoDisable, &Expand, LineSize);
 			}
 
 			// Keep legacy MMSS setting synchronized for backward compatibility.
@@ -4442,9 +4467,14 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		}
 
 		{
-			const float ContentHeight = LineSize * 3.0f + MarginSmall * 2.0f;
-			CUIRect Content, Label, Button;
-			Column.HSplitTop(MarginSmall, nullptr, &Column);
+			static float s_AutoTeamLockPhase = 0.0f;
+			const bool AutoTeamLockExpanded = g_Config.m_BcAutoTeamLock != 0;
+			UpdateRevealPhase(s_AutoTeamLockPhase, AutoTeamLockExpanded);
+			const float ExpandedTargetHeight = MarginSmall + LineSize;
+			const float ExpandedHeight = ExpandedTargetHeight * s_AutoTeamLockPhase;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedHeight;
+			CUIRect Content, Label, Button, Visible;
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
@@ -4452,9 +4482,21 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcAutoTeamLock, Localize("Lock team automatically after joining"), &g_Config.m_BcAutoTeamLock, &Content, LineSize);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-			Content.HSplitTop(LineSize, &Button, &Content);
-			Ui()->DoScrollbarOption(&g_Config.m_BcAutoTeamLockDelay, &g_Config.m_BcAutoTeamLockDelay, &Button, Localize("Delay"), 0, 30, &CUi::ms_LinearScrollbarScale, 0, "s");
+			if(ExpandedHeight > 0.0f)
+			{
+				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExpandedTargetHeight};
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				Expand.HSplitTop(LineSize, &Button, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcAutoTeamLockDelay, &g_Config.m_BcAutoTeamLockDelay, &Button, Localize("Delay"), 0, 30, &CUi::ms_LinearScrollbarScale, 0, "s");
+			}
 		}
 
 		const float RightColumnEndY = Column.y;
