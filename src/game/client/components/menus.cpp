@@ -764,43 +764,86 @@ void CMenus::RenderLoading(const char *pCaption, const char *pContent, int Incre
 
 	Ui()->MapScreen();
 
-	if(GameClient()->m_MenuBackground.IsLoading())
-	{
-		// Avoid rendering while loading the menu background as this would otherwise
-		// cause the regular menu background to be rendered for a few frames while
-		// the menu background is not loaded yet.
-		return;
-	}
-	if(!GameClient()->m_MenuBackground.Render())
-	{
-		RenderBackground();
-	}
-
 	m_LoadingState.m_LastRender = Now;
 
-	CUIRect Box;
-	Ui()->Screen()->Margin(160.0f, &Box);
+	const float BackgroundColor = 21.0f / 255.0f;
+	CUIRect FullScreen = *Ui()->Screen();
+	FullScreen.Draw(ColorRGBA(BackgroundColor, BackgroundColor, BackgroundColor, 1.0f), IGraphics::CORNER_ALL, 0.0f);
 
-	Graphics()->BlendNormal();
-	Graphics()->TextureClear();
-	Box.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.5f), IGraphics::CORNER_ALL, 15.0f);
-	Box.Margin(20.0f, &Box);
+	const IGraphics::CTextureHandle &LogoTexture = MainMenuLogoTexture();
+	Graphics()->TextureSet(LogoTexture.IsValid() && !LogoTexture.IsNullTexture() ? LogoTexture : g_pData->m_aImages[IMAGE_BANNER].m_Id);
+	Graphics()->QuadsBegin();
+	Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+	const float LogoWidth = minimum(420.0f, maximum(220.0f, FullScreen.w * 0.38f));
+	const float LogoHeight = LogoWidth / (360.0f / 103.0f);
+	const float LogoY = FullScreen.y + minimum(70.0f, FullScreen.h * 0.12f);
+	IGraphics::CQuadItem LogoQuad(FullScreen.x + (FullScreen.w - LogoWidth) / 2.0f, LogoY, LogoWidth, LogoHeight);
+	Graphics()->QuadsDrawTL(&LogoQuad, 1);
+	Graphics()->QuadsEnd();
+
+	const bool HasContent = pContent != nullptr && pContent[0] != '\0';
+	const bool HasProgressBar = m_LoadingState.m_Total > 0;
+	const float LabelWidth = minimum(860.0f, FullScreen.w - 80.0f);
+	const float TitleHeight = 24.0f;
+	const float TextHeight = 24.0f;
+	const float TextSpacing = 8.0f;
+	const float ProgressSpacing = 16.0f;
+	const float ProgressHeight = 24.0f;
+
+	float ContentHeight = TitleHeight;
+	if(HasContent)
+		ContentHeight += TextSpacing + TextHeight;
+	if(HasProgressBar)
+		ContentHeight += ProgressSpacing + ProgressHeight;
 
 	CUIRect Label;
-	Box.HSplitTop(24.0f, &Label, &Box);
-	Ui()->DoLabel(&Label, pCaption, 24.0f, TEXTALIGN_MC);
+	Label.x = FullScreen.x + (FullScreen.w - LabelWidth) / 2.0f;
+	Label.y = FullScreen.y + FullScreen.h * 0.5f - ContentHeight / 2.0f;
+	Label.w = LabelWidth;
+	Label.h = TitleHeight;
 
-	Box.HSplitTop(20.0f, nullptr, &Box);
-	Box.HSplitTop(24.0f, &Label, &Box);
-	Ui()->DoLabel(&Label, pContent, 20.0f, TEXTALIGN_MC);
+	SLabelProperties TitleProps;
+	TitleProps.m_MaxWidth = Label.w;
+	TitleProps.m_EllipsisAtEnd = true;
+	Ui()->DoLabel(&Label, pCaption, 24.0f, TEXTALIGN_MC, TitleProps);
 
-	if(m_LoadingState.m_Total > 0)
+	if(HasContent)
+	{
+		Label.y += TitleHeight + TextSpacing;
+		Label.h = TextHeight;
+		Ui()->DoLabel(&Label, pContent, 20.0f, TEXTALIGN_MC);
+	}
+
+	if(HasProgressBar)
 	{
 		CUIRect ProgressBar;
-		Box.HSplitBottom(30.0f, &Box, nullptr);
-		Box.HSplitBottom(25.0f, &Box, &ProgressBar);
-		ProgressBar.VMargin(20.0f, &ProgressBar);
+		ProgressBar.x = Label.x;
+		ProgressBar.w = Label.w;
+		ProgressBar.h = ProgressHeight;
+		ProgressBar.y = (HasContent ? Label.y + TextHeight : Label.y + TitleHeight) + ProgressSpacing;
 		Ui()->RenderProgressBar(ProgressBar, CurLoadRenderCount / (float)m_LoadingState.m_Total);
+	}
+
+	CUIRect Button;
+	Button.w = FullScreen.w;
+	Button.h = 36.0f;
+	Button.x = FullScreen.x;
+	Button.y = FullScreen.y + FullScreen.h - Button.h - 8.0f;
+
+	static CButtonContainer s_Button;
+	const bool CanCancelConnection = Client()->State() == IClient::STATE_CONNECTING || Client()->State() == IClient::STATE_LOADING;
+	if(DoButton_Menu(&s_Button, Localize("Cancel"), 0, &Button) || Ui()->ConsumeHotkey(CUi::HOTKEY_ESCAPE))
+	{
+		if(CanCancelConnection)
+		{
+			Client()->Disconnect();
+			Ui()->SetActiveItem(nullptr);
+			RefreshBrowserTab(true);
+		}
+		else
+		{
+			Client()->Quit();
+		}
 	}
 
 	Graphics()->SetColor(1.0, 1.0, 1.0, 1.0);
@@ -2132,18 +2175,34 @@ void CMenus::RenderPopupFullscreen(CUIRect Screen)
 
 void CMenus::RenderPopupConnecting(CUIRect Screen)
 {
+	(void)Screen;
 	const float FontSize = 20.0f;
+	const float BackgroundColor = 21.0f / 255.0f;
 
-	CUIRect Box, Label;
-	Screen.Margin(150.0f, &Box);
-	Box.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.5f), IGraphics::CORNER_ALL, 15.0f);
-	Box.Margin(20.0f, &Box);
+	CUIRect FullScreen = *Ui()->Screen();
+	FullScreen.Draw(ColorRGBA(BackgroundColor, BackgroundColor, BackgroundColor, 1.0f), IGraphics::CORNER_ALL, 0.0f);
 
-	Box.HSplitTop(24.0f, &Label, &Box);
+	const IGraphics::CTextureHandle &LogoTexture = MainMenuLogoTexture();
+	Graphics()->TextureSet(LogoTexture.IsValid() && !LogoTexture.IsNullTexture() ? LogoTexture : g_pData->m_aImages[IMAGE_BANNER].m_Id);
+	Graphics()->QuadsBegin();
+	Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+	const float LogoWidth = minimum(420.0f, maximum(220.0f, FullScreen.w * 0.38f));
+	const float LogoHeight = LogoWidth / (360.0f / 103.0f);
+	const float LogoY = FullScreen.y + minimum(70.0f, FullScreen.h * 0.12f);
+	IGraphics::CQuadItem LogoQuad(FullScreen.x + (FullScreen.w - LogoWidth) / 2.0f, LogoY, LogoWidth, LogoHeight);
+	Graphics()->QuadsDrawTL(&LogoQuad, 1);
+	Graphics()->QuadsEnd();
+
+	const float LabelWidth = minimum(860.0f, FullScreen.w - 80.0f);
+	CUIRect Label;
+	Label.x = FullScreen.x + (FullScreen.w - LabelWidth) / 2.0f;
+	Label.y = FullScreen.y + FullScreen.h * 0.5f - 28.0f;
+	Label.w = LabelWidth;
+	Label.h = 24.0f;
+
 	Ui()->DoLabel(&Label, Localize("Connecting to"), 24.0f, TEXTALIGN_MC);
 
-	Box.HSplitTop(20.0f, nullptr, &Box);
-	Box.HSplitTop(24.0f, &Label, &Box);
+	Label.y += 32.0f;
 	SLabelProperties Props;
 	Props.m_MaxWidth = Label.w;
 	Props.m_EllipsisAtEnd = true;
@@ -2171,8 +2230,7 @@ void CMenus::RenderPopupConnecting(CUIRect Screen)
 		}
 		if(pConnectivityLabel[0] != '\0')
 		{
-			Box.HSplitTop(20.0f, nullptr, &Box);
-			Box.HSplitTop(24.0f, &Label, &Box);
+			Label.y += 32.0f;
 			SLabelProperties ConnectivityLabelProps;
 			ConnectivityLabelProps.m_MaxWidth = Label.w;
 			if(TextRender()->TextWidth(FontSize, pConnectivityLabel) > Label.w)
@@ -2183,11 +2241,13 @@ void CMenus::RenderPopupConnecting(CUIRect Screen)
 	}
 
 	CUIRect Button;
-	Box.HSplitBottom(24.0f, &Box, &Button);
-	Button.VMargin(100.0f, &Button);
+	Button.w = FullScreen.w;
+	Button.h = 36.0f;
+	Button.x = FullScreen.x;
+	Button.y = FullScreen.y + FullScreen.h - Button.h - 8.0f;
 
 	static CButtonContainer s_Button;
-	if(DoButton_Menu(&s_Button, Localize("Abort"), 0, &Button) || Ui()->ConsumeHotkey(CUi::HOTKEY_ESCAPE))
+	if(DoButton_Menu(&s_Button, Localize("Cancel"), 0, &Button) || Ui()->ConsumeHotkey(CUi::HOTKEY_ESCAPE))
 	{
 		Client()->Disconnect();
 		Ui()->SetActiveItem(nullptr);
@@ -2197,6 +2257,7 @@ void CMenus::RenderPopupConnecting(CUIRect Screen)
 
 void CMenus::RenderPopupLoading(CUIRect Screen)
 {
+	(void)Screen;
 	char aTitle[256];
 	char aLabel1[128];
 	char aLabel2[128];
@@ -2264,23 +2325,55 @@ void CMenus::RenderPopupLoading(CUIRect Screen)
 	}
 
 	const float FontSize = 20.0f;
+	const float BackgroundColor = 21.0f / 255.0f;
 
-	CUIRect Box, Label;
-	Screen.Margin(150.0f, &Box);
-	Box.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.5f), IGraphics::CORNER_ALL, 15.0f);
-	Box.Margin(20.0f, &Box);
+	CUIRect FullScreen = *Ui()->Screen();
+	FullScreen.Draw(ColorRGBA(BackgroundColor, BackgroundColor, BackgroundColor, 1.0f), IGraphics::CORNER_ALL, 0.0f);
 
-	Box.HSplitTop(24.0f, &Label, &Box);
-	Ui()->DoLabel(&Label, aTitle, 24.0f, TEXTALIGN_MC);
+	const IGraphics::CTextureHandle &LogoTexture = MainMenuLogoTexture();
+	Graphics()->TextureSet(LogoTexture.IsValid() && !LogoTexture.IsNullTexture() ? LogoTexture : g_pData->m_aImages[IMAGE_BANNER].m_Id);
+	Graphics()->QuadsBegin();
+	Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+	const float LogoWidth = minimum(420.0f, maximum(220.0f, FullScreen.w * 0.38f));
+	const float LogoHeight = LogoWidth / (360.0f / 103.0f);
+	const float LogoY = FullScreen.y + minimum(70.0f, FullScreen.h * 0.12f);
+	IGraphics::CQuadItem LogoQuad(FullScreen.x + (FullScreen.w - LogoWidth) / 2.0f, LogoY, LogoWidth, LogoHeight);
+	Graphics()->QuadsDrawTL(&LogoQuad, 1);
+	Graphics()->QuadsEnd();
 
-	Box.HSplitTop(20.0f, nullptr, &Box);
-	Box.HSplitTop(24.0f, &Label, &Box);
+	const bool HasExtraText = aLabel2[0] != '\0';
+	const bool HasProgressBar = Client()->MapDownloadTotalsize() > 0;
+	const float LabelWidth = minimum(860.0f, FullScreen.w - 80.0f);
+	const float TitleHeight = 24.0f;
+	const float TextHeight = 24.0f;
+	const float TextSpacing = 8.0f;
+	const float ProgressSpacing = 16.0f;
+	const float ProgressHeight = 24.0f;
+
+	float ContentHeight = TitleHeight + TextSpacing + TextHeight;
+	if(HasExtraText)
+		ContentHeight += TextSpacing + TextHeight;
+	if(HasProgressBar)
+		ContentHeight += ProgressSpacing + ProgressHeight;
+
+	CUIRect Label;
+	Label.x = FullScreen.x + (FullScreen.w - LabelWidth) / 2.0f;
+	Label.y = FullScreen.y + FullScreen.h * 0.5f - ContentHeight / 2.0f;
+	Label.w = LabelWidth;
+	Label.h = TitleHeight;
+
+	SLabelProperties TitleProps;
+	TitleProps.m_MaxWidth = Label.w;
+	TitleProps.m_EllipsisAtEnd = true;
+	Ui()->DoLabel(&Label, aTitle, 24.0f, TEXTALIGN_MC, TitleProps);
+
+	Label.y += TitleHeight + TextSpacing;
+	Label.h = TextHeight;
 	Ui()->DoLabel(&Label, aLabel1, FontSize, TEXTALIGN_MC);
 
-	if(aLabel2[0] != '\0')
+	if(HasExtraText)
 	{
-		Box.HSplitTop(20.0f, nullptr, &Box);
-		Box.HSplitTop(24.0f, &Label, &Box);
+		Label.y += TextHeight + TextSpacing;
 		SLabelProperties ExtraTextProps;
 		ExtraTextProps.m_MaxWidth = Label.w;
 		if(TextRender()->TextWidth(FontSize, aLabel2) > Label.w)
@@ -2289,21 +2382,24 @@ void CMenus::RenderPopupLoading(CUIRect Screen)
 			Ui()->DoLabel(&Label, aLabel2, FontSize, TEXTALIGN_MC);
 	}
 
-	if(Client()->MapDownloadTotalsize() > 0)
+	if(HasProgressBar)
 	{
 		CUIRect ProgressBar;
-		Box.HSplitTop(20.0f, nullptr, &Box);
-		Box.HSplitTop(24.0f, &ProgressBar, &Box);
-		ProgressBar.VMargin(20.0f, &ProgressBar);
+		ProgressBar.x = Label.x;
+		ProgressBar.w = Label.w;
+		ProgressBar.h = ProgressHeight;
+		ProgressBar.y = Label.y + TextHeight + ProgressSpacing;
 		Ui()->RenderProgressBar(ProgressBar, Client()->MapDownloadAmount() / (float)Client()->MapDownloadTotalsize());
 	}
 
 	CUIRect Button;
-	Box.HSplitBottom(24.0f, &Box, &Button);
-	Button.VMargin(100.0f, &Button);
+	Button.w = FullScreen.w;
+	Button.h = 36.0f;
+	Button.x = FullScreen.x;
+	Button.y = FullScreen.y + FullScreen.h - Button.h - 8.0f;
 
 	static CButtonContainer s_Button;
-	if(DoButton_Menu(&s_Button, Localize("Abort"), 0, &Button) || Ui()->ConsumeHotkey(CUi::HOTKEY_ESCAPE))
+	if(DoButton_Menu(&s_Button, Localize("Cancel"), 0, &Button) || Ui()->ConsumeHotkey(CUi::HOTKEY_ESCAPE))
 	{
 		Client()->Disconnect();
 		Ui()->SetActiveItem(nullptr);
