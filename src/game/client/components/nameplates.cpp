@@ -227,7 +227,6 @@ public:
 	CNamePlatePartDirection(CGameClient &This, Direction Dir) :
 		CNamePlatePartIcon(This)
 	{
-		m_Texture = g_pData->m_aImages[IMAGE_ARROW].m_Id;
 		m_Direction = Dir;
 		switch(m_Direction)
 		{
@@ -244,6 +243,7 @@ public:
 	}
 	void Update(CGameClient &This, const CNamePlateData &Data) override
 	{
+		m_Texture = This.ArrowTexture();
 		if(!Data.m_ShowDirection)
 		{
 			m_ShiftOnInvis = false;

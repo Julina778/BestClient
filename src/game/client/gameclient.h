@@ -812,6 +812,11 @@ public:
 	void LoadParticlesSkin(const char *pPath, bool AsDir = false);
 	void LoadHudSkin(const char *pPath, bool AsDir = false);
 	void LoadExtrasSkin(const char *pPath, bool AsDir = false);
+	void LoadCursorAsset(const char *pPath, bool AsDir = false);
+	void LoadArrowAsset(const char *pPath, bool AsDir = false);
+
+	IGraphics::CTextureHandle CursorTexture() const;
+	IGraphics::CTextureHandle ArrowTexture() const;
 
 	struct SClientGameSkin
 	{
@@ -975,6 +980,12 @@ public:
 
 	SClientExtrasSkin m_ExtrasSkin;
 	bool m_ExtrasSkinLoaded = false;
+
+	IGraphics::CTextureHandle m_CursorTextureOverride;
+	bool m_CursorTextureOverrideLoaded = false;
+
+	IGraphics::CTextureHandle m_ArrowTextureOverride;
+	bool m_ArrowTextureOverrideLoaded = false;
 
 	const std::vector<CSnapEntities> &SnapEntities() { return m_vSnapEntities; }
 

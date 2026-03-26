@@ -704,6 +704,8 @@ void CGameClient::OnInit()
 			g_pData->m_aImages[i].m_Id = Graphics()->LoadTexture(g_pData->m_aImages[i].m_pFilename, IStorage::TYPE_ALL);
 		m_Menus.RenderLoading(pLoadingDDNetCaption, pLoadingMessageAssets, 1);
 	}
+	LoadCursorAsset(g_Config.m_ClAssetCursor);
+	LoadArrowAsset(g_Config.m_ClAssetArrow);
 
 	m_GameWorld.Init(Collision(), m_aTuningList, &m_MapBugs);
 	OnReset();
@@ -5353,6 +5355,86 @@ void CGameClient::LoadExtrasSkin(const char *pPath, bool AsDir)
 		m_ExtrasSkinLoaded = true;
 	}
 	ImgInfo.Free();
+}
+
+void CGameClient::LoadCursorAsset(const char *pPath, bool AsDir)
+{
+	if(m_CursorTextureOverrideLoaded)
+	{
+		Graphics()->UnloadTexture(&m_CursorTextureOverride);
+		m_CursorTextureOverrideLoaded = false;
+		m_CursorTextureOverride = IGraphics::CTextureHandle();
+	}
+
+	if(pPath == nullptr || pPath[0] == '\0' || str_comp(pPath, "default") == 0)
+		return;
+
+	char aPath[IO_MAX_PATH_LENGTH];
+	if(!AsDir)
+	{
+		str_format(aPath, sizeof(aPath), "assets/cursor/%s.png", pPath);
+		m_CursorTextureOverride = Graphics()->LoadTexture(aPath, IStorage::TYPE_ALL);
+		if(!m_CursorTextureOverride.IsNullTexture())
+		{
+			m_CursorTextureOverrideLoaded = true;
+			return;
+		}
+	}
+
+	str_format(aPath, sizeof(aPath), "assets/cursor/%s/gui_cursor.png", pPath);
+	m_CursorTextureOverride = Graphics()->LoadTexture(aPath, IStorage::TYPE_ALL);
+	if(m_CursorTextureOverride.IsNullTexture())
+	{
+		str_format(aPath, sizeof(aPath), "assets/cursor/%s/cursor.png", pPath);
+		m_CursorTextureOverride = Graphics()->LoadTexture(aPath, IStorage::TYPE_ALL);
+	}
+
+	if(!m_CursorTextureOverride.IsNullTexture())
+		m_CursorTextureOverrideLoaded = true;
+}
+
+void CGameClient::LoadArrowAsset(const char *pPath, bool AsDir)
+{
+	if(m_ArrowTextureOverrideLoaded)
+	{
+		Graphics()->UnloadTexture(&m_ArrowTextureOverride);
+		m_ArrowTextureOverrideLoaded = false;
+		m_ArrowTextureOverride = IGraphics::CTextureHandle();
+	}
+
+	if(pPath == nullptr || pPath[0] == '\0' || str_comp(pPath, "default") == 0)
+		return;
+
+	char aPath[IO_MAX_PATH_LENGTH];
+	if(!AsDir)
+	{
+		str_format(aPath, sizeof(aPath), "assets/arrow/%s.png", pPath);
+		m_ArrowTextureOverride = Graphics()->LoadTexture(aPath, IStorage::TYPE_ALL);
+		if(!m_ArrowTextureOverride.IsNullTexture())
+		{
+			m_ArrowTextureOverrideLoaded = true;
+			return;
+		}
+	}
+
+	str_format(aPath, sizeof(aPath), "assets/arrow/%s/arrow.png", pPath);
+	m_ArrowTextureOverride = Graphics()->LoadTexture(aPath, IStorage::TYPE_ALL);
+	if(!m_ArrowTextureOverride.IsNullTexture())
+		m_ArrowTextureOverrideLoaded = true;
+}
+
+IGraphics::CTextureHandle CGameClient::CursorTexture() const
+{
+	if(m_CursorTextureOverrideLoaded && m_CursorTextureOverride.IsValid() && !m_CursorTextureOverride.IsNullTexture())
+		return m_CursorTextureOverride;
+	return g_pData->m_aImages[IMAGE_CURSOR].m_Id;
+}
+
+IGraphics::CTextureHandle CGameClient::ArrowTexture() const
+{
+	if(m_ArrowTextureOverrideLoaded && m_ArrowTextureOverride.IsValid() && !m_ArrowTextureOverride.IsNullTexture())
+		return m_ArrowTextureOverride;
+	return g_pData->m_aImages[IMAGE_ARROW].m_Id;
 }
 
 void CGameClient::RefreshSkin(const std::shared_ptr<CManagedTeeRenderInfo> &pManagedTeeRenderInfo)
