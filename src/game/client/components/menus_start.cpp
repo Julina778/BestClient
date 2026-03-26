@@ -2,8 +2,6 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include "menus_start.h"
 
-#include <base/dbg.h>
-
 #include <engine/client/updater.h>
 #include <engine/font_icons.h>
 #include <engine/graphics.h>
@@ -179,14 +177,6 @@ void CMenusStart::RenderStartMenu(CUIRect MainView)
 		}
 	}
 #endif
-
-	Menu.HSplitBottom(5.0f, &Menu, nullptr);
-	Menu.HSplitBottom(40.0f, &Menu, &Button);
-	static CButtonContainer s_TestCrashButton;
-	if(GameClient()->m_Menus.DoButton_Menu(&s_TestCrashButton, Localize("Test crash"), 0, &Button, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, Rounding, 0.0f, ColorRGBA(0.7f, 0.15f, 0.15f, 0.35f)))
-	{
-		dbg_assert_failed("Manual test crash from start menu button");
-	}
 
 	Menu.HSplitBottom(5.0f, &Menu, nullptr);
 	Menu.HSplitBottom(40.0f, &Menu, &Button);
