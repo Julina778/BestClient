@@ -160,6 +160,32 @@ bool EffectiveLowDeltaOthers()
 {
 	return g_Config.m_BcFastInputMode == 1 && g_Config.m_BcLowDeltaOthers != 0;
 }
+
+float LowDeltaOthersOffsetScale()
+{
+	if(!EffectiveLowDeltaOthers())
+		return 1.0f;
+
+	// Keep low-delta for others responsive, but significantly less aggressive to avoid visual jitter.
+	const float AmountNorm = std::clamp(g_Config.m_BcFastInputLowDelta / 500.0f, 0.0f, 1.0f);
+	return mix(0.18f, 0.35f, AmountNorm);
+}
+
+float SmoothedLowDeltaOthersOffsetTicks(float OffsetTicks)
+{
+	if(OffsetTicks <= 0.0f || !EffectiveLowDeltaOthers())
+		return OffsetTicks;
+	return OffsetTicks * LowDeltaOthersOffsetScale();
+}
+
+float LowDeltaOthersRenderLerp()
+{
+	if(!EffectiveLowDeltaOthers())
+		return 1.0f;
+
+	const float AmountNorm = std::clamp(g_Config.m_BcFastInputLowDelta / 500.0f, 0.0f, 1.0f);
+	return mix(0.20f, 0.30f, AmountNorm);
+}
 } // namespace
 
 const char *CGameClient::Version() const { return GAME_VERSION; }
@@ -3417,6 +3443,8 @@ void CGameClient::OnPredict()
 			// Low-delta mode should keep the actual predicted position to reduce perceived delay.
 			if(g_Config.m_BcFastInputMode == 0 && EffectiveFastInputOthers() && FastInputTicks > 0)
 				PredPos = m_aClients[i].m_PrevPredicted.m_Pos;
+			else if(EffectiveLowDeltaOthers() && FastInputTicks > 0)
+				PredPos = mix(m_aClients[i].m_PrevPredicted.m_Pos, PredPos, LowDeltaOthersRenderLerp());
 
 			vec2 PrevPredPos = pChar->GetCore().m_Pos;
 
@@ -4597,6 +4625,11 @@ void CGameClient::UpdateRenderedCharacters()
 
 				if(g_Config.m_TcUnpredOthersInFreeze && Client()->m_IsLocalFrozen)
 					Pos = UnpredPos;
+
+				const bool ForceUnpredPos = (g_Config.m_TcShowOthersGhosts && g_Config.m_TcSwapGhosts && !(m_aClients[i].m_FreezeEnd > 0 && g_Config.m_TcHideFrozenGhosts)) ||
+					(g_Config.m_TcUnpredOthersInFreeze && Client()->m_IsLocalFrozen);
+				if(HasFastInput && EffectiveLowDeltaOthers() && !ForceUnpredPos && m_aLastActive[i])
+					Pos = mix(m_aClients[i].m_RenderPos, Pos, LowDeltaOthersRenderLerp());
 			}
 		}
 		m_aClients[i].m_RenderPos = Pos;
@@ -4756,7 +4789,10 @@ vec2 CGameClient::GetSmoothPos(int ClientId)
 			Client()->GetSmoothTick(&SmoothTick, &SmoothIntra, MixAmount);
 
 			if(ClientId != m_Snap.m_LocalClientId && FastInputOthers && FastInputTicks > 0)
-				ApplyFastInputOffset(FastInputOffsetTicks, SmoothTick, SmoothIntra);
+			{
+				const float OthersOffsetTicks = EffectiveLowDeltaOthers() ? SmoothedLowDeltaOthersOffsetTicks(FastInputOffsetTicks) : FastInputOffsetTicks;
+				ApplyFastInputOffset(OthersOffsetTicks, SmoothTick, SmoothIntra);
+			}
 
 			if(SmoothTick > 0 &&
 				m_aClients[ClientId].m_aPredTick[(SmoothTick - 1) % 200] >= Client()->PrevGameTick(g_Config.m_ClDummy) &&
@@ -4775,7 +4811,9 @@ vec2 CGameClient::GetFastInputPos(int ClientId)
 
 	const float FastInputOffsetTicks = EffectiveFastInputOffsetTicks(Client(), ServerBrowser());
 	const int FastInputTicks = FastInputPredictionTicks(FastInputOffsetTicks);
-	ApplyFastInputOffset(FastInputOffsetTicks, PredTick, PredIntraTick);
+	const bool IsLocal = ClientId == m_Snap.m_LocalClientId || (PredictDummy() && ClientId == m_aLocalIds[!g_Config.m_ClDummy]);
+	const float AppliedOffsetTicks = !IsLocal && EffectiveLowDeltaOthers() ? SmoothedLowDeltaOthersOffsetTicks(FastInputOffsetTicks) : FastInputOffsetTicks;
+	ApplyFastInputOffset(AppliedOffsetTicks, PredTick, PredIntraTick);
 
 	if(PredTick > 0 &&
 		m_aClients[ClientId].m_aPredTick[(PredTick - 1) % 200] >= Client()->PrevGameTick(g_Config.m_ClDummy) &&
@@ -4832,7 +4870,10 @@ vec2 CGameClient::GetFreezePos(int ClientId)
 	const bool ApplyFastInputLocal = IsLocal && FastInputTicks > 0;
 	const bool ApplyFastInputOthers = !IsLocal && FastInputOthers && FastInputTicks > 0;
 	if(ApplyFastInputLocal || ApplyFastInputOthers)
-		ApplyFastInputOffset(FastInputOffsetTicks, SmoothTick, SmoothIntra);
+	{
+		const float AppliedOffsetTicks = ApplyFastInputOthers && EffectiveLowDeltaOthers() ? SmoothedLowDeltaOthersOffsetTicks(FastInputOffsetTicks) : FastInputOffsetTicks;
+		ApplyFastInputOffset(AppliedOffsetTicks, SmoothTick, SmoothIntra);
+	}
 
 	if(SmoothTick > 0 &&
 		m_aClients[ClientId].m_aPredTick[(SmoothTick - 1) % 200] >= Client()->PrevGameTick(g_Config.m_ClDummy) &&
