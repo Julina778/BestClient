@@ -1672,7 +1672,9 @@ void CMenus::RenderSettings(CUIRect MainView)
 
 	auto RenderSettingsPageNewLayout = [&](CUIRect PageView) {
 		const int Page = g_Config.m_UiSettingsPage;
-		const bool NeedsAutoScroll = Page == SETTINGS_APPEARANCE;
+		const bool NeedsAutoScroll =
+			Page == SETTINGS_GENERAL ||
+			Page == SETTINGS_APPEARANCE;
 
 		if(!NeedsAutoScroll)
 		{
@@ -1693,7 +1695,7 @@ void CMenus::RenderSettings(CUIRect MainView)
 		CUIRect ContentView = PageView;
 		ContentView.y += ScrollOffset.y;
 		const float ContentStartY = ContentView.y;
-		const float VirtualHeightBoost = 96.0f;
+		const float VirtualHeightBoost = Page == SETTINGS_GENERAL ? 120.0f : 96.0f;
 		ContentView.h = PageView.h + VirtualHeightBoost;
 
 		RenderSettingsPage(ContentView);
