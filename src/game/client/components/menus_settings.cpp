@@ -3273,14 +3273,30 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		LeftView.VSplitLeft(MarginSmall, nullptr, &LeftView);
 		RightView.VSplitRight(MarginSmall, &RightView, nullptr);
 
+		static std::vector<CUIRect> s_SectionBoxes;
+		static vec2 s_PrevScrollOffset(0.0f, 0.0f);
+		for(CUIRect &Section : s_SectionBoxes)
+		{
+			float Padding = MarginBetweenViews * 0.6666f;
+			Section.w += Padding;
+			Section.h += Padding;
+			Section.x -= Padding * 0.5f;
+			Section.y -= Padding * 0.5f;
+			Section.y -= s_PrevScrollOffset.y - VisualsScrollOffset.y;
+			Section.Draw(BlockColor, IGraphics::CORNER_ALL, 10.0f);
+		}
+		s_PrevScrollOffset = VisualsScrollOffset;
+		s_SectionBoxes.clear();
+
 		auto BeginBlock = [&](CUIRect &ColumnRef, float ContentHeight, CUIRect &Content) {
 			CUIRect Block;
-			ColumnRef.HSplitTop(ContentHeight + MarginSmall * 2.0f, &Block, &ColumnRef);
-			Block.Draw(BlockColor, IGraphics::CORNER_ALL, 10.0f);
-			Block.Margin(MarginSmall, &Content);
+			ColumnRef.HSplitTop(ContentHeight, &Block, &ColumnRef);
+			s_SectionBoxes.push_back(Block);
+			Content = Block;
 		};
 
 		CUIRect Column = LeftView;
+		Column.HSplitTop(10.0f, nullptr, &Column);
 
 		// Magic particles (left column block)
 		{
@@ -3717,6 +3733,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 		const float LeftColumnEndY = Column.y;
 		Column = RightView;
+		Column.HSplitTop(10.0f, nullptr, &Column);
 
 		// Optimizer (right column block)
 		{
@@ -4225,14 +4242,30 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		LeftView.VSplitLeft(MarginSmall, nullptr, &LeftView);
 		RightView.VSplitRight(MarginSmall, &RightView, nullptr);
 
+		static std::vector<CUIRect> s_SectionBoxes;
+		static vec2 s_PrevScrollOffset(0.0f, 0.0f);
+		for(CUIRect &Section : s_SectionBoxes)
+		{
+			float Padding = MarginBetweenViews * 0.6666f;
+			Section.w += Padding;
+			Section.h += Padding;
+			Section.x -= Padding * 0.5f;
+			Section.y -= Padding * 0.5f;
+			Section.y -= s_PrevScrollOffset.y - GameplayScrollOffset.y;
+			Section.Draw(BlockColor, IGraphics::CORNER_ALL, 10.0f);
+		}
+		s_PrevScrollOffset = GameplayScrollOffset;
+		s_SectionBoxes.clear();
+
 		auto BeginBlock = [&](CUIRect &ColumnRef, float ContentHeight, CUIRect &Content) {
 			CUIRect Block;
-			ColumnRef.HSplitTop(ContentHeight + MarginSmall * 2.0f, &Block, &ColumnRef);
-			Block.Draw(BlockColor, IGraphics::CORNER_ALL, 10.0f);
-			Block.Margin(MarginSmall, &Content);
+			ColumnRef.HSplitTop(ContentHeight, &Block, &ColumnRef);
+			s_SectionBoxes.push_back(Block);
+			Content = Block;
 		};
 
 		CUIRect Column = LeftView;
+		Column.HSplitTop(10.0f, nullptr, &Column);
 		{
 			static char s_aBindCommand[BINDSYSTEM_MAX_CMD] = "";
 			static int s_SelectedBindIndex = 0;
@@ -4354,6 +4387,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 		const float LeftColumnEndY = Column.y;
 		Column = RightView;
+		Column.HSplitTop(10.0f, nullptr, &Column);
 
 		{
 			const bool SpeedrunExpanded = g_Config.m_BcSpeedrunTimer != 0;
