@@ -3524,7 +3524,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			const float ColorPickerLineSpacing = 5.0f;
 			const bool ShowRealHitboxEnabled = g_Config.m_BcShowRealHitbox != 0;
 			const float ColorPickerHeight = ShowRealHitboxEnabled ? (ColorPickerLineSize + ColorPickerLineSpacing) : 0.0f;
-			const float ContentHeight = LineSize + MarginSmall + 5.0f * LineSize + ColorPickerHeight;
+			const float ContentHeight = LineSize + MarginSmall + 6.0f * LineSize + ColorPickerHeight;
 			CUIRect Content, Label;
 			BeginBlock(Column, ContentHeight, Content);
 
@@ -3536,6 +3536,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			int UseNewMenuLayout = g_Config.m_BcSettingsLayout == 0 ? 1 : 0;
 			DoButton_CheckBoxAutoVMarginAndSet(&s_SettingsLayoutButton, Localize("Use new menu layout"), &UseNewMenuLayout, &Content, LineSize);
 			g_Config.m_BcSettingsLayout = UseNewMenuLayout ? 0 : 1;
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcHideHudInSettings, Localize("hide hud in settings"), &g_Config.m_BcHideHudInSettings, &Content, LineSize);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcEmoticonShadow, Localize("Тень у эмоций"), &g_Config.m_BcEmoticonShadow, &Content, LineSize);
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatSaveDraft, Localize("Сохранять недописанное сообщение"), &g_Config.m_BcChatSaveDraft, &Content, LineSize);

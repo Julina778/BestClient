@@ -679,6 +679,7 @@ public:
 
 	bool IsActive() const { return m_MenuActive; }
 	bool IsIngameGamePage() const { return m_MenuActive && Client()->State() == IClient::STATE_ONLINE && m_GamePage == PAGE_GAME; }
+	bool IsIngameSettingsPage() const { return m_MenuActive && Client()->State() == IClient::STATE_ONLINE && m_GamePage == PAGE_SETTINGS; }
 	void SetActive(bool Active);
 
 	void OnInterfacesInit(CGameClient *pClient) override;

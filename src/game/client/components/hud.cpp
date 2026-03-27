@@ -2100,8 +2100,13 @@ void CHud::OnRender()
 	if(!GameClient()->m_Snap.m_pGameInfoObj)
 		return;
 
-	if(GameClient()->m_Menus.IsActive() && !GameClient()->m_Menus.IsIngameGamePage())
-		return;
+	if(GameClient()->m_Menus.IsActive())
+	{
+		const bool IngameGamePage = GameClient()->m_Menus.IsIngameGamePage();
+		const bool IngameSettingsPage = GameClient()->m_Menus.IsIngameSettingsPage();
+		if(!IngameGamePage && (!IngameSettingsPage || g_Config.m_BcHideHudInSettings))
+			return;
+	}
 
 	m_Width = 300.0f * Graphics()->ScreenAspect();
 	m_Height = 300.0f;
