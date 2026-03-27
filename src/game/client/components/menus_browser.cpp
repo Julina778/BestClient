@@ -138,6 +138,82 @@ static ColorRGBA GetGametypeTextColor(const char *pGametype)
 	return color_cast<ColorRGBA>(HslaColor);
 }
 
+template<size_t N>
+static const char *GetServerbrowserDisplayName(const CServerInfo *pInfo, char (&aBuffer)[N])
+{
+	if(!g_Config.m_BcUseShortKogServerName || !str_find_nocase(pInfo->m_aGameType, "gores") || !str_find_nocase(pInfo->m_aName, "kog"))
+		return pInfo->m_aName;
+
+	const auto IsAsciiWordChar = [](char c) {
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+	};
+	const auto IsKogSeparator = [](char c) {
+		return c == ' ' || c == '|' || c == '*' || c == '-' || c == ':' || c == '[' || c == ']';
+	};
+
+	const char *pShortName = pInfo->m_aName;
+	const char *pScan = pInfo->m_aName;
+	while(const char *pMatch = str_find_nocase(pScan, "kog"))
+	{
+		const char Prev = pMatch > pInfo->m_aName ? pMatch[-1] : '\0';
+		const char Next = pMatch[3];
+		if(!IsAsciiWordChar(Prev) && !IsAsciiWordChar(Next))
+		{
+			pShortName = pMatch + 3;
+			while(*pShortName != '\0' && IsKogSeparator(*pShortName))
+				++pShortName;
+			break;
+		}
+		pScan = pMatch + 1;
+	}
+
+	pShortName = str_skip_whitespaces_const(pShortName);
+	str_copy(aBuffer, pShortName, sizeof(aBuffer));
+
+	if(const char *pSuffix = str_endswith_nocase(aBuffer, "[kog.tw]"))
+	{
+		char *pSuffixStart = const_cast<char *>(pSuffix);
+		while(pSuffixStart > aBuffer && pSuffixStart[-1] == ' ')
+			--pSuffixStart;
+		*pSuffixStart = '\0';
+	}
+
+	char *pHashToken = const_cast<char *>(str_find(aBuffer, " #"));
+	if(pHashToken != nullptr)
+	{
+		char *pDigits = pHashToken + 2;
+		if('0' <= *pDigits && *pDigits <= '9')
+		{
+			while('0' <= *pDigits && *pDigits <= '9')
+				++pDigits;
+
+			if(str_startswith(pDigits, " - "))
+			{
+				const char *pMapName = str_skip_whitespaces_const(pDigits + 3);
+				char *pRegionEnd = pHashToken;
+				while(pRegionEnd > aBuffer && pRegionEnd[-1] == ' ')
+					--pRegionEnd;
+				*pRegionEnd = '\0';
+
+				if(aBuffer[0] != '\0' && pMapName[0] != '\0')
+				{
+					char aRegion[N];
+					char aMapName[N];
+					str_copy(aRegion, aBuffer, sizeof(aRegion));
+					str_copy(aMapName, pMapName, sizeof(aMapName));
+					str_format(aBuffer, sizeof(aBuffer), "%s - %s", aRegion, aMapName);
+				}
+				else if(pMapName[0] != '\0')
+				{
+					str_copy(aBuffer, pMapName, sizeof(aBuffer));
+				}
+			}
+		}
+	}
+
+	return aBuffer[0] != '\0' ? aBuffer : pInfo->m_aName;
+}
+
 void CMenus::RenderServerbrowserServerList(CUIRect View, bool &WasListboxItemActivated)
 {
 	static CListBox s_ListBox;
@@ -432,21 +508,24 @@ void CMenus::RenderServerbrowserServerList(CUIRect View, bool &WasListboxItemAct
 			}
 			else if(Id == COL_NAME)
 			{
+				char aDisplayServerName[sizeof(pItem->m_aName)];
+				const char *pDisplayServerName = GetServerbrowserDisplayName(pItem, aDisplayServerName);
+
 				SLabelProperties Props;
 				Props.m_MaxWidth = Button.w;
 				Props.m_StopAtEnd = true;
 				Props.m_EnableWidthCheck = false;
 				bool Printed = false;
 				if(g_Config.m_BrFilterString[0] && (pItem->m_QuickSearchHit & IServerBrowser::QUICK_SERVERNAME))
-					Printed = PrintHighlighted(pItem->m_aName, [&](const char *pFilteredStr, const int FilterLen) {
-						Ui()->DoLabelStreamed(*pUiElement->Rect(UI_ELEM_NAME_1), &Button, pItem->m_aName, FontSize, TEXTALIGN_ML, Props, (int)(pFilteredStr - pItem->m_aName));
+					Printed = PrintHighlighted(pDisplayServerName, [&](const char *pFilteredStr, const int FilterLen) {
+						Ui()->DoLabelStreamed(*pUiElement->Rect(UI_ELEM_NAME_1), &Button, pDisplayServerName, FontSize, TEXTALIGN_ML, Props, (int)(pFilteredStr - pDisplayServerName));
 						TextRender()->TextColor(HIGHLIGHTED_TEXT_COLOR);
 						Ui()->DoLabelStreamed(*pUiElement->Rect(UI_ELEM_NAME_2), &Button, pFilteredStr, FontSize, TEXTALIGN_ML, Props, FilterLen, &pUiElement->Rect(UI_ELEM_NAME_1)->m_Cursor);
 						TextRender()->TextColor(TextRender()->DefaultTextColor());
 						Ui()->DoLabelStreamed(*pUiElement->Rect(UI_ELEM_NAME_3), &Button, pFilteredStr + FilterLen, FontSize, TEXTALIGN_ML, Props, -1, &pUiElement->Rect(UI_ELEM_NAME_2)->m_Cursor);
 					});
 				if(!Printed)
-					Ui()->DoLabelStreamed(*pUiElement->Rect(UI_ELEM_NAME_1), &Button, pItem->m_aName, FontSize, TEXTALIGN_ML, Props);
+					Ui()->DoLabelStreamed(*pUiElement->Rect(UI_ELEM_NAME_1), &Button, pDisplayServerName, FontSize, TEXTALIGN_ML, Props);
 			}
 			else if(Id == COL_GAMETYPE)
 			{
