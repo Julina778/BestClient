@@ -122,6 +122,9 @@ Amount
 Delay
 == Задерж.
 
+Snap Tap does not work on the "DDNet" community.
+== Функция Snap Tap не работает на комюнити "DDNet".
+
 Dont predict other players if you are frozen
 == Не предсказывать других игроков, если вы заморожены
 

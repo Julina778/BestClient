@@ -811,6 +811,11 @@ public:
 	bool IsIngameGamePage() const { return m_MenuActive && Client()->State() == IClient::STATE_ONLINE && m_GamePage == PAGE_GAME; }
 	bool IsIngameSettingsPage() const { return m_MenuActive && Client()->State() == IClient::STATE_ONLINE && m_GamePage == PAGE_SETTINGS; }
 	void SetActive(bool Active);
+	void ShowPopupMessage(const char *pTitle, const char *pMessage,
+		const char *pButtonLabel, int NextPopup = POPUP_NONE, FPopupButtonCallback pfnButtonCallback = &CMenus::DefaultButtonCallback)
+	{
+		PopupMessage(pTitle, pMessage, pButtonLabel, NextPopup, pfnButtonCallback);
+	}
 
 	void OnInterfacesInit(CGameClient *pClient) override;
 	void OnInit() override;

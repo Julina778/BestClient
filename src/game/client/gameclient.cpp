@@ -840,6 +840,7 @@ void CGameClient::OnInit()
 void CGameClient::OnUpdate()
 {
 	HandleLanguageChanged();
+	MaybeShowSnapTapBlockedPopup();
 
 	CUIElementBase::Init(Ui()); // update static pointer because game and editor use separate UI
 
@@ -972,6 +973,7 @@ void CGameClient::PrepareInputForSend(int *pData, int Size, bool Dummy)
 void CGameClient::OnConnected()
 {
 	m_FastPractice.InvalidateBufferedInputState();
+	MaybeShowSnapTapBlockedPopup();
 	const char *pConnectCaption = DemoPlayer()->IsPlaying() ? Localize("Preparing demo playback") : Localize("Connected");
 	const char *pLoadMapContent = Localize("Initializing map logic");
 	// render loading before skip is calculated
@@ -1659,7 +1661,10 @@ void CGameClient::OnStateChange(int NewState, int OldState)
 {
 	// reset everything when not already connected (to keep gathered stuff)
 	if(NewState < IClient::STATE_ONLINE)
+	{
+		m_SnapTapBlockedPopupShown = false;
 		OnReset();
+	}
 
 	// then change the state
 	for(auto &pComponent : m_vpAll)
@@ -6431,9 +6436,34 @@ bool CGameClient::CheckNewInput()
 	return m_Controls.CheckNewInput();
 }
 
+bool CGameClient::IsSnapTapBlockedByCommunity() const
+{
+	const char *pCommunityId = nullptr;
+
+	CServerInfo ServerInfo;
+	mem_zero(&ServerInfo, sizeof(ServerInfo));
+	Client()->GetServerInfo(&ServerInfo);
+	if(ServerInfo.m_aCommunityId[0] != '\0')
+		pCommunityId = ServerInfo.m_aCommunityId;
+	else if(m_ConnectServerInfo.has_value() && m_ConnectServerInfo->m_aCommunityId[0] != '\0')
+		pCommunityId = m_ConnectServerInfo->m_aCommunityId;
+
+	return pCommunityId != nullptr && str_comp_nocase(pCommunityId, IServerBrowser::COMMUNITY_DDNET) == 0;
+}
+
+void CGameClient::MaybeShowSnapTapBlockedPopup()
+{
+	if(m_SnapTapBlockedPopupShown || !IsSnapTapBlockedByCommunity())
+		return;
+
+	m_SnapTapBlockedPopupShown = true;
+	m_Menus.ShowPopupMessage("Snap Tap", Localize("Snap Tap does not work on the \"DDNet\" community."), Localize("OK"));
+}
+
 void CGameClient::SetConnectInfo(const NETADDR *pAddress)
 {
 	m_ConnectServerInfo = std::nullopt;
+	m_SnapTapBlockedPopupShown = false;
 	if(!pAddress)
 		return;
 	const auto *pEntry = ServerBrowser()->Find(*pAddress);

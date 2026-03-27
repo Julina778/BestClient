@@ -21,6 +21,11 @@
 CControls::CControls()
 {
 	mem_zero(&m_aLastData, sizeof(m_aLastData));
+	mem_zero(m_aSnapTapAppliedDirection, sizeof(m_aSnapTapAppliedDirection));
+	mem_zero(m_aSnapTapLastPressedDirection, sizeof(m_aSnapTapLastPressedDirection));
+	mem_zero(m_aSnapTapLastPressedTime, sizeof(m_aSnapTapLastPressedTime));
+	mem_zero(m_aSnapTapPrevLeft, sizeof(m_aSnapTapPrevLeft));
+	mem_zero(m_aSnapTapPrevRight, sizeof(m_aSnapTapPrevRight));
 	std::fill(std::begin(m_aMousePos), std::end(m_aMousePos), vec2(0.0f, 0.0f));
 	std::fill(std::begin(m_aMousePosOnAction), std::end(m_aMousePosOnAction), vec2(0.0f, 0.0f));
 	std::fill(std::begin(m_aTargetPos), std::end(m_aTargetPos), vec2(0.0f, 0.0f));
@@ -50,6 +55,11 @@ void CControls::ResetInput(int Dummy)
 
 	m_aInputDirectionLeft[Dummy] = 0;
 	m_aInputDirectionRight[Dummy] = 0;
+	m_aSnapTapAppliedDirection[Dummy] = 0;
+	m_aSnapTapLastPressedDirection[Dummy] = 0;
+	m_aSnapTapLastPressedTime[Dummy] = 0;
+	m_aSnapTapPrevLeft[Dummy] = 0;
+	m_aSnapTapPrevRight[Dummy] = 0;
 }
 
 void CControls::OnPlayerDeath()
@@ -181,6 +191,65 @@ void CControls::OnMessage(int Msg, void *pRawMsg)
 	}
 }
 
+bool CControls::IsSnapTapActive() const
+{
+	return g_Config.m_BcSnapTap != 0 &&
+		!GameClient()->IsSnapTapBlockedByCommunity();
+}
+
+void CControls::UpdateSnapTapState(int Dummy, bool LeftPressed, bool RightPressed)
+{
+	const int64_t Now = time_get();
+	if(LeftPressed && !m_aSnapTapPrevLeft[Dummy])
+	{
+		m_aSnapTapLastPressedDirection[Dummy] = -1;
+		m_aSnapTapLastPressedTime[Dummy] = Now;
+	}
+	if(RightPressed && !m_aSnapTapPrevRight[Dummy])
+	{
+		m_aSnapTapLastPressedDirection[Dummy] = 1;
+		m_aSnapTapLastPressedTime[Dummy] = Now;
+	}
+
+	m_aSnapTapPrevLeft[Dummy] = LeftPressed ? 1 : 0;
+	m_aSnapTapPrevRight[Dummy] = RightPressed ? 1 : 0;
+}
+
+int CControls::ResolveSnapTapDirection(int Dummy, bool LeftPressed, bool RightPressed)
+{
+	if(LeftPressed == RightPressed)
+	{
+		if(!LeftPressed)
+		{
+			m_aSnapTapAppliedDirection[Dummy] = 0;
+			return 0;
+		}
+
+		if(!IsSnapTapActive())
+			return 0;
+
+		int CandidateDirection = m_aSnapTapLastPressedDirection[Dummy];
+		if(CandidateDirection != -1 && CandidateDirection != 1)
+			CandidateDirection = m_aSnapTapAppliedDirection[Dummy] != 0 ? m_aSnapTapAppliedDirection[Dummy] : -1;
+
+		if(m_aSnapTapAppliedDirection[Dummy] == 0)
+		{
+			m_aSnapTapAppliedDirection[Dummy] = CandidateDirection;
+		}
+		else if(m_aSnapTapAppliedDirection[Dummy] != CandidateDirection)
+		{
+			const int64_t Delay = (time_freq() * (int64_t)g_Config.m_BcSnapTapDelay) / 1000;
+			if(time_get() - m_aSnapTapLastPressedTime[Dummy] >= Delay)
+				m_aSnapTapAppliedDirection[Dummy] = CandidateDirection;
+		}
+
+		return m_aSnapTapAppliedDirection[Dummy];
+	}
+
+	m_aSnapTapAppliedDirection[Dummy] = LeftPressed ? -1 : 1;
+	return m_aSnapTapAppliedDirection[Dummy];
+}
+
 void CControls::GoresMode()
 {
 	// if turning off kog mode and it was on before, rebind to previous bind
@@ -307,11 +376,10 @@ int CControls::SnapInput(int *pData)
 			m_aInputData[g_Config.m_ClDummy].m_TargetX = 1;
 
 		// set direction
-		m_aInputData[g_Config.m_ClDummy].m_Direction = 0;
-		if(m_aInputDirectionLeft[g_Config.m_ClDummy] && !m_aInputDirectionRight[g_Config.m_ClDummy])
-			m_aInputData[g_Config.m_ClDummy].m_Direction = -1;
-		if(!m_aInputDirectionLeft[g_Config.m_ClDummy] && m_aInputDirectionRight[g_Config.m_ClDummy])
-			m_aInputData[g_Config.m_ClDummy].m_Direction = 1;
+		const bool LeftPressed = m_aInputDirectionLeft[g_Config.m_ClDummy] != 0;
+		const bool RightPressed = m_aInputDirectionRight[g_Config.m_ClDummy] != 0;
+		UpdateSnapTapState(g_Config.m_ClDummy, LeftPressed, RightPressed);
+		m_aInputData[g_Config.m_ClDummy].m_Direction = ResolveSnapTapDirection(g_Config.m_ClDummy, LeftPressed, RightPressed);
 
 		// dummy copy moves
 		if(g_Config.m_ClDummyCopyMoves)

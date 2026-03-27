@@ -45,6 +45,11 @@ public:
 	bool m_FastInputHookAction = false;
 	bool m_FastInputFireAction = false;
 	bool m_WeaponsGot = false;
+	int m_aSnapTapAppliedDirection[NUM_DUMMIES];
+	int m_aSnapTapLastPressedDirection[NUM_DUMMIES];
+	int64_t m_aSnapTapLastPressedTime[NUM_DUMMIES];
+	int m_aSnapTapPrevLeft[NUM_DUMMIES];
+	int m_aSnapTapPrevRight[NUM_DUMMIES];
 
 	CControls();
 	int Sizeof() const override { return sizeof(*this); }
@@ -63,6 +68,9 @@ public:
 	void GoresMode();
 
 private:
+	void UpdateSnapTapState(int Dummy, bool LeftPressed, bool RightPressed);
+	int ResolveSnapTapDirection(int Dummy, bool LeftPressed, bool RightPressed);
+	bool IsSnapTapActive() const;
 	static void ConKeyInputState(IConsole::IResult *pResult, void *pUserData);
 	static void ConKeyInputCounter(IConsole::IResult *pResult, void *pUserData);
 	static void ConKeyInputSet(IConsole::IResult *pResult, void *pUserData);
