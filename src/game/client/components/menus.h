@@ -561,6 +561,7 @@ protected:
 	void RenderServerbrowserStatusBox(CUIRect StatusBox, bool WasListboxItemActivated);
 	void Connect(const char *pAddress);
 	void PopupConfirmSwitchServer();
+	void ToggleBestClientServerFilter();
 	void RenderServerbrowserFilters(CUIRect View);
 	void ResetServerbrowserFilters();
 	void RenderServerbrowserDDNetFilter(CUIRect View,
@@ -590,6 +591,7 @@ protected:
 	static CUi::EPopupMenuFunctionResult PopupSettingsCountrySelection(void *pContext, CUIRect View, bool Active);
 	void RenderServerbrowserInfo(CUIRect View);
 	void RenderServerbrowserInfoScoreboard(CUIRect View, const CServerInfo *pSelectedServer);
+	void RenderServerbrowserBestClient(CUIRect View);
 	void RenderServerbrowserFriends(CUIRect View);
 	void FriendlistOnUpdate();
 	void PopupConfirmRemoveFriend();
@@ -759,10 +761,11 @@ public:
 		SMALL_TAB_SETTINGS,
 		SMALL_TAB_EDITOR,
 		SMALL_TAB_DEMOBUTTON,
-		SMALL_TAB_SERVER,
-		SMALL_TAB_BROWSER_FILTER,
-		SMALL_TAB_BROWSER_INFO,
-		SMALL_TAB_BROWSER_FRIENDS,
+			SMALL_TAB_SERVER,
+			SMALL_TAB_BROWSER_FILTER,
+			SMALL_TAB_BROWSER_INFO,
+			SMALL_TAB_BROWSER_BESTCLIENT,
+			SMALL_TAB_BROWSER_FRIENDS,
 
 		SMALL_TAB_LENGTH,
 	};

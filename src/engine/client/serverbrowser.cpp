@@ -422,6 +422,17 @@ bool CServerBrowser::SortCompareNumFriends(int Index1, int Index2) const
 		return pIndex1->m_Info.m_FriendNum > pIndex2->m_Info.m_FriendNum;
 }
 
+bool CServerBrowser::SortCompareNumBestClientPlayers(int Index1, int Index2) const
+{
+	CServerEntry *pIndex1 = m_vpServerlist[Index1];
+	CServerEntry *pIndex2 = m_vpServerlist[Index2];
+
+	if(pIndex1->m_Info.m_NumBestClientPlayers == pIndex2->m_Info.m_NumBestClientPlayers)
+		return pIndex1->m_Info.m_NumFilteredPlayers > pIndex2->m_Info.m_NumFilteredPlayers;
+	else
+		return pIndex1->m_Info.m_NumBestClientPlayers > pIndex2->m_Info.m_NumBestClientPlayers;
+}
+
 bool CServerBrowser::SortCompareNumPlayersAndPing(int Index1, int Index2) const
 {
 	CServerEntry *pIndex1 = m_vpServerlist[Index1];
@@ -603,11 +614,13 @@ void CServerBrowser::Filter()
 			}
 		}
 
-		UpdateServerFriends(&Info);
-
 		if(!Filtered)
 		{
-			if(!g_Config.m_BrFilterFriends || Info.m_FriendState != IFriends::FRIEND_NO)
+			UpdateServerFriends(&Info);
+			UpdateServerBestClients(&Info);
+
+			if((!g_Config.m_BrFilterFriends || Info.m_FriendState != IFriends::FRIEND_NO) &&
+				(!g_Config.m_BrFilterBestclient || Info.m_HasBestClientPlayers))
 			{
 				m_NumSortedPlayers += Info.m_NumFilteredPlayers;
 				m_vSortedServerlist.push_back(ServerIndex);
@@ -645,6 +658,7 @@ int CServerBrowser::SortHash() const
 	i |= g_Config.m_BrFilterCountry << 14;
 	i |= g_Config.m_BrFilterConnectingPlayers << 15;
 	i |= g_Config.m_BrFilterLogin << 16;
+	i |= g_Config.m_BrFilterBestclient << 17;
 	return i;
 }
 
@@ -670,6 +684,8 @@ void CServerBrowser::Sort()
 		std::stable_sort(m_vSortedServerlist.begin(), m_vSortedServerlist.end(), CSortWrap(this, &CServerBrowser::SortCompareMap));
 	else if(g_Config.m_BrSort == IServerBrowser::SORT_NUMFRIENDS)
 		std::stable_sort(m_vSortedServerlist.begin(), m_vSortedServerlist.end(), CSortWrap(this, &CServerBrowser::SortCompareNumFriends));
+	else if(g_Config.m_BrSort == IServerBrowser::SORT_NUMBESTCLIENT)
+		std::stable_sort(m_vSortedServerlist.begin(), m_vSortedServerlist.end(), CSortWrap(this, &CServerBrowser::SortCompareNumBestClientPlayers));
 	else if(g_Config.m_BrSort == IServerBrowser::SORT_NUMPLAYERS)
 		std::stable_sort(m_vSortedServerlist.begin(), m_vSortedServerlist.end(), CSortWrap(this, &CServerBrowser::SortCompareNumPlayers));
 	else if(g_Config.m_BrSort == IServerBrowser::SORT_GAMETYPE)

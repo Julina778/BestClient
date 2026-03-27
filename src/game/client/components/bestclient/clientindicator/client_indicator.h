@@ -37,7 +37,7 @@ public:
 
 private:
 	NETSOCKET m_Socket = nullptr;
-	NETADDR m_ServerAddr = NETADDR_ZEROED;
+	NETADDR m_ServerAddr{};
 	bool m_HasServerAddr = false;
 	char m_aLastPresenceServerAddr[256] = "";
 	char m_aLastGameServerAddr[NETADDR_MAXSTRSIZE] = "";

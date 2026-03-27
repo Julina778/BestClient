@@ -706,6 +706,13 @@ protected:
 		m_Color = ColorRGBA(1.0f, 1.0f, 1.0f, Data.m_Color.a);
 	}
 
+	void Render(CGameClient &This, vec2 Pos) const override
+	{
+		Pos.x += (float)g_Config.m_BcNameplateClientIndicatorOffsetX;
+		Pos.y += (float)g_Config.m_BcNameplateClientIndicatorOffsetY;
+		CNamePlatePartIcon::Render(This, Pos);
+	}
+
 public:
 	CNamePlatePartBClientIndicator(CGameClient &This) :
 		CNamePlatePartIcon(This)

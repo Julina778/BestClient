@@ -4896,7 +4896,42 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 	}
 	else if(s_CurTab == BESTCLIENT_TAB_OTHERS)
 	{
-		// Intentionally empty for now.
+			const float LineSize = 20.0f;
+			const float HeadlineFontSize = 20.0f;
+			const float MarginSmall = 5.0f;
+
+			CUIRect Content = MainView;
+			Content.Margin(8.0f, &Content);
+
+			CUIRect Label, Row;
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Client Indicator"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicator, Localize("Enable client indicator"), &g_Config.m_BcClientIndicator, &Content, LineSize);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicatorInNamePlate, Localize("Show indicator in name plates"), &g_Config.m_BcClientIndicatorInNamePlate, &Content, LineSize);
+
+			if(g_Config.m_BcClientIndicatorInNamePlate)
+			{
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicatorInNamePlateAboveSelf, Localize("Show above yourself"), &g_Config.m_BcClientIndicatorInNamePlateAboveSelf, &Content, LineSize);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicatorInNamePlateDynamic, Localize("Dynamic icon position"), &g_Config.m_BcClientIndicatorInNamePlateDynamic, &Content, LineSize);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcClientIndicatorInNamePlateSize, &g_Config.m_BcClientIndicatorInNamePlateSize, &Row, Localize("Name plate indicator size"), -50, 100);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcNameplateClientIndicatorOffsetX, &g_Config.m_BcNameplateClientIndicatorOffsetX, &Row, Localize("Name plate indicator offset X"), -400, 400);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcNameplateClientIndicatorOffsetY, &g_Config.m_BcNameplateClientIndicatorOffsetY, &Row, Localize("Name plate indicator offset Y"), -400, 400);
+			}
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicatorInScoreboard, Localize("Show indicator in scoreboard"), &g_Config.m_BcClientIndicatorInScoreboard, &Content, LineSize);
+			if(g_Config.m_BcClientIndicatorInScoreboard)
+			{
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcClientIndicatorInSoreboardSize, &g_Config.m_BcClientIndicatorInSoreboardSize, &Row, Localize("Scoreboard indicator size"), -50, 100);
+			}
 	}
 	else if(s_CurTab == BESTCLIENT_TAB_INFO)
 	{

@@ -138,7 +138,28 @@ bool CClientIndicator::IsPlayerBestClient(int ClientId) const
 		if(LocalId >= 0 && ClientId == LocalId)
 			return true;
 	}
-	return m_PresenceCache.IsPresent(ClientId);
+	if(m_PresenceCache.IsPresent(ClientId))
+		return true;
+
+	// Fallback: use browser snapshot data for the current server when presence
+	// packets are unavailable (e.g. temporary UDP reachability issues).
+	const char *pPlayerName = PlayerNameForClient(ClientId);
+	if(pPlayerName[0] == '\0')
+		return false;
+
+	const IServerBrowser::CServerEntry *pCurrentServer = ServerBrowser()->Find(Client()->ServerAddress());
+	if(!pCurrentServer)
+		return false;
+
+	const CServerInfo &Info = pCurrentServer->m_Info;
+	for(int Index = 0; Index < minimum(Info.m_NumReceivedClients, (int)MAX_CLIENTS); ++Index)
+	{
+		const CServerInfo::CClient &Client = Info.m_aClients[Index];
+		if(Client.m_BestClient && str_comp(Client.m_aName, pPlayerName) == 0)
+			return true;
+	}
+
+	return false;
 }
 
 void CClientIndicator::RefreshBrowserCache(bool Force)
