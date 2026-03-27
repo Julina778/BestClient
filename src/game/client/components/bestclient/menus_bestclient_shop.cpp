@@ -1286,20 +1286,14 @@ static void BestClientShopFinishFetch(CMenus *pMenus)
 		BestClientShopClearItems(pMenus);
 		gs_BestClientShopState.m_TotalPages = 1;
 		gs_BestClientShopState.m_TotalItems = 0;
-		if(gs_BestClientShopState.m_pFetchTask->StatusCode() > 0)
-		{
-			str_format(gs_BestClientShopState.m_aStatus, sizeof(gs_BestClientShopState.m_aStatus), "%s (%d)", TCLocalize("Shop request failed"), gs_BestClientShopState.m_pFetchTask->StatusCode());
-		}
-		else
-		{
-			BestClientShopSetStatus(TCLocalize("Shop request failed"));
-		}
+		BestClientShopSetStatus(TCLocalize("Shop request failed"));
 		return;
 	}
 
-	if(gs_BestClientShopState.m_pFetchTask->StatusCode() >= 400)
+	const int FetchStatusCode = gs_BestClientShopState.m_pFetchTask->StatusCode();
+	if(FetchStatusCode >= 400)
 	{
-		str_format(gs_BestClientShopState.m_aStatus, sizeof(gs_BestClientShopState.m_aStatus), "%s (%d)", TCLocalize("Shop request failed"), gs_BestClientShopState.m_pFetchTask->StatusCode());
+		str_format(gs_BestClientShopState.m_aStatus, sizeof(gs_BestClientShopState.m_aStatus), "%s (%d)", TCLocalize("Shop request failed"), FetchStatusCode);
 		return;
 	}
 
