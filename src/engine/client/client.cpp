@@ -361,7 +361,10 @@ void CClient::SendInput()
 
 		if(Size)
 		{
-			GameClient()->PrepareInputForSend(m_aInputs[i][m_aCurrentInput[i]].m_aData, Size, Dummy);
+			int aSendData[MAX_INPUT_SIZE];
+			dbg_assert(Size <= (int)sizeof(aSendData), "input size exceeds send buffer");
+			mem_copy(aSendData, m_aInputs[i][m_aCurrentInput[i]].m_aData, (size_t)Size);
+			GameClient()->PrepareInputForSend(aSendData, Size, Dummy);
 
 			// pack input
 			CMsgPacker Msg(NETMSG_INPUT, true);
@@ -382,12 +385,12 @@ void CClient::SendInput()
 				static const int FlagsOffset = offsetof(CNetObj_PlayerInput, m_PlayerFlags) / sizeof(int);
 				if(k == FlagsOffset && IsSixup())
 				{
-					int PlayerFlags = m_aInputs[i][m_aCurrentInput[i]].m_aData[k];
+					int PlayerFlags = aSendData[k];
 					Msg.AddInt(PlayerFlags_SixToSeven(PlayerFlags));
 				}
 				else
 				{
-					Msg.AddInt(m_aInputs[i][m_aCurrentInput[i]].m_aData[k]);
+					Msg.AddInt(aSendData[k]);
 				}
 			}
 

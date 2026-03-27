@@ -1318,13 +1318,15 @@ void CHud::RenderPlayerState(const int ClientId)
 	{
 		y += 12;
 	}
+	const bool FastPracticeActive = GameClient()->m_FastPractice.Enabled() && GameClient()->m_FastPractice.IsPracticeParticipant(ClientId);
 	if(GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo && GameClient()->m_Snap.m_aCharacters[ClientId].m_ExtendedData.m_Flags & CHARACTERFLAG_LOCK_MODE)
 	{
 		Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudLockMode);
 		Graphics()->RenderQuadContainerAsSprite(m_HudQuadContainerIndex, m_LockModeOffset, x, y);
 		x += 12;
 	}
-	if(GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo && GameClient()->m_Snap.m_aCharacters[ClientId].m_ExtendedData.m_Flags & CHARACTERFLAG_PRACTICE_MODE)
+	const bool PracticeModeFlag = GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo && (GameClient()->m_Snap.m_aCharacters[ClientId].m_ExtendedData.m_Flags & CHARACTERFLAG_PRACTICE_MODE);
+	if(PracticeModeFlag || FastPracticeActive)
 	{
 		Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudPracticeMode);
 		Graphics()->RenderQuadContainerAsSprite(m_HudQuadContainerIndex, m_PracticeModeOffset, x, y);
@@ -1346,6 +1348,10 @@ void CHud::RenderPlayerState(const int ClientId)
 	{
 		Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudLiveFrozen);
 		Graphics()->RenderQuadContainerAsSprite(m_HudQuadContainerIndex, m_LiveFrozenOffset, x, y);
+	}
+	if(FastPracticeActive)
+	{
+		TextRender()->Text(x + 12.0f, y + 2.0f, 8.0f, Localize("Practice enabled"), -1.0f);
 	}
 }
 

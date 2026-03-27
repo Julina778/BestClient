@@ -230,6 +230,18 @@ void CMenus::RenderGame(CUIRect MainView)
 		}
 	}
 
+	if(GameClient()->m_Snap.m_pLocalInfo)
+	{
+		ButtonBar.VSplitLeft(120.0f, &Button, &ButtonBar);
+		ButtonBar.VSplitLeft(5.0f, nullptr, &ButtonBar);
+		static CButtonContainer s_FastPracticeButton;
+		if(DoButton_Menu(&s_FastPracticeButton, Localize("Fast practice"), GameClient()->m_FastPractice.Enabled() ? 1 : 0, &Button))
+		{
+			Console()->ExecuteLine("fast_practice_toggle", IConsole::CLIENT_ID_UNSPECIFIED);
+			SetActive(false);
+		}
+	}
+
 	if(GameClient()->m_Snap.m_pLocalInfo && (GameClient()->m_Snap.m_pLocalInfo->m_Team == TEAM_SPECTATORS || Paused || Spec))
 	{
 		ButtonBar.VSplitLeft(32.0f, &Button, &ButtonBar);
