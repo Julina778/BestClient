@@ -3519,7 +3519,12 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 		// Misc (left column block)
 		{
-			const float ContentHeight = LineSize + MarginSmall + 4.0f * LineSize;
+			const float ColorPickerLineSize = 25.0f;
+			const float ColorPickerLabelSize = 13.0f;
+			const float ColorPickerLineSpacing = 5.0f;
+			const bool ShowRealHitboxEnabled = g_Config.m_BcShowRealHitbox != 0;
+			const float ColorPickerHeight = ShowRealHitboxEnabled ? (ColorPickerLineSize + ColorPickerLineSpacing) : 0.0f;
+			const float ContentHeight = LineSize + MarginSmall + 5.0f * LineSize + ColorPickerHeight;
 			CUIRect Content, Label;
 			BeginBlock(Column, ContentHeight, Content);
 
@@ -3535,6 +3540,12 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcEmoticonShadow, Localize("Тень у эмоций"), &g_Config.m_BcEmoticonShadow, &Content, LineSize);
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatSaveDraft, Localize("Сохранять недописанное сообщение"), &g_Config.m_BcChatSaveDraft, &Content, LineSize);
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcShowhudDummyCoordIndicator, TCLocalize("Show player below indicator"), &g_Config.m_BcShowhudDummyCoordIndicator, &Content, LineSize);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcShowRealHitbox, Localize("Show real hitbox"), &g_Config.m_BcShowRealHitbox, &Content, LineSize);
+			if(g_Config.m_BcShowRealHitbox)
+			{
+				static CButtonContainer s_RealHitboxDotColorButton;
+				DoLine_ColorPicker(&s_RealHitboxDotColorButton, ColorPickerLineSize, ColorPickerLabelSize, ColorPickerLineSpacing, &Content, Localize("Real hitbox dot color"), &g_Config.m_BcShowRealHitboxColor, color_cast<ColorRGBA>(ColorHSLA(DefaultConfig::BcShowRealHitboxColor, true)), false, nullptr, true);
+			}
 		}
 		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 

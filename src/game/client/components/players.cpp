@@ -994,6 +994,18 @@ void CPlayers::RenderPlayer(
 
 	RenderTools()->RenderTee(&State, &RenderInfo, Player.m_Emote, Direction, Position, Alpha);
 
+	if(g_Config.m_BcShowRealHitbox &&
+		ClientId >= 0 &&
+		!GameClient()->m_Snap.m_SpecInfo.m_Active &&
+		ClientId == GameClient()->m_aLocalIds[g_Config.m_ClDummy])
+	{
+		Graphics()->TextureClear();
+		Graphics()->QuadsBegin();
+		Graphics()->SetColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_BcShowRealHitboxColor, true)));
+		Graphics()->DrawCircle(Position.x, Position.y, 2.0f, 12);
+		Graphics()->QuadsEnd();
+	}
+
 	float TeeAnimScale, TeeBaseSize;
 	CRenderTools::GetRenderTeeAnimScaleAndBaseSize(&RenderInfo, TeeAnimScale, TeeBaseSize);
 	vec2 BodyPos = Position + vec2(State.GetBody()->m_X, State.GetBody()->m_Y) * TeeAnimScale;

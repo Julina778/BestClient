@@ -58,6 +58,8 @@ MACRO_CONFIG_INT(BcChatSaveDraft, bc_chat_save_draft, 1, 0, 1, CFGFLAG_CLIENT | 
 MACRO_CONFIG_INT(BcShowhudDummyCoordIndicator, bc_showhud_dummy_coord_indicator, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show player-below indicator in ingame HUD")
 MACRO_CONFIG_COL(BcShowhudDummyCoordIndicatorColor, bc_showhud_dummy_coord_indicator_color, 255, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Player-below indicator color")
 MACRO_CONFIG_COL(BcShowhudDummyCoordIndicatorSameHeightColor, bc_showhud_dummy_coord_indicator_same_height_color, 65407, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Player-below indicator color when aligned vertically")
+MACRO_CONFIG_INT(BcShowRealHitbox, bc_show_real_hitbox, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show a dot at the center of your real hitbox")
+MACRO_CONFIG_COL(BcShowRealHitboxColor, bc_show_real_hitbox_color, 0xFFFFFFFFU, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_COLALPHA, "Color of the real hitbox center dot")
 
 // Fast input
 MACRO_CONFIG_INT(BcFastInputMode, bc_fast_input_mode, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fast input mode (0 = fast input, 1 = low delta)")
