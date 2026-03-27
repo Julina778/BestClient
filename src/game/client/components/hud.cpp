@@ -646,6 +646,9 @@ void CHud::RenderTextInfo()
 	// render team in freeze text and last notify
 	if((g_Config.m_TcShowFrozenText > 0 || g_Config.m_TcShowFrozenHud > 0 || g_Config.m_TcNotifyWhenLast) && GameClient()->m_GameInfo.m_EntitiesDDRace)
 	{
+		const CMusicPlayer::SHudReservation MusicReservation = GameClient()->m_MusicPlayer.HudReservation();
+		const bool MusicPlayerHudActive = g_Config.m_BcMusicPlayer != 0 && MusicReservation.m_Visible && MusicReservation.m_Active;
+
 		int NumInTeam = 0;
 		int NumFrozen = 0;
 		int LocalTeamID = 0;
@@ -690,7 +693,21 @@ void CHud::RenderTextInfo()
 		else if(g_Config.m_TcShowFrozenText == 2)
 			str_format(aBuf, sizeof(aBuf), "%d / %d", NumFrozen, NumInTeam);
 		if(g_Config.m_TcShowFrozenText > 0)
-			TextRender()->Text(m_Width / 2.0f - TextRender()->TextWidth(10.0f, aBuf) / 2.0f, 12.0f, 10.0f, aBuf);
+		{
+			const float FrozenTextWidth = TextRender()->TextWidth(10.0f, aBuf);
+			const float FrozenTextX = m_Width / 2.0f - FrozenTextWidth / 2.0f;
+			float FrozenTextY = 12.0f;
+			if(MusicPlayerHudActive)
+			{
+				CUIRect FrozenTextRect;
+				FrozenTextRect.x = FrozenTextX;
+				FrozenTextRect.y = FrozenTextY;
+				FrozenTextRect.w = FrozenTextWidth;
+				FrozenTextRect.h = 10.0f;
+				FrozenTextY += GameClient()->m_MusicPlayer.GetHudPushDownOffsetForRect(FrozenTextRect, m_Height, 2.0f);
+			}
+			TextRender()->Text(FrozenTextX, FrozenTextY, 10.0f, aBuf);
+		}
 
 		// str_format(aBuf, sizeof(aBuf), "%d", GameClient()->m_aClients[GameClient()->m_Snap.m_LocalClientId].m_PrevPredicted.m_FreezeEnd);
 		// str_format(aBuf, sizeof(aBuf), "%d", g_Config.m_ClWhatsMyPing);
@@ -717,10 +734,21 @@ void CHud::RenderTextInfo()
 			float StartPos = m_Width / 2.0f + 38.0f * (m_Width / m_Height) / 1.78f;
 
 			int TotalRows = std::min(MaxRows, (NumInTeam + MaxTees - 1) / MaxTees);
+			float FrozenHudXOffset = 0.0f;
+			if(MusicPlayerHudActive)
+			{
+				CUIRect FrozenHudRect;
+				FrozenHudRect.x = StartPos - TeeSize / 2.0f;
+				FrozenHudRect.y = 0.0f;
+				FrozenHudRect.w = TeeSize * std::min(NumInTeam, MaxTees);
+				FrozenHudRect.h = TeeSize + 3.0f + (TotalRows - 1) * TeeSize;
+				FrozenHudXOffset = maximum(0.0f, GameClient()->m_MusicPlayer.GetHudPushOffsetForRect(FrozenHudRect, m_Width, 2.0f));
+			}
+
 			Graphics()->TextureClear();
 			Graphics()->QuadsBegin();
 			Graphics()->SetColor(0.0f, 0.0f, 0.0f, 0.4f);
-			Graphics()->DrawRectExt(StartPos - TeeSize / 2.0f, 0.0f, TeeSize * std::min(NumInTeam, MaxTees), TeeSize + 3.0f + (TotalRows - 1) * TeeSize, 5.0f, IGraphics::CORNER_B);
+			Graphics()->DrawRectExt(StartPos - TeeSize / 2.0f + FrozenHudXOffset, 0.0f, TeeSize * std::min(NumInTeam, MaxTees), TeeSize + 3.0f + (TotalRows - 1) * TeeSize, 5.0f, IGraphics::CORNER_B);
 			Graphics()->QuadsEnd();
 
 			bool Overflow = NumInTeam > MaxTees * MaxRows;
@@ -764,7 +792,7 @@ void CHud::RenderTextInfo()
 						const CAnimState *pIdleState = CAnimState::GetIdle();
 						vec2 OffsetToMid;
 						CRenderTools::GetRenderTeeOffsetToRenderedTee(pIdleState, &TeeInfo, OffsetToMid);
-						vec2 TeeRenderPos(StartPos + ProgressiveOffset, TeeSize * (0.7f) + CurrentRow * TeeSize);
+						vec2 TeeRenderPos(StartPos + ProgressiveOffset + FrozenHudXOffset, TeeSize * (0.7f) + CurrentRow * TeeSize);
 						float Alpha = 1.0f;
 						CNetObj_Character CurChar = GameClient()->m_aClients[i].m_RenderCur;
 						if(g_Config.m_TcShowFrozenHudSkins && Frozen)
