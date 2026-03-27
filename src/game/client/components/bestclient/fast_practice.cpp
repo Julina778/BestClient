@@ -414,6 +414,8 @@ void CFastPractice::SyncPracticeWorldConfig()
 	m_PracticeBaseWorld.m_WorldConfig = GameClient()->m_GameWorld.m_WorldConfig;
 	m_PracticeBaseWorld.m_WorldConfig.m_PredictWeapons = true;
 	m_PracticeBaseWorld.m_WorldConfig.m_PredictFreeze = true;
+	m_PracticeBaseWorld.m_WorldConfig.m_PredictTiles = true;
+	m_PracticeBaseWorld.m_WorldConfig.m_PredictDDRace = true;
 	m_PracticeBaseWorld.m_Teams = GameClient()->m_Teams;
 }
 
@@ -886,6 +888,13 @@ bool CFastPractice::OverridePredict()
 	if(Client()->State() != IClient::STATE_ONLINE)
 	{
 		Disable();
+		return false;
+	}
+	if(GameClient()->m_Snap.m_SpecInfo.m_Active)
+	{
+		// Keep practice mode state, but don't replace predicted world while spectating.
+		m_PracticeWorldInitialized = false;
+		GameClient()->m_PredictedDummyId = -1;
 		return false;
 	}
 
@@ -1808,6 +1817,10 @@ bool CFastPractice::ExecutePracticeCommand(int Team, int LocalClientId, CCharact
 	if(Cmd == "tp" || Cmd == "teleport" || Cmd == "tc" || Cmd == "telecursor")
 	{
 		vec2 Target = GameClient()->m_Controls.m_aTargetPos[g_Config.m_ClDummy];
+		if(Cmd == "tc" || Cmd == "telecursor")
+		{
+			Target = (Target - GameClient()->m_Camera.m_Center) * GameClient()->m_Camera.m_Zoom + GameClient()->m_Camera.m_Center;
+		}
 		if(vArgs.size() > 1)
 		{
 			const int TargetId = FindClientByName(vArgs[1].c_str());

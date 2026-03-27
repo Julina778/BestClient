@@ -599,8 +599,8 @@ void CHud::RenderTextInfo()
 		const float Line2Size = 8.0f;
 		const float Line1X = m_Width / 2.0f - TextRender()->TextWidth(Line1Size, pLine1, -1, -1.0f) / 2.0f;
 		const float Line2X = m_Width / 2.0f - TextRender()->TextWidth(Line2Size, pLine2, -1, -1.0f) / 2.0f;
-		TextRender()->Text(Line1X, 2.0f, Line1Size, pLine1, -1.0f);
-		TextRender()->Text(Line2X, 13.0f, Line2Size, pLine2, -1.0f);
+		TextRender()->Text(Line1X, 34.0f, Line1Size, pLine1, -1.0f);
+		TextRender()->Text(Line2X, 45.0f, Line2Size, pLine2, -1.0f);
 	}
 
 	if(g_Config.m_TcMiniDebug)
