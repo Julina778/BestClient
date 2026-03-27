@@ -766,7 +766,7 @@ static void BestClientShopStartPreviewFetch(CMenus *pMenus)
 
 static void BestClientShopFinishPreviewFetch(CMenus *pMenus)
 {
-	if(!gs_BestClientShopState.m_pPreviewTask || gs_BestClientShopState.m_pPreviewTask->State() != EHttpState::DONE)
+	if(!gs_BestClientShopState.m_pPreviewTask || !gs_BestClientShopState.m_pPreviewTask->Done())
 	{
 		return;
 	}
@@ -775,6 +775,16 @@ static void BestClientShopFinishPreviewFetch(CMenus *pMenus)
 	const bool SamePage = gs_BestClientShopState.m_PreviewTab == gs_BestClientShopState.m_Tab &&
 		gs_BestClientShopState.m_PreviewPage == (BestClientShopHasActiveSearch() ? 1 : gs_BestClientShopState.m_aPages[gs_BestClientShopState.m_Tab]) &&
 		str_comp(gs_BestClientShopState.m_aPreviewSearch, gs_BestClientShopState.m_aAppliedSearch) == 0;
+
+	if(gs_BestClientShopState.m_pPreviewTask->State() != EHttpState::DONE)
+	{
+		if(pItem != nullptr)
+		{
+			pItem->m_PreviewFailed = true;
+		}
+		BestClientShopAbortPreviewTask();
+		return;
+	}
 
 	if(pItem != nullptr)
 	{
@@ -805,7 +815,7 @@ static void BestClientShopFinishPreviewFetch(CMenus *pMenus)
 
 static void BestClientShopFinishFetch(CMenus *pMenus)
 {
-	if(!gs_BestClientShopState.m_pFetchTask || gs_BestClientShopState.m_pFetchTask->State() != EHttpState::DONE)
+	if(!gs_BestClientShopState.m_pFetchTask || !gs_BestClientShopState.m_pFetchTask->Done())
 	{
 		return;
 	}
@@ -813,6 +823,22 @@ static void BestClientShopFinishFetch(CMenus *pMenus)
 	gs_BestClientShopState.m_LoadedTab = gs_BestClientShopState.m_FetchTab;
 	gs_BestClientShopState.m_LoadedPage = gs_BestClientShopState.m_FetchPage;
 	str_copy(gs_BestClientShopState.m_aLoadedSearch, gs_BestClientShopState.m_aFetchSearch, sizeof(gs_BestClientShopState.m_aLoadedSearch));
+
+	if(gs_BestClientShopState.m_pFetchTask->State() != EHttpState::DONE)
+	{
+		BestClientShopClearItems(pMenus);
+		gs_BestClientShopState.m_TotalPages = 1;
+		gs_BestClientShopState.m_TotalItems = 0;
+		if(gs_BestClientShopState.m_pFetchTask->StatusCode() > 0)
+		{
+			str_format(gs_BestClientShopState.m_aStatus, sizeof(gs_BestClientShopState.m_aStatus), "%s (%d)", TCLocalize("Shop request failed"), gs_BestClientShopState.m_pFetchTask->StatusCode());
+		}
+		else
+		{
+			BestClientShopSetStatus(TCLocalize("Shop request failed"));
+		}
+		return;
+	}
 
 	if(gs_BestClientShopState.m_pFetchTask->StatusCode() >= 400)
 	{
@@ -987,8 +1013,14 @@ static void BestClientShopRetryInstall(CMenus *pMenus)
 
 static void BestClientShopFinishInstall(CMenus *pMenus)
 {
-	if(!gs_BestClientShopState.m_pInstallTask || gs_BestClientShopState.m_pInstallTask->State() != EHttpState::DONE)
+	if(!gs_BestClientShopState.m_pInstallTask || !gs_BestClientShopState.m_pInstallTask->Done())
 	{
+		return;
+	}
+
+	if(gs_BestClientShopState.m_pInstallTask->State() != EHttpState::DONE)
+	{
+		BestClientShopRetryInstall(pMenus);
 		return;
 	}
 
