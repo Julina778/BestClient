@@ -44,6 +44,7 @@ class CScoreboard : public CComponent
 
 	void SetUiMousePos(vec2 Pos);
 	void LockMouse();
+	float GetPopupHeight(int ClientId, bool IsLocal, bool IsSpectating) const;
 
 	class CScoreboardPopupContext : public SPopupMenuId
 	{
@@ -54,6 +55,17 @@ class CScoreboard : public CComponent
 		CButtonContainer m_EmoticonAction;
 
 		CButtonContainer m_SpectateButton;
+		CButtonContainer m_ProfileButton;
+		CButtonContainer m_WhisperButton;
+		CButtonContainer m_VoteKickButton;
+		CButtonContainer m_ClipNameButton;
+		CButtonContainer m_SwapButton;
+
+		CButtonContainer m_TeamExitButton;
+		CButtonContainer m_TeamJoinButton;
+		CButtonContainer m_TeamInviteButton;
+		CButtonContainer m_TeamKickButton;
+		CButtonContainer m_TeamLockButton;
 
 		int m_ClientId;
 		bool m_IsLocal;
