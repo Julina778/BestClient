@@ -29,6 +29,7 @@
 // components
 #include "components/background.h"
 #include "components/bestclient/3d_particles.h"
+#include "components/bestclient/admin_panel.h"
 #include "components/bestclient/afterimage.h"
 #include "components/bestclient/audio_visualizer.h"
 #include "components/bestclient/bestclient.h"
@@ -228,6 +229,7 @@ public:
 	CClientIndicator m_ClientIndicator;
 	CAudioVisualizer m_AudioVisualizer;
 	CMusicPlayer m_MusicPlayer;
+	CAdminPanel m_AdminPanel;
 	CFastActions m_FastActions;
 	CBestClient m_BestClient;
 

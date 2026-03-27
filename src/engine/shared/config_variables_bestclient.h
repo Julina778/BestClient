@@ -81,6 +81,28 @@ MACRO_CONFIG_INT(BcSpeedrunTimerSeconds, bc_speedrun_timer_seconds, 0, 0, 59, CF
 MACRO_CONFIG_INT(BcSpeedrunTimerMilliseconds, bc_speedrun_timer_milliseconds, 0, 0, 999, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Speedrun timer milliseconds")
 MACRO_CONFIG_INT(BcSpeedrunTimerAutoDisable, bc_speedrun_timer_auto_disable, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Disable speedrun timer automatically when time ends")
 
+// Admin panel
+MACRO_CONFIG_INT(BcAdminPanelAutoScroll, bc_adminpanel_autoscroll, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Auto-scroll logs in admin panel")
+MACRO_CONFIG_INT(BcAdminPanelRememberTab, bc_adminpanel_remember_tab, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Remember last active admin panel tab")
+MACRO_CONFIG_INT(BcAdminPanelLastTab, bc_adminpanel_last_tab, 0, 0, 10, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Last active admin panel tab")
+MACRO_CONFIG_INT(BcAdminPanelDisableAnim, bc_adminpanel_disable_anim, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Disable admin panel animations")
+MACRO_CONFIG_INT(BcAdminPanelScale, bc_adminpanel_scale, 100, 80, 120, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Admin panel scale in percent")
+MACRO_CONFIG_INT(BcAdminPanelLogLines, bc_adminpanel_log_lines, 200, 50, 500, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Maximum lines to keep in admin panel logs")
+MACRO_CONFIG_COL(BcAdminPanelBgColor, bc_adminpanel_bg_color, 0x8C000000, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_COLALPHA, "Admin panel background color")
+MACRO_CONFIG_COL(BcAdminPanelTabInactiveColor, bc_adminpanel_tab_inactive_color, 0xCC00002E, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_COLALPHA, "Admin panel inactive tab color")
+MACRO_CONFIG_COL(BcAdminPanelTabActiveColor, bc_adminpanel_tab_active_color, 0xE6000052, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_COLALPHA, "Admin panel active tab color")
+MACRO_CONFIG_COL(BcAdminPanelTabHoverColor, bc_adminpanel_tab_hover_color, 0xE600003D, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_COLALPHA, "Admin panel hover tab color")
+MACRO_CONFIG_STR(BcAdminFastAction0, bc_admin_fast_action0, 96, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Admin panel fast action command slot 1")
+MACRO_CONFIG_STR(BcAdminFastAction1, bc_admin_fast_action1, 96, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Admin panel fast action command slot 2")
+MACRO_CONFIG_STR(BcAdminFastAction2, bc_admin_fast_action2, 96, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Admin panel fast action command slot 3")
+MACRO_CONFIG_STR(BcAdminFastAction3, bc_admin_fast_action3, 96, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Admin panel fast action command slot 4")
+MACRO_CONFIG_STR(BcAdminFastAction4, bc_admin_fast_action4, 96, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Admin panel fast action command slot 5")
+MACRO_CONFIG_STR(BcAdminFastAction5, bc_admin_fast_action5, 96, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Admin panel fast action command slot 6")
+MACRO_CONFIG_STR(BcAdminFastAction6, bc_admin_fast_action6, 96, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Admin panel fast action command slot 7")
+MACRO_CONFIG_STR(BcAdminFastAction7, bc_admin_fast_action7, 96, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Admin panel fast action command slot 8")
+MACRO_CONFIG_STR(BcAdminFastAction8, bc_admin_fast_action8, 96, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Admin panel fast action command slot 9")
+MACRO_CONFIG_STR(BcAdminFastAction9, bc_admin_fast_action9, 96, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Admin panel fast action command slot 10")
+
 // Music player
 MACRO_CONFIG_INT(BcMusicPlayer, bc_music_player, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable Music Player HUD element")
 MACRO_CONFIG_INT(BcMusicPlayerShowWhenPaused, bc_music_player_show_when_paused, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Keep Music Player visible while playback is paused")

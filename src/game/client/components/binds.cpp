@@ -323,6 +323,7 @@ void CBinds::SetDefaults()
 	Bind(KEY_F4, "vote no");
 
 	Bind(KEY_K, "kill");
+	Bind(KEY_J, "toggle_admin_panel");
 	Bind(KEY_Q, "say /spec");
 	Bind(KEY_P, "say /pause");
 

@@ -202,6 +202,7 @@ public:
 
 	void PrintLine(int Type, const char *pLine);
 	void RequireUsername(bool UsernameReq);
+	bool RconUsernameRequired() const { return m_RemoteConsole.m_UsernameReq; }
 
 	void OnStateChange(int NewState, int OldState) override;
 	void OnConsoleInit() override;

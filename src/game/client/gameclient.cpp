@@ -530,6 +530,7 @@ void CGameClient::OnConsoleInit()
 					      &m_Scoreboard,
 					      &m_Statboard,
 					      &m_Motd,
+					      &m_AdminPanel,
 					      &m_Menus,
 					      &m_Tooltips,
 					      &m_Scripting, // TClient
@@ -549,6 +550,7 @@ void CGameClient::OnConsoleInit()
 						  &m_BindWheel, // TClient
 						  &m_Emoticon,
 						  &m_ImportantAlert,
+						  &m_AdminPanel,
 						  &m_Menus,
 						  &m_Controls,
 						  &m_TouchControls,
@@ -1841,6 +1843,7 @@ void CGameClient::OnRconType(bool UsernameReq)
 void CGameClient::OnRconLine(const char *pLine)
 {
 	m_GameConsole.PrintLine(CGameConsole::CONSOLETYPE_REMOTE, pLine);
+	m_AdminPanel.OnRconLine(pLine);
 }
 
 void CGameClient::ProcessEvents()

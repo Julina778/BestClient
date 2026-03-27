@@ -2545,6 +2545,8 @@ if(CLIENT)
     components/background.h
     components/bestclient/3d_particles.cpp
     components/bestclient/3d_particles.h
+    components/bestclient/admin_panel.cpp
+    components/bestclient/admin_panel.h
     components/bestclient/afterimage.cpp
     components/bestclient/afterimage.h
     components/bestclient/audio_capture_device_score.cpp
