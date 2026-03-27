@@ -3388,6 +3388,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
 		BESTCLIENT_TAB_FUN,
+		BESTCLIENT_TAB_SHOP,
 		BESTCLIENT_TAB_INFO,
 		NUM_BESTCLIENT_TABS,
 	};
@@ -3402,6 +3403,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		"Gameplay",
 		Localize("Others"),
 		Localize("Fun"),
+		TCLocalize("Texture Shop"),
 		Localize("Info"),
 	};
 
@@ -4981,6 +4983,10 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		s_BestClientOthersScrollRegion.AddRect(ScrollRegion);
 		s_BestClientOthersScrollRegion.End();
 	}
+	else if(s_CurTab == BESTCLIENT_TAB_SHOP)
+	{
+		RenderSettingsBestClientShop(MainView);
+	}
 	else if(s_CurTab == BESTCLIENT_TAB_INFO)
 	{
 		RenderSettingsBestClientInfo(MainView);
@@ -4996,6 +5002,7 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
 		BESTCLIENT_TAB_FUN,
+		BESTCLIENT_TAB_SHOP,
 		BESTCLIENT_TAB_INFO,
 		NUM_BESTCLIENT_TABS,
 	};
@@ -5169,6 +5176,7 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 		"Gameplay",
 		Localize("Others"),
 		Localize("Fun"),
+		TCLocalize("Texture Shop"),
 		Localize("Info"),
 	};
 

@@ -2548,6 +2548,7 @@ if(CLIENT)
     components/bestclient/music_player.h
     components/bestclient/orbit_aura.cpp
     components/bestclient/orbit_aura.h
+    components/bestclient/menus_bestclient_shop.cpp
     components/bestclient/translate.cpp
     components/bestclient/translate.h
     components/bestclient/subsystem_runtime.h

@@ -60,6 +60,13 @@ public:
 	bool DoEditBoxWithLabel(CLineInput *LineInput, const CUIRect *pRect, const char *pLabel, const char *pDefault, char *pBuf, size_t BufSize);
 	bool DoLine_RadioMenu(CUIRect &View, const char *pLabel, std::vector<CButtonContainer> &vButtonContainers, const std::vector<const char *> &vLabels, const std::vector<int> &vValues, int &Value);
 	bool DoLine_KeyReader(CUIRect &View, CButtonContainer &ReaderButton, CButtonContainer &ClearButton, const char *pName, const char *pCommand);
+	IGraphics *MenuGraphics() const { return Graphics(); }
+	IStorage *MenuStorage() const { return Storage(); }
+	CGameClient *MenuGameClient() const { return GameClient(); }
+	CUi *MenuUi() const { return Ui(); }
+	IClient *MenuClient() const { return Client(); }
+	IHttp *MenuHttp() const { return Http(); }
+	void RefreshCustomAssetsTab(int CurTab) { ClearCustomItems(CurTab); }
 
 private:
 	CUi::SColorPickerPopupContext m_ColorPickerPopupContext;
@@ -886,6 +893,7 @@ private:
 	void RenderSettingsBestClient(CUIRect MainView);
 	void RenderSettingsBestClientInfo(CUIRect MainView);
 	void RenderSettingsBestClientFun(CUIRect MainView);
+	void RenderSettingsBestClientShop(CUIRect MainView);
 	void RenderSettingsAppearance(CUIRect MainView);
 
 	// found in menus_tclient.cpp
