@@ -407,6 +407,8 @@ void CPlayers::RenderHookCollLine(
 
 	float Alpha = GameClient()->IsOtherTeam(ClientId) ? g_Config.m_ClShowOthersAlpha / 100.0f : 1.0f;
 	Alpha *= (float)g_Config.m_ClHookCollAlpha / 100;
+	if(ClientId >= 0 && GameClient()->m_FastPractice.Enabled() && !GameClient()->m_FastPractice.IsPracticeParticipant(ClientId))
+		Alpha = std::min(Alpha, 0.5f);
 	if(Alpha <= 0.0f)
 		return;
 	ColorRGBA HookCollTipColor = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClHookCollTipColor, true));
@@ -491,6 +493,8 @@ void CPlayers::RenderHook(
 	float Alpha = (OtherTeam || ClientId < 0) ? g_Config.m_ClShowOthersAlpha / 100.0f : 1.0f;
 	if(ClientId == -2) // ghost
 		Alpha = g_Config.m_ClRaceGhostAlpha / 100.0f;
+	if(ClientId >= 0 && GameClient()->m_FastPractice.Enabled() && !GameClient()->m_FastPractice.IsPracticeParticipant(ClientId))
+		Alpha = std::min(Alpha, 0.5f);
 
 	RenderInfo.m_Size = 64.0f;
 
@@ -595,6 +599,8 @@ void CPlayers::RenderPlayer(
 
 	if(ClientId == -2) // ghost
 		Alpha = g_Config.m_ClRaceGhostAlpha / 100.0f;
+	if(ClientId >= 0 && GameClient()->m_FastPractice.Enabled() && !GameClient()->m_FastPractice.IsPracticeParticipant(ClientId))
+		Alpha = std::min(Alpha, 0.5f);
 	// TODO: snd_game_volume_others
 	const float Volume = 1.0f;
 
@@ -1666,6 +1672,8 @@ void CPlayers::OnRender()
 		{
 			Alpha = g_Config.m_ClRaceGhostAlpha / 100.f;
 		}
+		if(ClientId >= 0 && GameClient()->m_FastPractice.Enabled() && !GameClient()->m_FastPractice.IsPracticeParticipant(ClientId))
+			Alpha = std::min(Alpha, 0.5f);
 		RenderTools()->RenderTee(CAnimState::GetIdle(), &SpectatorTeeRenderInfo()->TeeRenderInfo(), EMOTE_BLINK, vec2(1, 0), Client.m_SpecChar, Alpha);
 	}
 

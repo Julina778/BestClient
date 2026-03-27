@@ -591,6 +591,17 @@ void CHud::RenderTextInfo()
 		str_format(aBuf, sizeof(aBuf), "%d", Client()->GetPredictionTime());
 		TextRender()->Text(m_Width - 10 - TextRender()->TextWidth(12, aBuf, -1, -1.0f), Showfps ? 20 : 5, 12, aBuf, -1.0f);
 	}
+	if(GameClient()->m_FastPractice.Enabled())
+	{
+		constexpr const char *pLine1 = "practice mode";
+		constexpr const char *pLine2 = "(you can use practice commands /tc /invincible)";
+		const float Line1Size = 10.0f;
+		const float Line2Size = 8.0f;
+		const float Line1X = m_Width / 2.0f - TextRender()->TextWidth(Line1Size, pLine1, -1, -1.0f) / 2.0f;
+		const float Line2X = m_Width / 2.0f - TextRender()->TextWidth(Line2Size, pLine2, -1, -1.0f) / 2.0f;
+		TextRender()->Text(Line1X, 2.0f, Line1Size, pLine1, -1.0f);
+		TextRender()->Text(Line2X, 13.0f, Line2Size, pLine2, -1.0f);
+	}
 
 	if(g_Config.m_TcMiniDebug)
 	{
@@ -1318,15 +1329,13 @@ void CHud::RenderPlayerState(const int ClientId)
 	{
 		y += 12;
 	}
-	const bool FastPracticeActive = GameClient()->m_FastPractice.Enabled() && GameClient()->m_FastPractice.IsPracticeParticipant(ClientId);
 	if(GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo && GameClient()->m_Snap.m_aCharacters[ClientId].m_ExtendedData.m_Flags & CHARACTERFLAG_LOCK_MODE)
 	{
 		Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudLockMode);
 		Graphics()->RenderQuadContainerAsSprite(m_HudQuadContainerIndex, m_LockModeOffset, x, y);
 		x += 12;
 	}
-	const bool PracticeModeFlag = GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo && (GameClient()->m_Snap.m_aCharacters[ClientId].m_ExtendedData.m_Flags & CHARACTERFLAG_PRACTICE_MODE);
-	if(PracticeModeFlag || FastPracticeActive)
+	if(GameClient()->m_Snap.m_aCharacters[ClientId].m_HasExtendedDisplayInfo && GameClient()->m_Snap.m_aCharacters[ClientId].m_ExtendedData.m_Flags & CHARACTERFLAG_PRACTICE_MODE)
 	{
 		Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudPracticeMode);
 		Graphics()->RenderQuadContainerAsSprite(m_HudQuadContainerIndex, m_PracticeModeOffset, x, y);
@@ -1348,10 +1357,6 @@ void CHud::RenderPlayerState(const int ClientId)
 	{
 		Graphics()->TextureSet(GameClient()->m_HudSkin.m_SpriteHudLiveFrozen);
 		Graphics()->RenderQuadContainerAsSprite(m_HudQuadContainerIndex, m_LiveFrozenOffset, x, y);
-	}
-	if(FastPracticeActive)
-	{
-		TextRender()->Text(x + 12.0f, y + 2.0f, 8.0f, Localize("Practice enabled"), -1.0f);
 	}
 }
 

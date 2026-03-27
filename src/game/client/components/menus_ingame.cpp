@@ -218,27 +218,14 @@ void CMenus::RenderGame(CUIRect MainView)
 	{
 		if(GameClient()->m_Snap.m_pLocalInfo->m_Team != TEAM_SPECTATORS || Paused || Spec)
 		{
-			ButtonBar.VSplitLeft((!Paused && !Spec) ? 65.0f : 120.0f, &Button, &ButtonBar);
+			ButtonBar.VSplitLeft(120.0f, &Button, &ButtonBar);
 			ButtonBar.VSplitLeft(5.0f, nullptr, &ButtonBar);
 
-			static CButtonContainer s_PauseButton;
-			if(DoButton_Menu(&s_PauseButton, (!Paused && !Spec) ? Localize("Pause") : Localize("Join game"), 0, &Button))
+			static CButtonContainer s_FastPracticeButton;
+			if(DoButton_Menu(&s_FastPracticeButton, GameClient()->m_FastPractice.Enabled() ? Localize("Stop practice") : Localize("Fast practice"), GameClient()->m_FastPractice.Enabled() ? 1 : 0, &Button))
 			{
-				Console()->ExecuteLine("say /pause", IConsole::CLIENT_ID_UNSPECIFIED);
-				SetActive(false);
+				Console()->ExecuteLine("fast_practice_toggle", IConsole::CLIENT_ID_UNSPECIFIED);
 			}
-		}
-	}
-
-	if(GameClient()->m_Snap.m_pLocalInfo)
-	{
-		ButtonBar.VSplitLeft(120.0f, &Button, &ButtonBar);
-		ButtonBar.VSplitLeft(5.0f, nullptr, &ButtonBar);
-		static CButtonContainer s_FastPracticeButton;
-		if(DoButton_Menu(&s_FastPracticeButton, Localize("Fast practice"), GameClient()->m_FastPractice.Enabled() ? 1 : 0, &Button))
-		{
-			Console()->ExecuteLine("fast_practice_toggle", IConsole::CLIENT_ID_UNSPECIFIED);
-			SetActive(false);
 		}
 	}
 

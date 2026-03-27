@@ -646,6 +646,12 @@ void CFastPractice::ResetPracticeToAnchor()
 		Disable();
 		return;
 	}
+	CaptureAnchorsFromSnapshot();
+	if(!m_MainAnchor.m_Valid || (m_RequireDummy && !m_HasDummyAnchor))
+	{
+		Disable();
+		return;
+	}
 
 	if(!ApplyAnchorToCharacter(m_PracticeBaseWorld, m_MainAnchor))
 	{
