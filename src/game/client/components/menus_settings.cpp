@@ -3701,6 +3701,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MAGIC_PARTICLES))
 		{
 			static float s_MagicParticlesPhase = 0.0f;
+			static CButtonContainer s_MagicParticlesResetButton;
 			const bool MagicParticlesEnabled = g_Config.m_BcMagicParticles != 0;
 			UpdateRevealPhase(s_MagicParticlesPhase, MagicParticlesEnabled);
 			const float ExpandedTargetHeight = 5.0f * LineSize;
@@ -3709,13 +3710,26 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, Localize("Magic Particles"), HeadlineFontSize, TEXTALIGN_ML);
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
+			ResetHitbox = ResetButton;
+			const bool MagicParticlesResetClicked = Ui()->DoButton_FontIcon(&s_MagicParticlesResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(&s_MagicParticlesResetButton, &ResetHitbox, Localize("Reset to defaults"));
+			if(MagicParticlesResetClicked)
+			{
+				g_Config.m_BcMagicParticlesCount = DefaultConfig::BcMagicParticlesCount;
+				g_Config.m_BcMagicParticlesRadius = DefaultConfig::BcMagicParticlesRadius;
+				g_Config.m_BcMagicParticlesSize = DefaultConfig::BcMagicParticlesSize;
+				g_Config.m_BcMagicParticlesAlphaDelay = DefaultConfig::BcMagicParticlesAlphaDelay;
+				g_Config.m_BcMagicParticlesType = DefaultConfig::BcMagicParticlesType;
+			}
+			Ui()->DoLabel(&TitleLabel, Localize("Magic Particles"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMagicParticles, Localize("Magic Particles"), &g_Config.m_BcMagicParticles, &Content, LineSize);
 
 			const float ExpandedHeight = ExpandedTargetHeight * s_MagicParticlesPhase;
-			if(ExpandedHeight > 0.0f)
+			if(!MagicParticlesResetClicked && ExpandedHeight > 0.0f)
 			{
 				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
 				Ui()->ClipEnable(&Visible);
@@ -3763,6 +3777,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		{
 			static float s_OrbitAuraPhase = 0.0f;
 			static float s_OrbitAuraIdlePhase = 0.0f;
+			static CButtonContainer s_OrbitAuraResetButton;
 			const bool OrbitEnabled = g_Config.m_BcOrbitAura != 0;
 			const bool OrbitIdleEnabled = OrbitEnabled && g_Config.m_BcOrbitAuraIdle != 0;
 			const float Dt = Client()->RenderFrameTime();
@@ -3783,13 +3798,27 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, Localize("Orbit Aura"), HeadlineFontSize, TEXTALIGN_ML);
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
+			ResetHitbox = ResetButton;
+			const bool OrbitAuraResetClicked = Ui()->DoButton_FontIcon(&s_OrbitAuraResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(&s_OrbitAuraResetButton, &ResetHitbox, Localize("Reset to defaults"));
+			if(OrbitAuraResetClicked)
+			{
+				g_Config.m_BcOrbitAuraRadius = DefaultConfig::BcOrbitAuraRadius;
+				g_Config.m_BcOrbitAuraParticles = DefaultConfig::BcOrbitAuraParticles;
+				g_Config.m_BcOrbitAuraAlpha = DefaultConfig::BcOrbitAuraAlpha;
+				g_Config.m_BcOrbitAuraSpeed = DefaultConfig::BcOrbitAuraSpeed;
+				g_Config.m_BcOrbitAuraIdle = DefaultConfig::BcOrbitAuraIdle;
+				g_Config.m_BcOrbitAuraIdleTimer = DefaultConfig::BcOrbitAuraIdleTimer;
+			}
+			Ui()->DoLabel(&TitleLabel, Localize("Orbit Aura"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcOrbitAura, Localize("Orbit Aura"), &g_Config.m_BcOrbitAura, &Content, LineSize);
 
 			const float OrbitExtraHeight = OrbitExtraTargetHeight * s_OrbitAuraPhase;
-			if(OrbitExtraHeight > 0.0f)
+			if(!OrbitAuraResetClicked && OrbitExtraHeight > 0.0f)
 			{
 				Content.HSplitTop(OrbitExtraHeight, &Visible, &Content);
 				Ui()->ClipEnable(&Visible);
@@ -3839,6 +3868,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			const float ColorPickerSpacing = 5.0f;
 			static float s_Bc3dParticlesPhase = 0.0f;
 			static float s_Bc3dParticlesGlowPhase = 0.0f;
+			static CButtonContainer s_3DParticlesResetButton;
 			const bool ParticlesEnabled = g_Config.m_Bc3dParticles != 0;
 			UpdateRevealPhase(s_Bc3dParticlesPhase, ParticlesEnabled);
 			const bool ShowCustomColor = ParticlesEnabled && g_Config.m_Bc3dParticlesColorMode == 1;
@@ -3855,13 +3885,39 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, Localize("3D Particles"), HeadlineFontSize, TEXTALIGN_ML);
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
+			ResetHitbox = ResetButton;
+			const bool Particles3DResetClicked = Ui()->DoButton_FontIcon(&s_3DParticlesResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(&s_3DParticlesResetButton, &ResetHitbox, Localize("Reset to defaults"));
+			if(Particles3DResetClicked)
+			{
+				g_Config.m_Bc3dParticlesType = DefaultConfig::Bc3dParticlesType;
+				g_Config.m_Bc3dParticlesCount = DefaultConfig::Bc3dParticlesCount;
+				g_Config.m_Bc3dParticlesSizeMin = DefaultConfig::Bc3dParticlesSizeMin;
+				g_Config.m_Bc3dParticlesSizeMax = DefaultConfig::Bc3dParticlesSizeMax;
+				g_Config.m_Bc3dParticlesSpeed = DefaultConfig::Bc3dParticlesSpeed;
+				g_Config.m_Bc3dParticlesDepth = DefaultConfig::Bc3dParticlesDepth;
+				g_Config.m_Bc3dParticlesAlpha = DefaultConfig::Bc3dParticlesAlpha;
+				g_Config.m_Bc3dParticlesFadeInMs = DefaultConfig::Bc3dParticlesFadeInMs;
+				g_Config.m_Bc3dParticlesFadeOutMs = DefaultConfig::Bc3dParticlesFadeOutMs;
+				g_Config.m_Bc3dParticlesPushRadius = DefaultConfig::Bc3dParticlesPushRadius;
+				g_Config.m_Bc3dParticlesPushStrength = DefaultConfig::Bc3dParticlesPushStrength;
+				g_Config.m_Bc3dParticlesCollide = DefaultConfig::Bc3dParticlesCollide;
+				g_Config.m_Bc3dParticlesViewMargin = DefaultConfig::Bc3dParticlesViewMargin;
+				g_Config.m_Bc3dParticlesColorMode = DefaultConfig::Bc3dParticlesColorMode;
+				g_Config.m_Bc3dParticlesColor = DefaultConfig::Bc3dParticlesColor;
+				g_Config.m_Bc3dParticlesGlow = DefaultConfig::Bc3dParticlesGlow;
+				g_Config.m_Bc3dParticlesGlowAlpha = DefaultConfig::Bc3dParticlesGlowAlpha;
+				g_Config.m_Bc3dParticlesGlowOffset = DefaultConfig::Bc3dParticlesGlowOffset;
+			}
+			Ui()->DoLabel(&TitleLabel, Localize("3D Particles"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_Bc3dParticles, Localize("3D Particles"), &g_Config.m_Bc3dParticles, &Content, LineSize);
 
 			const float ExpandedHeight = ExtraTargetHeight * s_Bc3dParticlesPhase;
-			if(ExpandedHeight > 0.0f)
+			if(!Particles3DResetClicked && ExpandedHeight > 0.0f)
 			{
 				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
 				Ui()->ClipEnable(&Visible);
@@ -4300,6 +4356,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CAMERA_DRIFT))
 		{
 			static float s_CameraDriftPhase = 0.0f;
+			static CButtonContainer s_CameraDriftResetButton;
 			const bool CameraDriftEnabled = g_Config.m_BcCameraDrift != 0;
 			UpdateRevealPhase(s_CameraDriftPhase, CameraDriftEnabled);
 			const float ExtraTargetHeight = 3.0f * LineSize;
@@ -4309,13 +4366,24 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, Localize("Camera Drift"), HeadlineFontSize, TEXTALIGN_ML);
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
+			ResetHitbox = ResetButton;
+			const bool CameraDriftResetClicked = Ui()->DoButton_FontIcon(&s_CameraDriftResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(&s_CameraDriftResetButton, &ResetHitbox, Localize("Reset to defaults"));
+			if(CameraDriftResetClicked)
+			{
+				g_Config.m_BcCameraDriftAmount = DefaultConfig::BcCameraDriftAmount;
+				g_Config.m_BcCameraDriftSmoothness = DefaultConfig::BcCameraDriftSmoothness;
+				g_Config.m_BcCameraDriftReverse = DefaultConfig::BcCameraDriftReverse;
+			}
+			Ui()->DoLabel(&TitleLabel, Localize("Camera Drift"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcCameraDrift, Localize("Camera Drift"), &g_Config.m_BcCameraDrift, &Content, LineSize);
 
 			const float ExtraHeight = ExtraTargetHeight * s_CameraDriftPhase;
-			if(ExtraHeight > 0.0f)
+			if(!CameraDriftResetClicked && ExtraHeight > 0.0f)
 			{
 				Content.HSplitTop(ExtraHeight, &Visible, &Content);
 				Ui()->ClipEnable(&Visible);
@@ -4361,6 +4429,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_DYNAMIC_FOV))
 		{
 			static float s_DynamicFovPhase = 0.0f;
+			static CButtonContainer s_DynamicFovResetButton;
 			const bool DynamicFovEnabled = g_Config.m_BcDynamicFov != 0;
 			UpdateRevealPhase(s_DynamicFovPhase, DynamicFovEnabled);
 			const float ExtraTargetHeight = 2.0f * LineSize;
@@ -4370,13 +4439,23 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, Localize("Dynamic FOV"), HeadlineFontSize, TEXTALIGN_ML);
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
+			ResetHitbox = ResetButton;
+			const bool DynamicFovResetClicked = Ui()->DoButton_FontIcon(&s_DynamicFovResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(&s_DynamicFovResetButton, &ResetHitbox, Localize("Reset to defaults"));
+			if(DynamicFovResetClicked)
+			{
+				g_Config.m_BcDynamicFovAmount = DefaultConfig::BcDynamicFovAmount;
+				g_Config.m_BcDynamicFovSmoothness = DefaultConfig::BcDynamicFovSmoothness;
+			}
+			Ui()->DoLabel(&TitleLabel, Localize("Dynamic FOV"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcDynamicFov, Localize("Dynamic FOV"), &g_Config.m_BcDynamicFov, &Content, LineSize);
 
 			const float ExtraHeight = ExtraTargetHeight * s_DynamicFovPhase;
-			if(ExtraHeight > 0.0f)
+			if(!DynamicFovResetClicked && ExtraHeight > 0.0f)
 			{
 				Content.HSplitTop(ExtraHeight, &Visible, &Content);
 				Ui()->ClipEnable(&Visible);
@@ -4409,6 +4488,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_AFTERIMAGE))
 		{
 			static float s_AfterimagePhase = 0.0f;
+			static CButtonContainer s_AfterimageResetButton;
 			const bool AfterimageEnabled = g_Config.m_BcAfterimage != 0;
 			UpdateRevealPhase(s_AfterimagePhase, AfterimageEnabled);
 			const float ExtraTargetHeight = 3.0f * LineSize;
@@ -4417,13 +4497,24 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, Localize("Afterimage"), HeadlineFontSize, TEXTALIGN_ML);
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
+			ResetHitbox = ResetButton;
+			const bool AfterimageResetClicked = Ui()->DoButton_FontIcon(&s_AfterimageResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(&s_AfterimageResetButton, &ResetHitbox, Localize("Reset to defaults"));
+			if(AfterimageResetClicked)
+			{
+				g_Config.m_BcAfterimageFrames = DefaultConfig::BcAfterimageFrames;
+				g_Config.m_BcAfterimageAlpha = DefaultConfig::BcAfterimageAlpha;
+				g_Config.m_BcAfterimageSpacing = DefaultConfig::BcAfterimageSpacing;
+			}
+			Ui()->DoLabel(&TitleLabel, Localize("Afterimage"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcAfterimage, Localize("Enable Afterimage"), &g_Config.m_BcAfterimage, &Content, LineSize);
 
 			const float ExtraHeight = ExtraTargetHeight * s_AfterimagePhase;
-			if(ExtraHeight > 0.0f)
+			if(!AfterimageResetClicked && ExtraHeight > 0.0f)
 			{
 				Content.HSplitTop(ExtraHeight, &Visible, &Content);
 				Ui()->ClipEnable(&Visible);
