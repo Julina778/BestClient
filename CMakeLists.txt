@@ -1207,6 +1207,65 @@ set(EXPECTED_DATA
   autoexec_server.cfg
   background_noise.png
   blob.png
+  BestClient/bc_icon.png
+  BestClient/builtinscripts/sayemoticon.chai
+  BestClient/combo/combo1.wv
+  BestClient/combo/combo2.wv
+  BestClient/combo/combo3.wv
+  BestClient/combo/combo4.wv
+  BestClient/combo/combo5.wv
+  BestClient/combo/combo6.wv
+  BestClient/combo/combo7.wv
+  BestClient/fonts/Cabin-Regular.ttf
+  BestClient/fonts/FreeSansBold.ttf
+  BestClient/fonts/GoogleSans-Regular.ttf
+  BestClient/fonts/Inter_24pt-Regular.ttf
+  BestClient/fonts/Inter_24pt-SemiBold.ttf
+  BestClient/fonts/minecraft_font.ttf
+  BestClient/fonts/Montserrat-Regular.ttf
+  BestClient/fonts/Nunito-Black.ttf
+  BestClient/fonts/Rubik-Regular.ttf
+  BestClient/gui_logo.png
+  BestClient/languages/arabic.txt
+  BestClient/languages/azerbaijani.txt
+  BestClient/languages/belarusian.txt
+  BestClient/languages/bosnian.txt
+  BestClient/languages/brazilian_portuguese.txt
+  BestClient/languages/bulgarian.txt
+  BestClient/languages/catalan.txt
+  BestClient/languages/chuvash.txt
+  BestClient/languages/czech.txt
+  BestClient/languages/danish.txt
+  BestClient/languages/dutch.txt
+  BestClient/languages/esperanto.txt
+  BestClient/languages/estonian.txt
+  BestClient/languages/finnish.txt
+  BestClient/languages/french.txt
+  BestClient/languages/galician.txt
+  BestClient/languages/german.txt
+  BestClient/languages/greek.txt
+  BestClient/languages/hungarian.txt
+  BestClient/languages/index.txt
+  BestClient/languages/italian.txt
+  BestClient/languages/japanese.txt
+  BestClient/languages/korean.txt
+  BestClient/languages/kyrgyz.txt
+  BestClient/languages/license.txt
+  BestClient/languages/norwegian.txt
+  BestClient/languages/persian.txt
+  BestClient/languages/polish.txt
+  BestClient/languages/portuguese.txt
+  BestClient/languages/romanian.txt
+  BestClient/languages/russian.txt
+  BestClient/languages/serbian.txt
+  BestClient/languages/serbian_cyrillic.txt
+  BestClient/languages/simplified_chinese.txt
+  BestClient/languages/slovak.txt
+  BestClient/languages/spanish.txt
+  BestClient/languages/swedish.txt
+  BestClient/languages/traditional_chinese.txt
+  BestClient/languages/turkish.txt
+  BestClient/languages/ukrainian.txt
   censorlist.txt
   communityicons/none.png
   countryflags/AD.png
