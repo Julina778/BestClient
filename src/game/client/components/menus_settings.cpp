@@ -4690,6 +4690,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_ANIMATIONS))
 		{
 			static float s_AnimationsBlockPhase = 0.0f;
+			static CButtonContainer s_AnimationsResetButton;
 			const bool AnimationsEnabled = g_Config.m_BcAnimations != 0;
 			const float Dt = Client()->RenderFrameTime();
 			const bool AnimateBlock = g_Config.m_BcModuleUiRevealAnimation != 0;
@@ -4704,13 +4705,35 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, Localize("Animations"), HeadlineFontSize, TEXTALIGN_ML);
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
+			ResetHitbox = ResetButton;
+			const bool AnimationsResetClicked = Ui()->DoButton_FontIcon(&s_AnimationsResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(&s_AnimationsResetButton, &ResetHitbox, Localize("Reset to defaults"));
+			if(AnimationsResetClicked)
+			{
+				g_Config.m_BcAnimations = DefaultConfig::BcAnimations;
+				g_Config.m_BcModuleUiRevealAnimation = DefaultConfig::BcModuleUiRevealAnimation;
+				g_Config.m_BcModuleUiRevealAnimationMs = DefaultConfig::BcModuleUiRevealAnimationMs;
+				g_Config.m_BcIngameMenuAnimation = DefaultConfig::BcIngameMenuAnimation;
+				g_Config.m_BcIngameMenuAnimationMs = DefaultConfig::BcIngameMenuAnimationMs;
+				g_Config.m_BcChatAnimation = DefaultConfig::BcChatAnimation;
+				g_Config.m_BcChatAnimationMs = DefaultConfig::BcChatAnimationMs;
+				g_Config.m_BcChatOpenAnimation = DefaultConfig::BcChatOpenAnimation;
+				g_Config.m_BcChatOpenAnimationMs = DefaultConfig::BcChatOpenAnimationMs;
+				g_Config.m_BcChatTypingAnimation = DefaultConfig::BcChatTypingAnimation;
+				g_Config.m_BcChatTypingAnimationMs = DefaultConfig::BcChatTypingAnimationMs;
+				g_Config.m_BcKillfeedAnimation = DefaultConfig::BcKillfeedAnimation;
+				g_Config.m_BcKillfeedAnimationMs = DefaultConfig::BcKillfeedAnimationMs;
+				g_Config.m_BcChatAnimationType = DefaultConfig::BcChatAnimationType;
+			}
+			Ui()->DoLabel(&TitleLabel, Localize("Animations"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcAnimations, Localize("Enable animations"), &g_Config.m_BcAnimations, &Content, LineSize);
 
 			const float ExpandedHeight = ExpandedTargetHeight * s_AnimationsBlockPhase;
-			if(ExpandedHeight > 0.0f)
+			if(!AnimationsResetClicked && ExpandedHeight > 0.0f)
 			{
 				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
 				Ui()->ClipEnable(&Visible);
