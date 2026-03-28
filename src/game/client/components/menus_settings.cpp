@@ -3663,6 +3663,67 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		CUIRect Column = LeftView;
 		Column.HSplitTop(10.0f, nullptr, &Column);
 
+		// Hook combo (left column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_HOOK_COMBO))
+		{
+			static float s_HookComboPhase = 0.0f;
+			const bool HookComboExpanded = g_Config.m_BcHookCombo != 0;
+			UpdateRevealPhase(s_HookComboPhase, HookComboExpanded);
+			const float ExpandedTargetHeight = MarginSmall + LineSize * 5.0f;
+			const float ExpandedHeight = ExpandedTargetHeight * s_HookComboPhase;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedHeight;
+			CUIRect Content, Label, Button, Visible;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Hook combo"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcHookCombo, Localize("Enable hook combo effect"), &g_Config.m_BcHookCombo, &Content, LineSize);
+			if(ExpandedHeight > 0.0f)
+			{
+				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExpandedTargetHeight};
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+
+				CUIRect ModeLabel, ModeRow;
+				Expand.HSplitTop(LineSize, &ModeLabel, &Expand);
+				Ui()->DoLabel(&ModeLabel, Localize("Mode"), 14.0f, TEXTALIGN_ML);
+
+				Expand.HSplitTop(LineSize, &ModeRow, &Expand);
+				CUIRect HookButton, HammerButton, HookHammerButton;
+				ModeRow.VSplitLeft(ModeRow.w / 3.0f, &HookButton, &ModeRow);
+				ModeRow.VSplitLeft(ModeRow.w / 2.0f, &HammerButton, &HookHammerButton);
+
+				static CButtonContainer s_HookComboModeHook;
+				static CButtonContainer s_HookComboModeHammer;
+				static CButtonContainer s_HookComboModeHookHammer;
+				if(DoButton_Menu(&s_HookComboModeHook, "hook", g_Config.m_BcHookComboMode == 0, &HookButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
+					g_Config.m_BcHookComboMode = 0;
+				if(DoButton_Menu(&s_HookComboModeHammer, "hammer", g_Config.m_BcHookComboMode == 1, &HammerButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
+					g_Config.m_BcHookComboMode = 1;
+				if(DoButton_Menu(&s_HookComboModeHookHammer, "hook&hammer", g_Config.m_BcHookComboMode == 2, &HookHammerButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
+					g_Config.m_BcHookComboMode = 2;
+
+				Expand.HSplitTop(LineSize, &Button, &Expand);
+				DoSliderWithScaledValue(&g_Config.m_BcHookComboResetTime, &g_Config.m_BcHookComboResetTime, &Button, Localize("Max time between hooks"), 100, 5000, 1, &CUi::ms_LinearScrollbarScale, CUi::SCROLLBAR_OPTION_NOCLAMPVALUE, "ms");
+
+				Expand.HSplitTop(LineSize, &Button, &Expand);
+				DoSliderWithScaledValue(&g_Config.m_BcHookComboSoundVolume, &g_Config.m_BcHookComboSoundVolume, &Button, Localize("Hook combo sound volume"), 0, 100, 1, &CUi::ms_LinearScrollbarScale, CUi::SCROLLBAR_OPTION_NOCLAMPVALUE, "%");
+
+				Expand.HSplitTop(LineSize, &Button, &Expand);
+				DoSliderWithScaledValue(&g_Config.m_BcHookComboSize, &g_Config.m_BcHookComboSize, &Button, Localize("Hook combo size"), 50, 200, 1, &CUi::ms_LinearScrollbarScale, CUi::SCROLLBAR_OPTION_NOCLAMPVALUE, "%");
+			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+
 		// Magic particles (left column block)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MAGIC_PARTICLES))
 		{
@@ -3734,94 +3795,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					Localize("Shell"),
 				};
 				g_Config.m_BcMagicParticlesType = Ui()->DoDropDown(&TypeSelect, g_Config.m_BcMagicParticlesType - 1, apMagicParticleTypes, (int)std::size(apMagicParticleTypes), s_MagicParticlesTypeState) + 1;
-			}
-			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-		}
-
-		// Orbit aura (left column block)
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_ORBIT_AURA))
-		{
-			static float s_OrbitAuraPhase = 0.0f;
-			static float s_OrbitAuraIdlePhase = 0.0f;
-			static CButtonContainer s_OrbitAuraResetButton;
-			const bool OrbitEnabled = g_Config.m_BcOrbitAura != 0;
-			const bool OrbitIdleEnabled = OrbitEnabled && g_Config.m_BcOrbitAuraIdle != 0;
-			const float Dt = Client()->RenderFrameTime();
-			if(ModuleUiRevealAnimationsEnabled())
-				BCUiAnimations::UpdatePhase(s_OrbitAuraPhase, OrbitEnabled ? 1.0f : 0.0f, Dt, ModuleUiRevealAnimationDuration());
-			else
-				s_OrbitAuraPhase = OrbitEnabled ? 1.0f : 0.0f;
-			if(BCUiAnimations::Enabled())
-				BCUiAnimations::UpdatePhase(s_OrbitAuraIdlePhase, OrbitIdleEnabled ? 1.0f : 0.0f, Dt, 0.16f);
-			else
-				s_OrbitAuraIdlePhase = OrbitIdleEnabled ? 1.0f : 0.0f;
-
-			const float OrbitIdleTargetHeight = 1.0f * LineSize;
-			const float OrbitBaseTargetHeight = 5.0f * LineSize;
-			const float OrbitExtraTargetHeight = OrbitBaseTargetHeight + OrbitIdleTargetHeight * s_OrbitAuraIdlePhase;
-			const float ContentHeight = LineSize + MarginSmall + LineSize + OrbitExtraTargetHeight * s_OrbitAuraPhase;
-			CUIRect Content, Label, Row, Visible;
-			BeginBlock(Column, ContentHeight, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			CUIRect TitleLabel, ResetButton, ResetHitbox;
-			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
-			ResetHitbox = ResetButton;
-			const bool OrbitAuraResetClicked = Ui()->DoButton_FontIcon(&s_OrbitAuraResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
-			GameClient()->m_Tooltips.DoToolTip(&s_OrbitAuraResetButton, &ResetHitbox, Localize("Reset to defaults"));
-			if(OrbitAuraResetClicked)
-			{
-				g_Config.m_BcOrbitAuraRadius = DefaultConfig::BcOrbitAuraRadius;
-				g_Config.m_BcOrbitAuraParticles = DefaultConfig::BcOrbitAuraParticles;
-				g_Config.m_BcOrbitAuraAlpha = DefaultConfig::BcOrbitAuraAlpha;
-				g_Config.m_BcOrbitAuraSpeed = DefaultConfig::BcOrbitAuraSpeed;
-				g_Config.m_BcOrbitAuraIdle = DefaultConfig::BcOrbitAuraIdle;
-				g_Config.m_BcOrbitAuraIdleTimer = DefaultConfig::BcOrbitAuraIdleTimer;
-			}
-			Ui()->DoLabel(&TitleLabel, Localize("Orbit Aura"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcOrbitAura, Localize("Orbit Aura"), &g_Config.m_BcOrbitAura, &Content, LineSize);
-
-			const float OrbitExtraHeight = OrbitExtraTargetHeight * s_OrbitAuraPhase;
-			if(!OrbitAuraResetClicked && OrbitExtraHeight > 0.0f)
-			{
-				Content.HSplitTop(OrbitExtraHeight, &Visible, &Content);
-				Ui()->ClipEnable(&Visible);
-				struct SScopedClip
-				{
-					CUi *m_pUi;
-					~SScopedClip() { m_pUi->ClipDisable(); }
-				} ClipGuard{Ui()};
-
-				CUIRect Expand = {Visible.x, Visible.y, Visible.w, OrbitExtraTargetHeight};
-
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcOrbitAuraIdle, Localize("Enable in idle mode"), &g_Config.m_BcOrbitAuraIdle, &Expand, LineSize);
-
-				const float OrbitIdleHeight = OrbitIdleTargetHeight * s_OrbitAuraIdlePhase;
-				if(OrbitIdleHeight > 0.0f)
-				{
-					CUIRect IdleVisible;
-					Expand.HSplitTop(OrbitIdleHeight, &IdleVisible, &Expand);
-					Ui()->ClipEnable(&IdleVisible);
-					SScopedClip IdleClipGuard{Ui()};
-
-					CUIRect IdleExpand = {IdleVisible.x, IdleVisible.y, IdleVisible.w, OrbitIdleTargetHeight};
-					IdleExpand.HSplitTop(LineSize, &Row, &IdleExpand);
-					Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraIdleTimer, &g_Config.m_BcOrbitAuraIdleTimer, &Row, Localize("Idle delay"), 1, 30);
-				}
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraRadius, &g_Config.m_BcOrbitAuraRadius, &Row, Localize("Aura radius"), 8, 200);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraParticles, &g_Config.m_BcOrbitAuraParticles, &Row, Localize("Particles"), 2, 120);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraAlpha, &g_Config.m_BcOrbitAuraAlpha, &Row, Localize("Aura alpha"), 0, 100);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraSpeed, &g_Config.m_BcOrbitAuraSpeed, &Row, Localize("Aura speed"), 10, 200);
 			}
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
@@ -3959,6 +3932,94 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					GlowExpand.HSplitTop(LineSize, &Row, &GlowExpand);
 					Ui()->DoScrollbarOption(&g_Config.m_Bc3dParticlesGlowOffset, &g_Config.m_Bc3dParticlesGlowOffset, &Row, Localize("Glow offset"), 1, 20);
 				}
+			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+
+		// Orbit aura (left column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_ORBIT_AURA))
+		{
+			static float s_OrbitAuraPhase = 0.0f;
+			static float s_OrbitAuraIdlePhase = 0.0f;
+			static CButtonContainer s_OrbitAuraResetButton;
+			const bool OrbitEnabled = g_Config.m_BcOrbitAura != 0;
+			const bool OrbitIdleEnabled = OrbitEnabled && g_Config.m_BcOrbitAuraIdle != 0;
+			const float Dt = Client()->RenderFrameTime();
+			if(ModuleUiRevealAnimationsEnabled())
+				BCUiAnimations::UpdatePhase(s_OrbitAuraPhase, OrbitEnabled ? 1.0f : 0.0f, Dt, ModuleUiRevealAnimationDuration());
+			else
+				s_OrbitAuraPhase = OrbitEnabled ? 1.0f : 0.0f;
+			if(BCUiAnimations::Enabled())
+				BCUiAnimations::UpdatePhase(s_OrbitAuraIdlePhase, OrbitIdleEnabled ? 1.0f : 0.0f, Dt, 0.16f);
+			else
+				s_OrbitAuraIdlePhase = OrbitIdleEnabled ? 1.0f : 0.0f;
+
+			const float OrbitIdleTargetHeight = 1.0f * LineSize;
+			const float OrbitBaseTargetHeight = 5.0f * LineSize;
+			const float OrbitExtraTargetHeight = OrbitBaseTargetHeight + OrbitIdleTargetHeight * s_OrbitAuraIdlePhase;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + OrbitExtraTargetHeight * s_OrbitAuraPhase;
+			CUIRect Content, Label, Row, Visible;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
+			ResetHitbox = ResetButton;
+			const bool OrbitAuraResetClicked = Ui()->DoButton_FontIcon(&s_OrbitAuraResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(&s_OrbitAuraResetButton, &ResetHitbox, Localize("Reset to defaults"));
+			if(OrbitAuraResetClicked)
+			{
+				g_Config.m_BcOrbitAuraRadius = DefaultConfig::BcOrbitAuraRadius;
+				g_Config.m_BcOrbitAuraParticles = DefaultConfig::BcOrbitAuraParticles;
+				g_Config.m_BcOrbitAuraAlpha = DefaultConfig::BcOrbitAuraAlpha;
+				g_Config.m_BcOrbitAuraSpeed = DefaultConfig::BcOrbitAuraSpeed;
+				g_Config.m_BcOrbitAuraIdle = DefaultConfig::BcOrbitAuraIdle;
+				g_Config.m_BcOrbitAuraIdleTimer = DefaultConfig::BcOrbitAuraIdleTimer;
+			}
+			Ui()->DoLabel(&TitleLabel, Localize("Orbit Aura"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcOrbitAura, Localize("Orbit Aura"), &g_Config.m_BcOrbitAura, &Content, LineSize);
+
+			const float OrbitExtraHeight = OrbitExtraTargetHeight * s_OrbitAuraPhase;
+			if(!OrbitAuraResetClicked && OrbitExtraHeight > 0.0f)
+			{
+				Content.HSplitTop(OrbitExtraHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, OrbitExtraTargetHeight};
+
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcOrbitAuraIdle, Localize("Enable in idle mode"), &g_Config.m_BcOrbitAuraIdle, &Expand, LineSize);
+
+				const float OrbitIdleHeight = OrbitIdleTargetHeight * s_OrbitAuraIdlePhase;
+				if(OrbitIdleHeight > 0.0f)
+				{
+					CUIRect IdleVisible;
+					Expand.HSplitTop(OrbitIdleHeight, &IdleVisible, &Expand);
+					Ui()->ClipEnable(&IdleVisible);
+					SScopedClip IdleClipGuard{Ui()};
+
+					CUIRect IdleExpand = {IdleVisible.x, IdleVisible.y, IdleVisible.w, OrbitIdleTargetHeight};
+					IdleExpand.HSplitTop(LineSize, &Row, &IdleExpand);
+					Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraIdleTimer, &g_Config.m_BcOrbitAuraIdleTimer, &Row, Localize("Idle delay"), 1, 30);
+				}
+
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraRadius, &g_Config.m_BcOrbitAuraRadius, &Row, Localize("Aura radius"), 8, 200);
+
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraParticles, &g_Config.m_BcOrbitAuraParticles, &Row, Localize("Particles"), 2, 120);
+
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraAlpha, &g_Config.m_BcOrbitAuraAlpha, &Row, Localize("Aura alpha"), 0, 100);
+
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraSpeed, &g_Config.m_BcOrbitAuraSpeed, &Row, Localize("Aura speed"), 10, 200);
 			}
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
@@ -4113,9 +4174,192 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
 
+		// Sweat Weapon (left column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CRYSTAL_LASER))
+		{
+			const float ContentHeight = LineSize + MarginSmall + LineSize + MarginSmall + LineSize + 58.0f + MarginSmall + LineSize + 58.0f;
+			CUIRect Content, Label, PreviewLabel, PreviewRect;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Sweat Weapon"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcCrystalLaser, Localize("Enable"), &g_Config.m_BcCrystalLaser, &Content, LineSize);
+
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+			Content.HSplitTop(LineSize, &PreviewLabel, &Content);
+			Ui()->DoLabel(&PreviewLabel, Localize("Crystal Laser"), 14.0f, TEXTALIGN_ML);
+			Content.HSplitTop(58.0f, &PreviewRect, &Content);
+			DoLaserPreview(&PreviewRect, ColorHSLA(g_Config.m_ClLaserRifleOutlineColor), ColorHSLA(g_Config.m_ClLaserRifleInnerColor), LASERTYPE_RIFLE);
+
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+			Content.HSplitTop(LineSize, &PreviewLabel, &Content);
+			Ui()->DoLabel(&PreviewLabel, Localize("Sand Shotgun"), 14.0f, TEXTALIGN_ML);
+			Content.HSplitTop(58.0f, &PreviewRect, &Content);
+			DoLaserPreview(&PreviewRect, ColorHSLA(g_Config.m_ClLaserShotgunOutlineColor), ColorHSLA(g_Config.m_ClLaserShotgunInnerColor), LASERTYPE_SHOTGUN);
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+
 		const float LeftColumnEndY = Column.y;
 		Column = RightView;
 		Column.HSplitTop(10.0f, nullptr, &Column);
+
+		// Animations (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_ANIMATIONS))
+		{
+			static float s_AnimationsBlockPhase = 0.0f;
+			static CButtonContainer s_AnimationsResetButton;
+			const bool AnimationsEnabled = g_Config.m_BcAnimations != 0;
+			const float Dt = Client()->RenderFrameTime();
+			const bool AnimateBlock = g_Config.m_BcModuleUiRevealAnimation != 0;
+			if(AnimateBlock)
+				BCUiAnimations::UpdatePhase(s_AnimationsBlockPhase, AnimationsEnabled ? 1.0f : 0.0f, Dt, ModuleUiRevealAnimationDuration());
+			else
+				s_AnimationsBlockPhase = AnimationsEnabled ? 1.0f : 0.0f;
+
+			const float ExpandedTargetHeight = 12.0f * LineSize;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedTargetHeight * s_AnimationsBlockPhase;
+			CUIRect Content, Label, Row, Visible;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
+			ResetHitbox = ResetButton;
+			const bool AnimationsResetClicked = Ui()->DoButton_FontIcon(&s_AnimationsResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(&s_AnimationsResetButton, &ResetHitbox, Localize("Reset to defaults"));
+			if(AnimationsResetClicked)
+			{
+				g_Config.m_BcAnimations = DefaultConfig::BcAnimations;
+				g_Config.m_BcModuleUiRevealAnimation = DefaultConfig::BcModuleUiRevealAnimation;
+				g_Config.m_BcModuleUiRevealAnimationMs = DefaultConfig::BcModuleUiRevealAnimationMs;
+				g_Config.m_BcIngameMenuAnimation = DefaultConfig::BcIngameMenuAnimation;
+				g_Config.m_BcIngameMenuAnimationMs = DefaultConfig::BcIngameMenuAnimationMs;
+				g_Config.m_BcChatAnimation = DefaultConfig::BcChatAnimation;
+				g_Config.m_BcChatAnimationMs = DefaultConfig::BcChatAnimationMs;
+				g_Config.m_BcChatOpenAnimation = DefaultConfig::BcChatOpenAnimation;
+				g_Config.m_BcChatOpenAnimationMs = DefaultConfig::BcChatOpenAnimationMs;
+				g_Config.m_BcChatTypingAnimation = DefaultConfig::BcChatTypingAnimation;
+				g_Config.m_BcChatTypingAnimationMs = DefaultConfig::BcChatTypingAnimationMs;
+				g_Config.m_BcKillfeedAnimation = DefaultConfig::BcKillfeedAnimation;
+				g_Config.m_BcKillfeedAnimationMs = DefaultConfig::BcKillfeedAnimationMs;
+				g_Config.m_BcChatAnimationType = DefaultConfig::BcChatAnimationType;
+			}
+			Ui()->DoLabel(&TitleLabel, Localize("Animations"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcAnimations, Localize("Enable animations"), &g_Config.m_BcAnimations, &Content, LineSize);
+
+			const float ExpandedHeight = ExpandedTargetHeight * s_AnimationsBlockPhase;
+			if(!AnimationsResetClicked && ExpandedHeight > 0.0f)
+			{
+				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExpandedTargetHeight};
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcModuleUiRevealAnimation, Localize("Module settings reveals"), &g_Config.m_BcModuleUiRevealAnimation, &Expand, LineSize);
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcModuleUiRevealAnimationMs, &g_Config.m_BcModuleUiRevealAnimationMs, &Row, Localize("Module reveal time (ms)"), 1, 500);
+
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcIngameMenuAnimation, Localize("ESC menu animation"), &g_Config.m_BcIngameMenuAnimation, &Expand, LineSize);
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcIngameMenuAnimationMs, &g_Config.m_BcIngameMenuAnimationMs, &Row, Localize("ESC menu animation time (ms)"), 1, 500);
+
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatAnimation, Localize("Chat message animations"), &g_Config.m_BcChatAnimation, &Expand, LineSize);
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcChatAnimationMs, &g_Config.m_BcChatAnimationMs, &Row, Localize("Chat message animation time (ms)"), 1, 500);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatOpenAnimation, Localize("Chat open animation"), &g_Config.m_BcChatOpenAnimation, &Expand, LineSize);
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcChatOpenAnimationMs, &g_Config.m_BcChatOpenAnimationMs, &Row, Localize("Chat open animation time (ms)"), 1, 500);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatTypingAnimation, Localize("Chat typing animation"), &g_Config.m_BcChatTypingAnimation, &Expand, LineSize);
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcChatTypingAnimationMs, &g_Config.m_BcChatTypingAnimationMs, &Row, Localize("Chat typing animation time (ms)"), 1, 500);
+
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcKillfeedAnimation, Localize("Killfeed animation"), &g_Config.m_BcKillfeedAnimation, &Expand, LineSize);
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcKillfeedAnimationMs, &g_Config.m_BcKillfeedAnimationMs, &Row, Localize("Killfeed animation time (ms)"), 1, 500);
+			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+
+		// Music player (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MUSIC_PLAYER))
+		{
+			const float ColorPickerLineSize = 25.0f;
+			const float ColorPickerLabelSize = 13.0f;
+			const float ColorPickerSpacing = 5.0f;
+			static float s_MusicPlayerPhase = 0.0f;
+			static float s_MusicPlayerStaticColorPhase = 0.0f;
+			const bool MusicPlayerEnabled = g_Config.m_BcMusicPlayer != 0;
+			const bool StaticColorOn = MusicPlayerEnabled && g_Config.m_BcMusicPlayerColorMode == 0;
+			UpdateRevealPhase(s_MusicPlayerPhase, MusicPlayerEnabled);
+			if(BCUiAnimations::Enabled())
+				BCUiAnimations::UpdatePhase(s_MusicPlayerStaticColorPhase, StaticColorOn ? 1.0f : 0.0f, Client()->RenderFrameTime(), 0.16f);
+			else
+				s_MusicPlayerStaticColorPhase = StaticColorOn ? 1.0f : 0.0f;
+
+			const float StaticColorTargetHeight = ColorPickerLineSize + ColorPickerSpacing;
+			const float ExtraTargetHeight = LineSize + StaticColorTargetHeight * s_MusicPlayerStaticColorPhase;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraTargetHeight * s_MusicPlayerPhase;
+			CUIRect Content, Label, Row, Visible;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Music Player"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMusicPlayer, Localize("Enable music player"), &g_Config.m_BcMusicPlayer, &Content, LineSize);
+
+			const float ExpandedHeight = ExtraTargetHeight * s_MusicPlayerPhase;
+			if(ExpandedHeight > 0.0f)
+			{
+				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExtraTargetHeight};
+
+				CUIRect ModeLabel, ModeDropDown;
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Row.VSplitLeft(120.0f, &ModeLabel, &ModeDropDown);
+				Ui()->DoLabel(&ModeLabel, Localize("Color mode"), 14.0f, TEXTALIGN_ML);
+
+				static CUi::SDropDownState s_MusicPlayerColorModeState;
+				static CScrollRegion s_MusicPlayerColorModeScrollRegion;
+				s_MusicPlayerColorModeState.m_SelectionPopupContext.m_pScrollRegion = &s_MusicPlayerColorModeScrollRegion;
+				const char *apMusicPlayerColorModes[3] = {
+					Localize("Static color"),
+					Localize("Cover accent color"),
+					Localize("Dominant cover color"),
+				};
+				g_Config.m_BcMusicPlayerColorMode = std::clamp(g_Config.m_BcMusicPlayerColorMode, 0, 2);
+				g_Config.m_BcMusicPlayerColorMode = Ui()->DoDropDown(&ModeDropDown, g_Config.m_BcMusicPlayerColorMode, apMusicPlayerColorModes, (int)std::size(apMusicPlayerColorModes), s_MusicPlayerColorModeState);
+
+				const float StaticColorHeight = StaticColorTargetHeight * s_MusicPlayerStaticColorPhase;
+				if(StaticColorHeight > 0.0f)
+				{
+					CUIRect StaticVisible;
+					Expand.HSplitTop(StaticColorHeight, &StaticVisible, &Expand);
+					Ui()->ClipEnable(&StaticVisible);
+					SScopedClip StaticClipGuard{Ui()};
+
+					CUIRect StaticExpand = {StaticVisible.x, StaticVisible.y, StaticVisible.w, StaticColorTargetHeight};
+					static CButtonContainer s_MusicPlayerStaticColorButton;
+					DoLine_ColorPicker(&s_MusicPlayerStaticColorButton, ColorPickerLineSize, ColorPickerLabelSize, ColorPickerSpacing, &StaticExpand, Localize("Static color"), &g_Config.m_BcMusicPlayerStaticColor, ColorRGBA(0.34f, 0.53f, 0.79f, 1.0f), false);
+				}
+			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
 
 		// Camera Drift (right column block)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CAMERA_DRIFT))
@@ -4299,189 +4543,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 				Expand.HSplitTop(LineSize, &Row, &Expand);
 				Ui()->DoScrollbarOption(&g_Config.m_BcAfterimageSpacing, &g_Config.m_BcAfterimageSpacing, &Row, Localize("Afterimage spacing"), 1, 64);
-			}
-			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-		}
-
-		// Sweat Weapon (right column block)
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CRYSTAL_LASER))
-		{
-			const float ContentHeight = LineSize + MarginSmall + LineSize + MarginSmall + LineSize + 58.0f + MarginSmall + LineSize + 58.0f;
-			CUIRect Content, Label, PreviewLabel, PreviewRect;
-			BeginBlock(Column, ContentHeight, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, Localize("Sweat Weapon"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcCrystalLaser, Localize("Enable"), &g_Config.m_BcCrystalLaser, &Content, LineSize);
-
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-			Content.HSplitTop(LineSize, &PreviewLabel, &Content);
-			Ui()->DoLabel(&PreviewLabel, Localize("Crystal Laser"), 14.0f, TEXTALIGN_ML);
-			Content.HSplitTop(58.0f, &PreviewRect, &Content);
-			DoLaserPreview(&PreviewRect, ColorHSLA(g_Config.m_ClLaserRifleOutlineColor), ColorHSLA(g_Config.m_ClLaserRifleInnerColor), LASERTYPE_RIFLE);
-
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-			Content.HSplitTop(LineSize, &PreviewLabel, &Content);
-			Ui()->DoLabel(&PreviewLabel, Localize("Sand Shotgun"), 14.0f, TEXTALIGN_ML);
-			Content.HSplitTop(58.0f, &PreviewRect, &Content);
-			DoLaserPreview(&PreviewRect, ColorHSLA(g_Config.m_ClLaserShotgunOutlineColor), ColorHSLA(g_Config.m_ClLaserShotgunInnerColor), LASERTYPE_SHOTGUN);
-			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-		}
-
-		// Music player (right column block)
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MUSIC_PLAYER))
-		{
-			const float ColorPickerLineSize = 25.0f;
-			const float ColorPickerLabelSize = 13.0f;
-			const float ColorPickerSpacing = 5.0f;
-			static float s_MusicPlayerPhase = 0.0f;
-			static float s_MusicPlayerStaticColorPhase = 0.0f;
-			const bool MusicPlayerEnabled = g_Config.m_BcMusicPlayer != 0;
-			const bool StaticColorOn = MusicPlayerEnabled && g_Config.m_BcMusicPlayerColorMode == 0;
-			UpdateRevealPhase(s_MusicPlayerPhase, MusicPlayerEnabled);
-			if(BCUiAnimations::Enabled())
-				BCUiAnimations::UpdatePhase(s_MusicPlayerStaticColorPhase, StaticColorOn ? 1.0f : 0.0f, Client()->RenderFrameTime(), 0.16f);
-			else
-				s_MusicPlayerStaticColorPhase = StaticColorOn ? 1.0f : 0.0f;
-
-			const float StaticColorTargetHeight = ColorPickerLineSize + ColorPickerSpacing;
-			const float ExtraTargetHeight = LineSize + StaticColorTargetHeight * s_MusicPlayerStaticColorPhase;
-			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraTargetHeight * s_MusicPlayerPhase;
-			CUIRect Content, Label, Row, Visible;
-			BeginBlock(Column, ContentHeight, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, Localize("Music Player"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMusicPlayer, Localize("Enable music player"), &g_Config.m_BcMusicPlayer, &Content, LineSize);
-
-			const float ExpandedHeight = ExtraTargetHeight * s_MusicPlayerPhase;
-			if(ExpandedHeight > 0.0f)
-			{
-				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
-				Ui()->ClipEnable(&Visible);
-				struct SScopedClip
-				{
-					CUi *m_pUi;
-					~SScopedClip() { m_pUi->ClipDisable(); }
-				} ClipGuard{Ui()};
-
-				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExtraTargetHeight};
-
-				CUIRect ModeLabel, ModeDropDown;
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Row.VSplitLeft(120.0f, &ModeLabel, &ModeDropDown);
-				Ui()->DoLabel(&ModeLabel, Localize("Color mode"), 14.0f, TEXTALIGN_ML);
-
-				static CUi::SDropDownState s_MusicPlayerColorModeState;
-				static CScrollRegion s_MusicPlayerColorModeScrollRegion;
-				s_MusicPlayerColorModeState.m_SelectionPopupContext.m_pScrollRegion = &s_MusicPlayerColorModeScrollRegion;
-				const char *apMusicPlayerColorModes[3] = {
-					Localize("Static color"),
-					Localize("Cover accent color"),
-					Localize("Dominant cover color"),
-				};
-				g_Config.m_BcMusicPlayerColorMode = std::clamp(g_Config.m_BcMusicPlayerColorMode, 0, 2);
-				g_Config.m_BcMusicPlayerColorMode = Ui()->DoDropDown(&ModeDropDown, g_Config.m_BcMusicPlayerColorMode, apMusicPlayerColorModes, (int)std::size(apMusicPlayerColorModes), s_MusicPlayerColorModeState);
-
-				const float StaticColorHeight = StaticColorTargetHeight * s_MusicPlayerStaticColorPhase;
-				if(StaticColorHeight > 0.0f)
-				{
-					CUIRect StaticVisible;
-					Expand.HSplitTop(StaticColorHeight, &StaticVisible, &Expand);
-					Ui()->ClipEnable(&StaticVisible);
-					SScopedClip StaticClipGuard{Ui()};
-
-					CUIRect StaticExpand = {StaticVisible.x, StaticVisible.y, StaticVisible.w, StaticColorTargetHeight};
-					static CButtonContainer s_MusicPlayerStaticColorButton;
-					DoLine_ColorPicker(&s_MusicPlayerStaticColorButton, ColorPickerLineSize, ColorPickerLabelSize, ColorPickerSpacing, &StaticExpand, Localize("Static color"), &g_Config.m_BcMusicPlayerStaticColor, ColorRGBA(0.34f, 0.53f, 0.79f, 1.0f), false);
-				}
-			}
-			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-		}
-
-		// Animations (right column block)
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_ANIMATIONS))
-		{
-			static float s_AnimationsBlockPhase = 0.0f;
-			static CButtonContainer s_AnimationsResetButton;
-			const bool AnimationsEnabled = g_Config.m_BcAnimations != 0;
-			const float Dt = Client()->RenderFrameTime();
-			const bool AnimateBlock = g_Config.m_BcModuleUiRevealAnimation != 0;
-			if(AnimateBlock)
-				BCUiAnimations::UpdatePhase(s_AnimationsBlockPhase, AnimationsEnabled ? 1.0f : 0.0f, Dt, ModuleUiRevealAnimationDuration());
-			else
-				s_AnimationsBlockPhase = AnimationsEnabled ? 1.0f : 0.0f;
-
-			const float ExpandedTargetHeight = 12.0f * LineSize;
-			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedTargetHeight * s_AnimationsBlockPhase;
-			CUIRect Content, Label, Row, Visible;
-			BeginBlock(Column, ContentHeight, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			CUIRect TitleLabel, ResetButton, ResetHitbox;
-			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
-			ResetHitbox = ResetButton;
-			const bool AnimationsResetClicked = Ui()->DoButton_FontIcon(&s_AnimationsResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
-			GameClient()->m_Tooltips.DoToolTip(&s_AnimationsResetButton, &ResetHitbox, Localize("Reset to defaults"));
-			if(AnimationsResetClicked)
-			{
-				g_Config.m_BcAnimations = DefaultConfig::BcAnimations;
-				g_Config.m_BcModuleUiRevealAnimation = DefaultConfig::BcModuleUiRevealAnimation;
-				g_Config.m_BcModuleUiRevealAnimationMs = DefaultConfig::BcModuleUiRevealAnimationMs;
-				g_Config.m_BcIngameMenuAnimation = DefaultConfig::BcIngameMenuAnimation;
-				g_Config.m_BcIngameMenuAnimationMs = DefaultConfig::BcIngameMenuAnimationMs;
-				g_Config.m_BcChatAnimation = DefaultConfig::BcChatAnimation;
-				g_Config.m_BcChatAnimationMs = DefaultConfig::BcChatAnimationMs;
-				g_Config.m_BcChatOpenAnimation = DefaultConfig::BcChatOpenAnimation;
-				g_Config.m_BcChatOpenAnimationMs = DefaultConfig::BcChatOpenAnimationMs;
-				g_Config.m_BcChatTypingAnimation = DefaultConfig::BcChatTypingAnimation;
-				g_Config.m_BcChatTypingAnimationMs = DefaultConfig::BcChatTypingAnimationMs;
-				g_Config.m_BcKillfeedAnimation = DefaultConfig::BcKillfeedAnimation;
-				g_Config.m_BcKillfeedAnimationMs = DefaultConfig::BcKillfeedAnimationMs;
-				g_Config.m_BcChatAnimationType = DefaultConfig::BcChatAnimationType;
-			}
-			Ui()->DoLabel(&TitleLabel, Localize("Animations"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcAnimations, Localize("Enable animations"), &g_Config.m_BcAnimations, &Content, LineSize);
-
-			const float ExpandedHeight = ExpandedTargetHeight * s_AnimationsBlockPhase;
-			if(!AnimationsResetClicked && ExpandedHeight > 0.0f)
-			{
-				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
-				Ui()->ClipEnable(&Visible);
-				struct SScopedClip
-				{
-					CUi *m_pUi;
-					~SScopedClip() { m_pUi->ClipDisable(); }
-				} ClipGuard{Ui()};
-
-				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExpandedTargetHeight};
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcModuleUiRevealAnimation, Localize("Module settings reveals"), &g_Config.m_BcModuleUiRevealAnimation, &Expand, LineSize);
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcModuleUiRevealAnimationMs, &g_Config.m_BcModuleUiRevealAnimationMs, &Row, Localize("Module reveal time (ms)"), 1, 500);
-
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcIngameMenuAnimation, Localize("ESC menu animation"), &g_Config.m_BcIngameMenuAnimation, &Expand, LineSize);
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcIngameMenuAnimationMs, &g_Config.m_BcIngameMenuAnimationMs, &Row, Localize("ESC menu animation time (ms)"), 1, 500);
-
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatAnimation, Localize("Chat message animations"), &g_Config.m_BcChatAnimation, &Expand, LineSize);
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcChatAnimationMs, &g_Config.m_BcChatAnimationMs, &Row, Localize("Chat message animation time (ms)"), 1, 500);
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatOpenAnimation, Localize("Chat open animation"), &g_Config.m_BcChatOpenAnimation, &Expand, LineSize);
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcChatOpenAnimationMs, &g_Config.m_BcChatOpenAnimationMs, &Row, Localize("Chat open animation time (ms)"), 1, 500);
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatTypingAnimation, Localize("Chat typing animation"), &g_Config.m_BcChatTypingAnimation, &Expand, LineSize);
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcChatTypingAnimationMs, &g_Config.m_BcChatTypingAnimationMs, &Row, Localize("Chat typing animation time (ms)"), 1, 500);
-
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcKillfeedAnimation, Localize("Killfeed animation"), &g_Config.m_BcKillfeedAnimation, &Expand, LineSize);
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcKillfeedAnimationMs, &g_Config.m_BcKillfeedAnimationMs, &Row, Localize("Killfeed animation time (ms)"), 1, 500);
 			}
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
@@ -4676,66 +4737,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				s_CustomPendingDirty = false;
 				s_CustomPendingAspectValue = -1;
 				s_LastAppliedAspectValue = -1;
-			}
-		}
-
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_HOOK_COMBO))
-		{
-			static float s_HookComboPhase = 0.0f;
-			const bool HookComboExpanded = g_Config.m_BcHookCombo != 0;
-			UpdateRevealPhase(s_HookComboPhase, HookComboExpanded);
-			const float ExpandedTargetHeight = MarginSmall + LineSize * 5.0f;
-			const float ExpandedHeight = ExpandedTargetHeight * s_HookComboPhase;
-			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedHeight;
-			CUIRect Content, Label, Button, Visible;
-			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-			BeginBlock(Column, ContentHeight, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, Localize("Hook combo"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcHookCombo, Localize("Enable hook combo effect"), &g_Config.m_BcHookCombo, &Content, LineSize);
-			if(ExpandedHeight > 0.0f)
-			{
-				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
-				Ui()->ClipEnable(&Visible);
-				struct SScopedClip
-				{
-					CUi *m_pUi;
-					~SScopedClip() { m_pUi->ClipDisable(); }
-				} ClipGuard{Ui()};
-
-				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExpandedTargetHeight};
-				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
-
-				CUIRect ModeLabel, ModeRow;
-				Expand.HSplitTop(LineSize, &ModeLabel, &Expand);
-				Ui()->DoLabel(&ModeLabel, Localize("Mode"), 14.0f, TEXTALIGN_ML);
-
-				Expand.HSplitTop(LineSize, &ModeRow, &Expand);
-				CUIRect HookButton, HammerButton, HookHammerButton;
-				ModeRow.VSplitLeft(ModeRow.w / 3.0f, &HookButton, &ModeRow);
-				ModeRow.VSplitLeft(ModeRow.w / 2.0f, &HammerButton, &HookHammerButton);
-
-				static CButtonContainer s_HookComboModeHook;
-				static CButtonContainer s_HookComboModeHammer;
-				static CButtonContainer s_HookComboModeHookHammer;
-				if(DoButton_Menu(&s_HookComboModeHook, "hook", g_Config.m_BcHookComboMode == 0, &HookButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
-					g_Config.m_BcHookComboMode = 0;
-				if(DoButton_Menu(&s_HookComboModeHammer, "hammer", g_Config.m_BcHookComboMode == 1, &HammerButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
-					g_Config.m_BcHookComboMode = 1;
-				if(DoButton_Menu(&s_HookComboModeHookHammer, "hook&hammer", g_Config.m_BcHookComboMode == 2, &HookHammerButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
-					g_Config.m_BcHookComboMode = 2;
-
-				Expand.HSplitTop(LineSize, &Button, &Expand);
-				DoSliderWithScaledValue(&g_Config.m_BcHookComboResetTime, &g_Config.m_BcHookComboResetTime, &Button, Localize("Max time between hooks"), 100, 5000, 1, &CUi::ms_LinearScrollbarScale, CUi::SCROLLBAR_OPTION_NOCLAMPVALUE, "ms");
-
-				Expand.HSplitTop(LineSize, &Button, &Expand);
-				DoSliderWithScaledValue(&g_Config.m_BcHookComboSoundVolume, &g_Config.m_BcHookComboSoundVolume, &Button, Localize("Hook combo sound volume"), 0, 100, 1, &CUi::ms_LinearScrollbarScale, CUi::SCROLLBAR_OPTION_NOCLAMPVALUE, "%");
-
-				Expand.HSplitTop(LineSize, &Button, &Expand);
-				DoSliderWithScaledValue(&g_Config.m_BcHookComboSize, &g_Config.m_BcHookComboSize, &Button, Localize("Hook combo size"), 50, 200, 1, &CUi::ms_LinearScrollbarScale, CUi::SCROLLBAR_OPTION_NOCLAMPVALUE, "%");
 			}
 		}
 
