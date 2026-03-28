@@ -4567,7 +4567,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClFocusMode, Localize("Enable Focus Mode"), &g_Config.m_ClFocusMode, &Content, LineSize);
 			static CButtonContainer s_FocusModeBindReader;
 			static CButtonContainer s_FocusModeBindClear;
-			DoLine_KeyReader(Content, s_FocusModeBindReader, s_FocusModeBindClear, Localize("Focus mode bind"), "toggle p_focus_mode 0 1");
 
 			const float CurHeight = TargetHeight * s_FocusModePhase;
 			if(CurHeight > 0.0f)
@@ -4589,6 +4588,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClFocusModeHideChat, Localize("Hide Chat"), &g_Config.m_ClFocusModeHideChat, &Expand, LineSize);
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClFocusModeHideScoreboard, Localize("Hide Scoreboard"), &g_Config.m_ClFocusModeHideScoreboard, &Expand, LineSize);
 			}
+
+			DoLine_KeyReader(Content, s_FocusModeBindReader, s_FocusModeBindClear, Localize("Focus mode bind"), "toggle p_focus_mode 0 1");
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
 
