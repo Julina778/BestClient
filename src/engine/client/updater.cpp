@@ -327,7 +327,9 @@ bool CUpdater::ParseReleaseTask()
 		return false;
 	}
 
-	if(CompareVersionStrings(m_aLatestVersion, BESTCLIENT_VERSION) <= 0)
+	// Treat any tag difference as an available update:
+	// this also allows updating when an existing release tag was changed.
+	if(str_comp(m_aLatestVersion, BESTCLIENT_VERSION) == 0)
 	{
 		SetStatus("No new release found");
 		SetCurrentState(IUpdater::CLEAN);

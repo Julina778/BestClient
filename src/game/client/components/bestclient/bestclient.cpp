@@ -699,7 +699,8 @@ void CBestClient::FinishBestClientInfo()
 
 	const char *pCurrentVersion = FindBestClientReleaseVersion(pJson);
 
-	if(pCurrentVersion && CompareBestClientVersions(pCurrentVersion, BESTCLIENT_VERSION) > 0)
+	// Treat any tag difference as an available update.
+	if(pCurrentVersion && str_comp(pCurrentVersion, BESTCLIENT_VERSION) != 0)
 		str_copy(m_aVersionStr, pCurrentVersion, sizeof(m_aVersionStr));
 	else
 	{
