@@ -99,6 +99,13 @@ void CAfterimage::OnStateChange(int NewState, int OldState)
 
 void CAfterimage::OnRender()
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_AFTERIMAGE))
+	{
+		if(!m_vGhostSamples.empty() || m_HasLastRenderInfo)
+			ResetState();
+		return;
+	}
+
 	int LocalClientId = -1;
 	if(!CanSampleAfterimage(LocalClientId))
 	{

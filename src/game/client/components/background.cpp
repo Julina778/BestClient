@@ -105,9 +105,10 @@ void CBackground::OnRender()
 		return;
 	}
 
-	m_MediaBackground.SyncFromConfig(g_Config.m_BcGameMediaBackground, g_Config.m_BcMenuMediaBackgroundPath);
+	const bool MediaBackgroundDisabled = GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MEDIA_BACKGROUND);
+	m_MediaBackground.SyncFromConfig(MediaBackgroundDisabled ? 0 : g_Config.m_BcGameMediaBackground, g_Config.m_BcMenuMediaBackgroundPath);
 	m_MediaBackground.Update();
-	if(g_Config.m_BcGameMediaBackground)
+	if(!MediaBackgroundDisabled && g_Config.m_BcGameMediaBackground)
 	{
 		float ViewWidth = 0.0f;
 		float ViewHeight = 0.0f;

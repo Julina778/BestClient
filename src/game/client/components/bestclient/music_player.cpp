@@ -2392,6 +2392,9 @@ bool CMusicPlayer::GetNowPlayingInfo(SNowPlayingInfo &Out) const
 
 void CMusicPlayer::OnUpdate()
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MUSIC_PLAYER))
+		return;
+
 	EnsureImpl();
 	const int64_t Now = time_get();
 	if(m_pImpl->m_LastPollTick == 0 || Now - m_pImpl->m_LastPollTick >= time_freq() / 8)
@@ -2421,6 +2424,9 @@ void CMusicPlayer::OnUpdate()
 
 void CMusicPlayer::OnRender()
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MUSIC_PLAYER))
+		return;
+
 	if(Client()->State() != IClient::STATE_ONLINE && Client()->State() != IClient::STATE_DEMOPLAYBACK)
 		return;
 	if(!m_pImpl)

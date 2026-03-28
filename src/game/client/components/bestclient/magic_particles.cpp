@@ -48,6 +48,9 @@ void CMagicParticles::OnReset()
 
 void CMagicParticles::OnRender()
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MAGIC_PARTICLES))
+		return;
+
 	int Count = 0;
 	int Type = 0;
 	float Radius = 0.0f;

@@ -255,7 +255,7 @@ void CControls::GoresMode()
 	// if turning off kog mode and it was on before, rebind to previous bind
 	if(!GameClient()->m_Snap.m_pLocalCharacter)
 		return;
-	if(!g_Config.m_BcGoresMode)
+	if(!g_Config.m_BcGoresMode || GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_GORES_MODE))
 		return;
 
 	CCharacterCore Core = GameClient()->m_PredictedPrevChar;

@@ -502,7 +502,7 @@ void CItems::RenderLaser(const CLaserData *pCurrent, bool IsPredicted)
 void CItems::RenderLaser(vec2 From, vec2 Pos, ColorRGBA OuterColor, ColorRGBA InnerColor, float TicksBody, float TicksHead, int Type) const
 {
 	float Len = distance(Pos, From);
-	const bool CrystalLaser = UseCrystalLaser(Type);
+	const bool CrystalLaser = !GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CRYSTAL_LASER) && UseCrystalLaser(Type);
 	float CrystalBodyScale = 1.0f;
 	float CrystalHeadScale = 1.0f;
 	SCrystalLaserGeometry CrystalGeometry;

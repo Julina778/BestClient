@@ -55,6 +55,78 @@ static bool IsBestClientTabFlagSet(int32_t Flags, int Tab)
 	return (Flags & (1 << Tab)) != 0;
 }
 
+enum
+{
+	COMPONENTS_GROUP_VISUALS = 0,
+	COMPONENTS_GROUP_GAMEPLAY,
+	COMPONENTS_GROUP_OTHERS,
+	COMPONENTS_GROUP_TCLIENT,
+	NUM_COMPONENTS_GROUPS,
+};
+
+struct SBestClientComponentEntry
+{
+	CBestClient::EBestClientComponent m_Component;
+	const char *m_pName;
+	int m_Group;
+};
+
+static const SBestClientComponentEntry gs_aBestClientComponentEntries[] = {
+	{CBestClient::COMPONENT_VISUALS_MUSIC_PLAYER, "Music Player", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_CAVA, "Cava", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_CRYSTAL_LASER, "Crystal Laser", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_MEDIA_BACKGROUND, "Media Background", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_MAGIC_PARTICLES, "Magic Particles", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_ORBIT_AURA, "Orbit Aura", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_OPTIMIZER, "Optimizer", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_ANIMATIONS, "Animations", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_CAMERA_DRIFT, "Camera Drift", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_DYNAMIC_FOV, "Dynamic FOV", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_AFTERIMAGE, "Afterimage", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_FOCUS_MODE, "Focus Mode", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_CHAT_BUBBLES, "Chat Bubbles", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_3D_PARTICLES, "3D Particles", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_ASPECT_RATIO, "Aspect Ratio", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_GAMEPLAY_INPUT, "Input", COMPONENTS_GROUP_GAMEPLAY},
+	{CBestClient::COMPONENT_GAMEPLAY_FAST_ACTIONS, "Fast Actions", COMPONENTS_GROUP_GAMEPLAY},
+	{CBestClient::COMPONENT_GAMEPLAY_SPEEDRUN_TIMER, "Speedrun Timer", COMPONENTS_GROUP_GAMEPLAY},
+	{CBestClient::COMPONENT_GAMEPLAY_AUTO_TEAM_LOCK, "Auto Team Lock", COMPONENTS_GROUP_GAMEPLAY},
+	{CBestClient::COMPONENT_GAMEPLAY_GORES_MODE, "Gores Mode", COMPONENTS_GROUP_GAMEPLAY},
+	{CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR, "Client Indicator", COMPONENTS_GROUP_OTHERS},
+	{CBestClient::COMPONENT_TCLIENT_SETTINGS_TAB, "Settings tab", COMPONENTS_GROUP_TCLIENT},
+	{CBestClient::COMPONENT_TCLIENT_BIND_WHEEL_TAB, "Bind wheel tab", COMPONENTS_GROUP_TCLIENT},
+	{CBestClient::COMPONENT_TCLIENT_WAR_LIST_TAB, "War list tab", COMPONENTS_GROUP_TCLIENT},
+	{CBestClient::COMPONENT_TCLIENT_CHAT_BINDS_TAB, "Chat binds tab", COMPONENTS_GROUP_TCLIENT},
+	{CBestClient::COMPONENT_TCLIENT_STATUS_BAR_TAB, "Status bar tab", COMPONENTS_GROUP_TCLIENT},
+	{CBestClient::COMPONENT_TCLIENT_INFO_TAB, "Info tab", COMPONENTS_GROUP_TCLIENT},
+	{CBestClient::COMPONENT_TCLIENT_PROFILES_PAGE, "Profiles page", COMPONENTS_GROUP_TCLIENT},
+	{CBestClient::COMPONENT_TCLIENT_CONFIGS_PAGE, "Configs page", COMPONENTS_GROUP_TCLIENT},
+};
+
+static bool ComponentsEditorIsDisabled(int Component, int MaskLo, int MaskHi)
+{
+	return CBestClient::IsComponentDisabledByMask(Component, MaskLo, MaskHi);
+}
+
+static void ComponentsEditorSetDisabled(int Component, int &MaskLo, int &MaskHi, bool Disabled)
+{
+	if(Component < 0 || Component >= CBestClient::NUM_COMPONENTS_EDITOR_COMPONENTS)
+		return;
+
+	int *pMask = &MaskLo;
+	int Bit = Component;
+	if(Component >= 31)
+	{
+		pMask = &MaskHi;
+		Bit = Component - 31;
+	}
+
+	if(Disabled)
+		*pMask |= (1 << Bit);
+	else
+		*pMask &= ~(1 << Bit);
+}
+
 void CMenus::RenderSettingsGeneral(CUIRect MainView)
 {
 	char aBuf[128 + IO_MAX_PATH_LENGTH];
@@ -1577,6 +1649,12 @@ bool CMenus::RenderLanguageSelection(CUIRect MainView)
 
 void CMenus::RenderSettings(CUIRect MainView)
 {
+	const bool BestClientPageVisible = g_Config.m_UiSettingsPage == SETTINGS_BESTCLIENT;
+	if(!BestClientPageVisible && (m_AssetsEditorState.m_VisualsEditorOpen || m_AssetsEditorState.m_VisualsEditorInitialized))
+		m_AssetsEditorState.m_VisualsEditorOpen = false;
+	if(!BestClientPageVisible && m_ComponentsEditorState.m_Open)
+		ComponentsEditorCloseNow();
+
 	if(g_Config.m_UiSettingsPage == SETTINGS_BESTCLIENT && m_AssetsEditorState.m_VisualsEditorOpen && m_AssetsEditorState.m_FullscreenOpen)
 	{
 		RenderSettingsBestClient(MainView);
@@ -1656,12 +1734,18 @@ void CMenus::RenderSettings(CUIRect MainView)
 		else if(g_Config.m_UiSettingsPage == SETTINGS_PROFILES)
 		{
 			GameClient()->m_MenuBackground.ChangePosition(14);
-			RenderSettingsTClientProfiles(PageView);
+			if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_TCLIENT_PROFILES_PAGE))
+				g_Config.m_UiSettingsPage = SETTINGS_TCLIENT;
+			else
+				RenderSettingsTClientProfiles(PageView);
 		}
 		else if(g_Config.m_UiSettingsPage == SETTINGS_CONFIGS)
 		{
 			GameClient()->m_MenuBackground.ChangePosition(15);
-			RenderSettingsTClientConfigs(PageView);
+			if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_TCLIENT_CONFIGS_PAGE))
+				g_Config.m_UiSettingsPage = SETTINGS_TCLIENT;
+			else
+				RenderSettingsTClientConfigs(PageView);
 		}
 		else
 		{
@@ -3559,10 +3643,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			static CButtonContainer s_OpenComponentsEditorButton;
 			MainView.HSplitTop(LineSize + 4.0f, &Button, &MainView);
 			if(DoButton_Menu(&s_OpenComponentsEditorButton, Localize("Components editor"), 0, &Button))
-			{
-				m_ComponentsEditorState.m_Open = true;
-				m_ComponentsEditorState.m_FullscreenOpen = true;
-			}
+				ComponentsEditorOpen();
 
 			return;
 		}
@@ -3649,6 +3730,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Magic particles (left column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MAGIC_PARTICLES))
 		{
 			static float s_MagicParticlesPhase = 0.0f;
 			const bool MagicParticlesEnabled = g_Config.m_BcMagicParticles != 0;
@@ -3705,10 +3787,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				};
 				g_Config.m_BcMagicParticlesType = Ui()->DoDropDown(&TypeSelect, g_Config.m_BcMagicParticlesType - 1, apMagicParticleTypes, (int)std::size(apMagicParticleTypes), s_MagicParticlesTypeState) + 1;
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Orbit aura (left column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_ORBIT_AURA))
 		{
 			static float s_OrbitAuraPhase = 0.0f;
 			static float s_OrbitAuraIdlePhase = 0.0f;
@@ -3777,10 +3860,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				Expand.HSplitTop(LineSize, &Row, &Expand);
 				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraSpeed, &g_Config.m_BcOrbitAuraSpeed, &Row, Localize("Aura speed"), 10, 200);
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// 3D particles (left column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_3D_PARTICLES))
 		{
 			const float ColorPickerLineSize = 25.0f;
 			const float ColorPickerLabelSize = 13.0f;
@@ -3886,10 +3970,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					Ui()->DoScrollbarOption(&g_Config.m_Bc3dParticlesGlowOffset, &g_Config.m_Bc3dParticlesGlowOffset, &Row, Localize("Glow offset"), 1, 20);
 				}
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Media background (left column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MEDIA_BACKGROUND))
 		{
 			const float ContentHeight = LineSize + MarginSmall + 7.0f * LineSize + MarginSmall;
 			CUIRect Content, Label, Row;
@@ -4035,8 +4120,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				TextRender()->TextColor(ColorRGBA(0.55f, 1.0f, 0.55f, 1.0f));
 			Ui()->DoLabel(&Row, m_MenuMediaBackground.StatusText(), 11.0f, TEXTALIGN_ML);
 			TextRender()->TextColor(TextRender()->DefaultTextColor());
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Chat media (left column block)
 		{
@@ -4093,6 +4178,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Chat bubbles (left column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CHAT_BUBBLES))
 		{
 			static float s_BcChatBubblesPhase = 0.0f;
 			const bool ChatBubblesEnabled = g_Config.m_BcChatBubbles != 0;
@@ -4140,6 +4226,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		Column.HSplitTop(10.0f, nullptr, &Column);
 
 		// Optimizer (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_OPTIMIZER))
 		{
 			static float s_OptimizerPhase = 0.0f;
 			static float s_OptimizerFogPhase = 0.0f;
@@ -4219,10 +4306,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 						Ui()->DoScrollbarOption(&g_Config.m_BcOptimizerFpsFogZoomPercent, &g_Config.m_BcOptimizerFpsFogZoomPercent, &Row, Localize("Visible area (%)"), 10, 100, &CUi::ms_LinearScrollbarScale, 0, "%");
 				}
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Camera Drift (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CAMERA_DRIFT))
 		{
 			static float s_CameraDriftPhase = 0.0f;
 			const bool CameraDriftEnabled = g_Config.m_BcCameraDrift != 0;
@@ -4277,10 +4365,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				if(DoButton_CheckBox(&s_CameraDriftBackwardButton, Localize("Backward"), g_Config.m_BcCameraDriftReverse, &DirectionBackward))
 					g_Config.m_BcCameraDriftReverse = 1;
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Dynamic FOV (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_DYNAMIC_FOV))
 		{
 			static float s_DynamicFovPhase = 0.0f;
 			const bool DynamicFovEnabled = g_Config.m_BcDynamicFov != 0;
@@ -4322,10 +4411,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				Expand.HSplitTop(LineSize, &Row, &Expand);
 				Ui()->DoScrollbarOption(&g_Config.m_BcDynamicFovSmoothness, &g_Config.m_BcDynamicFovSmoothness, &Row, Localize("Dynamic FOV smoothness"), 1, 20);
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Afterimage (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_AFTERIMAGE))
 		{
 			static float s_AfterimagePhase = 0.0f;
 			const bool AfterimageEnabled = g_Config.m_BcAfterimage != 0;
@@ -4363,10 +4453,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				Expand.HSplitTop(LineSize, &Row, &Expand);
 				Ui()->DoScrollbarOption(&g_Config.m_BcAfterimageSpacing, &g_Config.m_BcAfterimageSpacing, &Row, Localize("Afterimage spacing"), 1, 64);
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Sweat Weapon (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CRYSTAL_LASER))
 		{
 			const float ContentHeight = LineSize + MarginSmall + LineSize + MarginSmall + LineSize + 58.0f + MarginSmall + LineSize + 58.0f;
 			CUIRect Content, Label, PreviewLabel, PreviewRect;
@@ -4389,10 +4480,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			Ui()->DoLabel(&PreviewLabel, Localize("Sand Shotgun"), 14.0f, TEXTALIGN_ML);
 			Content.HSplitTop(58.0f, &PreviewRect, &Content);
 			DoLaserPreview(&PreviewRect, ColorHSLA(g_Config.m_ClLaserShotgunOutlineColor), ColorHSLA(g_Config.m_ClLaserShotgunInnerColor), LASERTYPE_SHOTGUN);
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Music player (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MUSIC_PLAYER))
 		{
 			const float ColorPickerLineSize = 25.0f;
 			const float ColorPickerLabelSize = 13.0f;
@@ -4460,10 +4552,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					DoLine_ColorPicker(&s_MusicPlayerStaticColorButton, ColorPickerLineSize, ColorPickerLabelSize, ColorPickerSpacing, &StaticExpand, Localize("Static color"), &g_Config.m_BcMusicPlayerStaticColor, ColorRGBA(0.34f, 0.53f, 0.79f, 1.0f), false);
 				}
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Focus mode (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_FOCUS_MODE))
 		{
 			static float s_FocusModePhase = 0.0f;
 			const bool Enabled = g_Config.m_ClFocusMode != 0;
@@ -4500,10 +4593,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClFocusModeHideChat, Localize("Hide Chat"), &g_Config.m_ClFocusModeHideChat, &Expand, LineSize);
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClFocusModeHideScoreboard, Localize("Hide Scoreboard"), &g_Config.m_ClFocusModeHideScoreboard, &Expand, LineSize);
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Animations (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_ANIMATIONS))
 		{
 			static float s_AnimationsBlockPhase = 0.0f;
 			const bool AnimationsEnabled = g_Config.m_BcAnimations != 0;
@@ -4559,10 +4653,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				Expand.HSplitTop(LineSize, &Row, &Expand);
 				Ui()->DoScrollbarOption(&g_Config.m_BcKillfeedAnimationMs, &g_Config.m_BcKillfeedAnimationMs, &Row, Localize("Killfeed animation time (ms)"), 1, 500);
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		// Aspect ratio (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_ASPECT_RATIO))
 		{
 			const int AspectMode = g_Config.m_BcCustomAspectRatioMode >= 0 ? g_Config.m_BcCustomAspectRatioMode : (g_Config.m_BcCustomAspectRatio > 0 ? 1 : 0);
 			const bool IsCustomMode = AspectMode == 2;
@@ -4727,6 +4822,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 		CUIRect Column = LeftView;
 		Column.HSplitTop(10.0f, nullptr, &Column);
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_INPUT))
 		{
 			static float s_FastInputPhase = 0.0f;
 			static float s_SnapTapPhase = 0.0f;
@@ -4899,8 +4995,9 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				Value = (int)(Min + NewRel * (Max - Min) + 0.5f);
 				g_Config.m_BcSnapTapDelay = std::clamp(Value, Min, Max);
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_FAST_ACTIONS))
 		{
 			static char s_aBindCommand[FAST_ACTIONS_MAX_CMD] = "";
 			static int s_SelectedBindIndex = 0;
@@ -5024,6 +5121,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		Column = RightView;
 		Column.HSplitTop(10.0f, nullptr, &Column);
 
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_SPEEDRUN_TIMER))
 		{
 			static float s_SpeedrunPhase = 0.0f;
 			const bool SpeedrunExpanded = g_Config.m_BcSpeedrunTimer != 0;
@@ -5088,6 +5186,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			g_Config.m_BcSpeedrunTimerTime = g_Config.m_BcSpeedrunTimerMinutes * 100 + g_Config.m_BcSpeedrunTimerSeconds;
 		}
 
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_AUTO_TEAM_LOCK))
 		{
 			static float s_AutoTeamLockPhase = 0.0f;
 			const bool AutoTeamLockExpanded = g_Config.m_BcAutoTeamLock != 0;
@@ -5121,6 +5220,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			}
 		}
 
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_GORES_MODE))
 		{
 			static float s_GoresModePhase = 0.0f;
 			const bool GoresModeExpanded = g_Config.m_BcGoresMode != 0;
@@ -5213,35 +5313,38 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		Column.VSplitRight(8.0f, &Column, nullptr);
 		Column.HSplitTop(10.0f, nullptr, &Column);
 
-		const bool ShowNamePlateSettings = g_Config.m_BcClientIndicatorInNamePlate != 0;
-		const bool ShowScoreboardSettings = g_Config.m_BcClientIndicatorInScoreboard != 0;
-		const float NamePlateSettingsHeight = ShowNamePlateSettings ? 2.0f * LineSize : 0.0f;
-		const float ScoreboardSettingsHeight = ShowScoreboardSettings ? LineSize : 0.0f;
-		const float ContentHeight = LineSize + MarginSmall + 3.0f * LineSize + NamePlateSettingsHeight + ScoreboardSettingsHeight;
-
-		CUIRect Content, Label, Row;
-		BeginBlock(Column, ContentHeight, Content);
-
-		Content.HSplitTop(LineSize, &Label, &Content);
-		Ui()->DoLabel(&Label, Localize("Client Indicator"), HeadlineFontSize, TEXTALIGN_ML);
-		Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicator, Localize("Enable client indicator"), &g_Config.m_BcClientIndicator, &Content, LineSize);
-		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicatorInNamePlate, Localize("Show indicator in name plates"), &g_Config.m_BcClientIndicatorInNamePlate, &Content, LineSize);
-
-		if(g_Config.m_BcClientIndicatorInNamePlate)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR))
 		{
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicatorInNamePlateAboveSelf, Localize("Show above yourself"), &g_Config.m_BcClientIndicatorInNamePlateAboveSelf, &Content, LineSize);
+			const bool ShowNamePlateSettings = g_Config.m_BcClientIndicatorInNamePlate != 0;
+			const bool ShowScoreboardSettings = g_Config.m_BcClientIndicatorInScoreboard != 0;
+			const float NamePlateSettingsHeight = ShowNamePlateSettings ? 2.0f * LineSize : 0.0f;
+			const float ScoreboardSettingsHeight = ShowScoreboardSettings ? LineSize : 0.0f;
+			const float ContentHeight = LineSize + MarginSmall + 3.0f * LineSize + NamePlateSettingsHeight + ScoreboardSettingsHeight;
 
-			Content.HSplitTop(LineSize, &Row, &Content);
-			Ui()->DoScrollbarOption(&g_Config.m_BcClientIndicatorInNamePlateSize, &g_Config.m_BcClientIndicatorInNamePlateSize, &Row, Localize("Name plate indicator size"), -50, 100);
-		}
+			CUIRect Content, Label, Row;
+			BeginBlock(Column, ContentHeight, Content);
 
-		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicatorInScoreboard, Localize("Show indicator in scoreboard"), &g_Config.m_BcClientIndicatorInScoreboard, &Content, LineSize);
-		if(g_Config.m_BcClientIndicatorInScoreboard)
-		{
-			Content.HSplitTop(LineSize, &Row, &Content);
-			Ui()->DoScrollbarOption(&g_Config.m_BcClientIndicatorInSoreboardSize, &g_Config.m_BcClientIndicatorInSoreboardSize, &Row, Localize("Scoreboard indicator size"), -50, 100);
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Client Indicator"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicator, Localize("Enable client indicator"), &g_Config.m_BcClientIndicator, &Content, LineSize);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicatorInNamePlate, Localize("Show indicator in name plates"), &g_Config.m_BcClientIndicatorInNamePlate, &Content, LineSize);
+
+			if(g_Config.m_BcClientIndicatorInNamePlate)
+			{
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicatorInNamePlateAboveSelf, Localize("Show above yourself"), &g_Config.m_BcClientIndicatorInNamePlateAboveSelf, &Content, LineSize);
+
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcClientIndicatorInNamePlateSize, &g_Config.m_BcClientIndicatorInNamePlateSize, &Row, Localize("Name plate indicator size"), -50, 100);
+			}
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcClientIndicatorInScoreboard, Localize("Show indicator in scoreboard"), &g_Config.m_BcClientIndicatorInScoreboard, &Content, LineSize);
+			if(g_Config.m_BcClientIndicatorInScoreboard)
+			{
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcClientIndicatorInSoreboardSize, &g_Config.m_BcClientIndicatorInSoreboardSize, &Row, Localize("Scoreboard indicator size"), -50, 100);
+			}
 		}
 
 		CUIRect ScrollRegion;
@@ -5263,86 +5366,280 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 }
 
+void CMenus::ComponentsEditorSyncFromConfig()
+{
+	m_ComponentsEditorState.m_AppliedMaskLo = g_Config.m_BcDisabledComponentsMaskLo;
+	m_ComponentsEditorState.m_AppliedMaskHi = g_Config.m_BcDisabledComponentsMaskHi;
+	m_ComponentsEditorState.m_StagedMaskLo = m_ComponentsEditorState.m_AppliedMaskLo;
+	m_ComponentsEditorState.m_StagedMaskHi = m_ComponentsEditorState.m_AppliedMaskHi;
+	m_ComponentsEditorState.m_HasUnsavedChanges = false;
+}
+
+void CMenus::ComponentsEditorOpen()
+{
+	ComponentsEditorSyncFromConfig();
+	m_ComponentsEditorState.m_Open = true;
+	m_ComponentsEditorState.m_FullscreenOpen = true;
+	m_ComponentsEditorState.m_ShowExitConfirm = false;
+	m_ComponentsEditorState.m_ShowRestartConfirm = false;
+}
+
+void CMenus::ComponentsEditorRequestClose()
+{
+	if(m_ComponentsEditorState.m_HasUnsavedChanges)
+	{
+		m_ComponentsEditorState.m_ShowExitConfirm = true;
+		return;
+	}
+	ComponentsEditorCloseNow();
+}
+
+void CMenus::ComponentsEditorCloseNow()
+{
+	m_ComponentsEditorState.m_Open = false;
+	m_ComponentsEditorState.m_ShowExitConfirm = false;
+	m_ComponentsEditorState.m_ShowRestartConfirm = false;
+	m_ComponentsEditorState.m_HasUnsavedChanges = false;
+	ComponentsEditorSyncFromConfig();
+}
+
+void CMenus::ComponentsEditorApply()
+{
+	g_Config.m_BcDisabledComponentsMaskLo = m_ComponentsEditorState.m_StagedMaskLo;
+	g_Config.m_BcDisabledComponentsMaskHi = m_ComponentsEditorState.m_StagedMaskHi;
+	m_ComponentsEditorState.m_AppliedMaskLo = m_ComponentsEditorState.m_StagedMaskLo;
+	m_ComponentsEditorState.m_AppliedMaskHi = m_ComponentsEditorState.m_StagedMaskHi;
+	m_ComponentsEditorState.m_HasUnsavedChanges = false;
+	m_ComponentsEditorState.m_ShowExitConfirm = false;
+	m_ComponentsEditorState.m_ShowRestartConfirm = true;
+}
+
+void CMenus::ComponentsEditorRenderExitConfirm(const CUIRect &Rect)
+{
+	const float FontSize = 14.0f;
+	const float LineSize = 20.0f;
+	const float MarginSmall = 5.0f;
+
+	CUIRect Overlay = Rect;
+	Overlay.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.6f), IGraphics::CORNER_ALL, 0.0f);
+
+	CUIRect Box;
+	Box.w = minimum(520.0f, Rect.w - 30.0f);
+	Box.h = 130.0f;
+	Box.x = Rect.x + (Rect.w - Box.w) * 0.5f;
+	Box.y = Rect.y + (Rect.h - Box.h) * 0.5f;
+	Box.Draw(ColorRGBA(0.1f, 0.1f, 0.1f, 0.95f), IGraphics::CORNER_ALL, 8.0f);
+
+	CUIRect Title, Message, Buttons;
+	Box.Margin(10.0f, &Box);
+	Box.HSplitTop(LineSize + 4.0f, &Title, &Box);
+	Box.HSplitTop(LineSize, &Message, &Box);
+	Box.HSplitBottom(LineSize + 4.0f, &Box, &Buttons);
+
+	Ui()->DoLabel(&Title, Localize("Cancel all changes?"), FontSize * 1.1f, TEXTALIGN_ML);
+	Ui()->DoLabel(&Message, Localize("All staged component changes will be lost."), FontSize, TEXTALIGN_ML);
+
+	CUIRect YesButton, NoButton;
+	Buttons.VSplitMid(&YesButton, &NoButton, MarginSmall);
+	static CButtonContainer s_YesButton;
+	static CButtonContainer s_NoButton;
+	if(DoButton_Menu(&s_YesButton, Localize("Yes"), 0, &YesButton))
+		ComponentsEditorCloseNow();
+	if(DoButton_Menu(&s_NoButton, Localize("No"), 0, &NoButton) || Ui()->ConsumeHotkey(CUi::HOTKEY_ESCAPE))
+		m_ComponentsEditorState.m_ShowExitConfirm = false;
+}
+
+void CMenus::ComponentsEditorRenderRestartConfirm(const CUIRect &Rect)
+{
+	const float FontSize = 14.0f;
+	const float LineSize = 20.0f;
+	const float MarginSmall = 5.0f;
+
+	CUIRect Overlay = Rect;
+	Overlay.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.6f), IGraphics::CORNER_ALL, 0.0f);
+
+	CUIRect Box;
+	Box.w = minimum(560.0f, Rect.w - 30.0f);
+	Box.h = 140.0f;
+	Box.x = Rect.x + (Rect.w - Box.w) * 0.5f;
+	Box.y = Rect.y + (Rect.h - Box.h) * 0.5f;
+	Box.Draw(ColorRGBA(0.1f, 0.1f, 0.1f, 0.95f), IGraphics::CORNER_ALL, 8.0f);
+
+	CUIRect Title, Message, Buttons;
+	Box.Margin(10.0f, &Box);
+	Box.HSplitTop(LineSize + 4.0f, &Title, &Box);
+	Box.HSplitTop(LineSize * 2.0f, &Message, &Box);
+	Box.HSplitBottom(LineSize + 4.0f, &Box, &Buttons);
+
+	Ui()->DoLabel(&Title, Localize("Restart"), FontSize * 1.1f, TEXTALIGN_ML);
+	Ui()->DoLabel(&Message, Localize("Restart client now so component changes fully apply?"), FontSize, TEXTALIGN_ML);
+
+	CUIRect YesButton, NoButton;
+	Buttons.VSplitMid(&YesButton, &NoButton, MarginSmall);
+	static CButtonContainer s_RestartYesButton;
+	static CButtonContainer s_RestartNoButton;
+	if(DoButton_Menu(&s_RestartYesButton, Localize("Yes"), 0, &YesButton))
+	{
+		m_ComponentsEditorState.m_ShowRestartConfirm = false;
+		m_ComponentsEditorState.m_Open = false;
+		if(Client()->State() == IClient::STATE_ONLINE || GameClient()->Editor()->HasUnsavedData())
+			m_Popup = POPUP_RESTART;
+		else
+			Client()->Restart();
+	}
+	if(DoButton_Menu(&s_RestartNoButton, Localize("No"), 0, &NoButton) || Ui()->ConsumeHotkey(CUi::HOTKEY_ESCAPE))
+	{
+		m_ComponentsEditorState.m_ShowRestartConfirm = false;
+		m_ComponentsEditorState.m_Open = false;
+	}
+}
+
 void CMenus::RenderComponentsEditorScreen(CUIRect MainView)
 {
+	const float FontSize = 14.0f;
+	const float LineSize = 20.0f;
+	const float HeadlineFontSize = 20.0f;
+	const float MarginSmall = 5.0f;
+
 	if(m_ComponentsEditorState.m_FullscreenOpen)
 		MainView = *Ui()->Screen();
 
-	CUIRect EditorRect = MainView;
-	EditorRect.Margin(8.0f, &EditorRect);
-	EditorRect.Draw(ColorRGBA(0.10f, 0.11f, 0.15f, 1.0f), IGraphics::CORNER_ALL, 8.0f);
-	Ui()->ClipEnable(&EditorRect);
-
-	CUIRect WorkRect;
-	EditorRect.Margin(8.0f, &WorkRect);
-	CUIRect Header, Content;
-	WorkRect.HSplitTop(24.0f, &Header, &Content);
-
-	CUIRect CloseButtonArea, HeaderText;
-	Header.VSplitLeft(14.0f, &CloseButtonArea, &HeaderText);
-	HeaderText.VSplitLeft(6.0f, nullptr, &HeaderText);
-	CloseButtonArea.HMargin(5.0f, &CloseButtonArea);
-
-	static CButtonContainer s_CloseComponentsEditorButton;
-	if(Ui()->DoButton_FontIcon(&s_CloseComponentsEditorButton, FontIcon::XMARK, 0, &CloseButtonArea, IGraphics::CORNER_ALL) || Ui()->ConsumeHotkey(CUi::HOTKEY_ESCAPE))
+	if(!m_ComponentsEditorState.m_ShowExitConfirm && !m_ComponentsEditorState.m_ShowRestartConfirm && Ui()->ConsumeHotkey(CUi::HOTKEY_ESCAPE))
 	{
-		m_ComponentsEditorState.m_Open = false;
-		Ui()->ClipDisable();
+		ComponentsEditorRequestClose();
+		if(!m_ComponentsEditorState.m_Open)
+			return;
+	}
+	if(m_ComponentsEditorState.m_ShowExitConfirm)
+	{
+		ComponentsEditorRenderExitConfirm(*Ui()->Screen());
+		return;
+	}
+	if(m_ComponentsEditorState.m_ShowRestartConfirm)
+	{
+		ComponentsEditorRenderRestartConfirm(*Ui()->Screen());
 		return;
 	}
 
-	Ui()->DoLabel(&HeaderText, Localize("Components Editor"), 20.0f, TEXTALIGN_ML);
-	Content.HSplitTop(10.0f, nullptr, &Content);
+	CUIRect EditorRect = MainView;
+	EditorRect.Margin(8.0f, &EditorRect);
+	EditorRect.Draw(ColorRGBA(0.10f, 0.11f, 0.15f, 0.96f), IGraphics::CORNER_ALL, 8.0f);
 
-	struct SComponentToggleEntry
+	CUIRect WorkRect;
+	EditorRect.Margin(8.0f, &WorkRect);
+	CUIRect Header, Content, Footer;
+	WorkRect.HSplitTop(24.0f, &Header, &WorkRect);
+	WorkRect.HSplitBottom(34.0f, &Content, &Footer);
+
+	CUIRect HeaderText = Header;
+	CUIRect CloseButtonArea, HeaderSpacer;
+	HeaderText.VSplitLeft(14.0f, &CloseButtonArea, &HeaderText);
+	HeaderText.VSplitLeft(6.0f, &HeaderSpacer, &HeaderText);
+	(void)HeaderSpacer;
+
+	CUIRect CloseButton;
+	CloseButtonArea.HMargin(5.0f, &CloseButton);
+
+	static CButtonContainer s_CloseButton;
+	if(Ui()->DoButton_FontIcon(&s_CloseButton, FontIcon::XMARK, 0, &CloseButton, IGraphics::CORNER_ALL))
 	{
-		int *m_pValue;
-		const char *m_pLabel;
-	};
+		ComponentsEditorRequestClose();
+		if(!m_ComponentsEditorState.m_Open)
+			return;
+	}
 
-	static const SComponentToggleEntry s_aEntries[] = {
-		{&g_Config.m_BcMusicPlayer, "Music Player"},
-		{&g_Config.m_BcMagicParticles, "Magic Particles"},
-		{&g_Config.m_BcOrbitAura, "Orbit Aura"},
-		{&g_Config.m_Bc3dParticles, "3D Particles"},
-		{&g_Config.m_BcMenuMediaBackground, "Menu Media Background"},
-		{&g_Config.m_BcGameMediaBackground, "Game Media Background"},
-		{&g_Config.m_BcChatBubbles, "Chat Bubbles"},
-		{&g_Config.m_BcOptimizer, "Optimizer"},
-		{&g_Config.m_BcCameraDrift, "Camera Drift"},
-		{&g_Config.m_BcDynamicFov, "Dynamic FOV"},
-		{&g_Config.m_BcAfterimage, "Afterimage"},
-	};
+	Ui()->DoLabel(&HeaderText, Localize("Components editor"), HeadlineFontSize, TEXTALIGN_ML);
 
-	static CScrollRegion s_ComponentsEditorScrollRegion;
+	static CScrollRegion s_ScrollRegion;
 	vec2 ScrollOffset(0.0f, 0.0f);
 	CScrollRegionParams ScrollParams;
 	ScrollParams.m_ScrollUnit = 60.0f;
 	ScrollParams.m_Flags = CScrollRegionParams::FLAG_CONTENT_STATIC_WIDTH;
 	ScrollParams.m_ScrollbarMargin = 5.0f;
-	s_ComponentsEditorScrollRegion.Begin(&Content, &ScrollOffset, &ScrollParams);
+	s_ScrollRegion.Begin(&Content, &ScrollOffset, &ScrollParams);
 
 	CUIRect View = Content;
 	View.y += ScrollOffset.y;
 	View.VSplitLeft(5.0f, nullptr, &View);
 	View.VSplitRight(5.0f, &View, nullptr);
 
-	CUIRect Label;
-	View.HSplitTop(20.0f, &Label, &View);
-	Ui()->DoLabel(&Label, Localize("Toggle BestClient visual components directly."), 14.0f, TEXTALIGN_ML);
-	View.HSplitTop(10.0f, nullptr, &View);
+	const char *apGroupNames[NUM_COMPONENTS_GROUPS] = {
+		Localize("Visuals"),
+		Localize("Gameplay"),
+		Localize("Others"),
+		"TClient",
+	};
 
-	for(const auto &Entry : s_aEntries)
-		DoButton_CheckBoxAutoVMarginAndSet(Entry.m_pValue, Localize(Entry.m_pLabel), Entry.m_pValue, &View, 20.0f);
+	for(int Group = 0; Group < NUM_COMPONENTS_GROUPS; ++Group)
+	{
+		int Count = 0;
+		for(const auto &Entry : gs_aBestClientComponentEntries)
+		{
+			if(Entry.m_Group == Group)
+				++Count;
+		}
+		if(Count == 0)
+			continue;
+
+		CUIRect GroupBox;
+		const float GroupHeight = 20.0f + HeadlineFontSize + MarginSmall + Count * LineSize;
+		View.HSplitTop(GroupHeight, &GroupBox, &View);
+		GroupBox.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.22f), IGraphics::CORNER_ALL, 8.0f);
+		GroupBox.Margin(10.0f, &GroupBox);
+
+		CUIRect Label;
+		GroupBox.HSplitTop(HeadlineFontSize, &Label, &GroupBox);
+		Ui()->DoLabel(&Label, apGroupNames[Group], HeadlineFontSize, TEXTALIGN_ML);
+		GroupBox.HSplitTop(MarginSmall, nullptr, &GroupBox);
+
+		for(const auto &Entry : gs_aBestClientComponentEntries)
+		{
+			if(Entry.m_Group != Group)
+				continue;
+
+			CUIRect Row;
+			GroupBox.HSplitTop(LineSize, &Row, &GroupBox);
+			int Disabled = ComponentsEditorIsDisabled((int)Entry.m_Component, m_ComponentsEditorState.m_StagedMaskLo, m_ComponentsEditorState.m_StagedMaskHi);
+			if(DoButton_CheckBox(&Entry, Localize(Entry.m_pName), Disabled, &Row))
+			{
+				Disabled ^= 1;
+				ComponentsEditorSetDisabled((int)Entry.m_Component, m_ComponentsEditorState.m_StagedMaskLo, m_ComponentsEditorState.m_StagedMaskHi, Disabled != 0);
+				m_ComponentsEditorState.m_HasUnsavedChanges =
+					m_ComponentsEditorState.m_StagedMaskLo != m_ComponentsEditorState.m_AppliedMaskLo ||
+					m_ComponentsEditorState.m_StagedMaskHi != m_ComponentsEditorState.m_AppliedMaskHi;
+			}
+		}
+
+		View.HSplitTop(16.0f, nullptr, &View);
+	}
 
 	CUIRect ScrollRegion;
 	ScrollRegion.x = Content.x;
 	ScrollRegion.y = View.y;
 	ScrollRegion.w = Content.w;
 	ScrollRegion.h = 0.0f;
-	s_ComponentsEditorScrollRegion.AddRect(ScrollRegion);
-	s_ComponentsEditorScrollRegion.End();
-	Ui()->ClipDisable();
+	s_ScrollRegion.AddRect(ScrollRegion);
+	s_ScrollRegion.End();
+
+	CUIRect Counter, ApplyButton;
+	Footer.VSplitLeft(300.0f, &Counter, &Footer);
+	Footer.VSplitRight(88.0f, &Footer, &ApplyButton);
+
+	int DisabledCount = 0;
+	for(const auto &Entry : gs_aBestClientComponentEntries)
+	{
+		if(ComponentsEditorIsDisabled((int)Entry.m_Component, m_ComponentsEditorState.m_StagedMaskLo, m_ComponentsEditorState.m_StagedMaskHi))
+			++DisabledCount;
+	}
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), Localize("Disabled components: %d"), DisabledCount);
+	Ui()->DoLabel(&Counter, aBuf, FontSize, TEXTALIGN_ML);
+
+	static CButtonContainer s_ApplyButton;
+	const int DisabledStyle = m_ComponentsEditorState.m_HasUnsavedChanges ? 0 : -1;
+	if(DoButton_Menu(&s_ApplyButton, Localize("Apply"), DisabledStyle, &ApplyButton) && m_ComponentsEditorState.m_HasUnsavedChanges)
+		ComponentsEditorApply();
 }
 
 void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)

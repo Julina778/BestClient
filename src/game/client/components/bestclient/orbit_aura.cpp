@@ -99,6 +99,12 @@ static ColorRGBA ShiftedAuraColor(const ColorRGBA &Base, float Time, float Phase
 
 void COrbitAura::OnRender()
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_ORBIT_AURA))
+	{
+		ResetState();
+		return;
+	}
+
 	int ClientId = -1;
 	vec2 BasePos(0.0f, 0.0f);
 	ColorRGBA BaseColor(1.0f, 1.0f, 1.0f, 1.0f);

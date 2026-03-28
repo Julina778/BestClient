@@ -85,6 +85,9 @@ float CChatBubbles::GetOffset(int ClientId)
 
 void CChatBubbles::OnMessage(int MsgType, void *pRawMsg)
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CHAT_BUBBLES))
+		return;
+
 	if(GameClient()->m_SuppressEvents)
 		return;
 
@@ -400,6 +403,9 @@ float CChatBubbles::GetAlpha(int64_t Time)
 
 void CChatBubbles::OnRender()
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CHAT_BUBBLES))
+		return;
+
 	if(m_UseChatBubbles != g_Config.m_BcChatBubbles)
 	{
 		m_UseChatBubbles = g_Config.m_BcChatBubbles;

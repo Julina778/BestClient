@@ -131,6 +131,10 @@ void CClientIndicator::OnShutdown()
 
 bool CClientIndicator::IsPlayerBestClient(int ClientId) const
 {
+	const CGameClient *pGameClient = GameClient();
+	if(pGameClient && pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR))
+		return false;
+
 	if(Client()->State() != IClient::STATE_ONLINE || !g_Config.m_BcClientIndicator)
 		return false;
 	for(const int LocalId : GameClient()->m_aLocalIds)
@@ -828,12 +832,17 @@ bool CClientIndicator::HasPendingNetworkTask() const
 
 bool CClientIndicator::IsBrowserSnapshotEnabled() const
 {
-	return g_Config.m_BcClientIndicator != 0;
+	const CGameClient *pGameClient = GameClient();
+	return g_Config.m_BcClientIndicator != 0 &&
+		(!pGameClient || !pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR));
 }
 
 bool CClientIndicator::IsPresenceEnabled() const
 {
-	return g_Config.m_BcClientIndicator != 0 && Client()->State() == IClient::STATE_ONLINE;
+	const CGameClient *pGameClient = GameClient();
+	return g_Config.m_BcClientIndicator != 0 &&
+		Client()->State() == IClient::STATE_ONLINE &&
+		(!pGameClient || !pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR));
 }
 
 const char *CClientIndicator::EffectiveSharedToken() const

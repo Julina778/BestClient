@@ -95,12 +95,20 @@ using namespace std::chrono_literals;
 
 namespace
 {
+bool IsGameplayInputComponentDisabled()
+{
+	return CBestClient::IsComponentDisabledByMask((int)CBestClient::COMPONENT_GAMEPLAY_INPUT,
+		g_Config.m_BcDisabledComponentsMaskLo, g_Config.m_BcDisabledComponentsMaskHi);
+}
+
 float EffectiveFastInputOffsetTicksFastMode(IClient *pClient, IServerBrowser *pServerBrowser)
 {
 	(void)pClient;
 	(void)pServerBrowser;
 
-	if(!g_Config.m_TcFastInput || g_Config.m_BcFastInputMode != 0)
+	if(!g_Config.m_TcFastInput ||
+		g_Config.m_BcFastInputMode != 0 ||
+		IsGameplayInputComponentDisabled())
 		return 0.0f;
 
 	// Mode 0: bestclient fast input (ms based, 20ms per tick)
@@ -115,7 +123,9 @@ float EffectiveFastInputOffsetTicksLowDeltaMode(IClient *pClient, IServerBrowser
 	(void)pServerBrowser;
 
 	// Mode 1: low delta (saiko-input style, tick based, stored in 0.01 ticks)
-	if(!g_Config.m_TcFastInput || g_Config.m_BcFastInputMode != 1)
+	if(!g_Config.m_TcFastInput ||
+		g_Config.m_BcFastInputMode != 1 ||
+		IsGameplayInputComponentDisabled())
 		return 0.0f;
 	if(g_Config.m_BcFastInputLowDelta <= 0)
 		return 0.0f;
@@ -153,12 +163,16 @@ void ApplyFastInputOffset(float OffsetTicks, int &Tick, float &Intra)
 
 bool EffectiveFastInputOthers()
 {
-	return g_Config.m_BcFastInputMode == 0 && g_Config.m_TcFastInputOthers != 0;
+	return g_Config.m_BcFastInputMode == 0 &&
+		g_Config.m_TcFastInputOthers != 0 &&
+		!IsGameplayInputComponentDisabled();
 }
 
 bool EffectiveLowDeltaOthers()
 {
-	return g_Config.m_BcFastInputMode == 1 && g_Config.m_BcLowDeltaOthers != 0;
+	return g_Config.m_BcFastInputMode == 1 &&
+		g_Config.m_BcLowDeltaOthers != 0 &&
+		!IsGameplayInputComponentDisabled();
 }
 
 float LowDeltaOthersOffsetScale()
@@ -198,6 +212,8 @@ const char *CGameClient::GetItemName(int Type) const { return m_NetObjHandler.Ge
 
 bool CGameClient::OptimizerEnabled() const
 {
+	if(m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_OPTIMIZER))
+		return false;
 	return g_Config.m_BcOptimizer != 0;
 }
 
@@ -1698,7 +1714,7 @@ void CGameClient::UpdateAutoTeamLock()
 	const bool TeamCanBeLocked = Team > TEAM_FLOCK && Team < TEAM_SUPER;
 	const bool LastTeamCanBeLocked = m_aAutoTeamLockLastTeam[Dummy] > TEAM_FLOCK && m_aAutoTeamLockLastTeam[Dummy] < TEAM_SUPER;
 
-	if(!g_Config.m_BcAutoTeamLock)
+	if(!g_Config.m_BcAutoTeamLock || m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_AUTO_TEAM_LOCK))
 	{
 		m_aAutoTeamLockLastTeam[Dummy] = Team;
 		m_aAutoTeamLockDeadlineTick[Dummy] = 0;

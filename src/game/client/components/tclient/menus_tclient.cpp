@@ -89,6 +89,27 @@ static bool IsFlagSet(int32_t Flags, int n)
 	return (Flags & (1 << n)) != 0;
 }
 
+static bool IsTClientTabDisabledByComponents(const CGameClient *pGameClient, int Tab)
+{
+	switch(Tab)
+	{
+	case TCLIENT_TAB_SETTINGS:
+		return pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_TCLIENT_SETTINGS_TAB);
+	case TCLIENT_TAB_BINDWHEEL:
+		return pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_TCLIENT_BIND_WHEEL_TAB);
+	case TCLIENT_TAB_WARLIST:
+		return pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_TCLIENT_WAR_LIST_TAB);
+	case TCLIENT_TAB_BINDCHAT:
+		return pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_TCLIENT_CHAT_BINDS_TAB);
+	case TCLIENT_TAB_STATUSBAR:
+		return pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_TCLIENT_STATUS_BAR_TAB);
+	case TCLIENT_TAB_INFO:
+		return pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_TCLIENT_INFO_TAB);
+	default:
+		return false;
+	}
+}
+
 bool CMenus::DoLine_KeyReader(CUIRect &View, CButtonContainer &ReaderButton, CButtonContainer &ClearButton, const char *pName, const char *pCommand)
 {
 	CBindSlot Bind(0, 0);
@@ -322,16 +343,23 @@ void CMenus::RenderSettingsTClient(CUIRect MainView)
 	static int s_CurCustomTab = 0;
 
 	CUIRect TabBar, Button;
-	int TabCount = NUMBER_OF_TCLIENT_TABS;
+	int TabCount = 0;
+	int FirstVisibleTab = -1;
+	auto IsTabHidden = [&](int Tab) {
+		return IsFlagSet(g_Config.m_TcTClientSettingsTabs, Tab) || IsTClientTabDisabledByComponents(GameClient(), Tab);
+	};
 	for(int Tab = 0; Tab < NUMBER_OF_TCLIENT_TABS; ++Tab)
 	{
-		if(IsFlagSet(g_Config.m_TcTClientSettingsTabs, Tab))
-		{
-			TabCount--;
-			if(s_CurCustomTab == Tab)
-				s_CurCustomTab++;
-		}
+		if(IsTabHidden(Tab))
+			continue;
+		if(FirstVisibleTab == -1)
+			FirstVisibleTab = Tab;
+		++TabCount;
 	}
+	if(FirstVisibleTab == -1)
+		return;
+	if(s_CurCustomTab < 0 || s_CurCustomTab >= NUMBER_OF_TCLIENT_TABS || IsTabHidden(s_CurCustomTab))
+		s_CurCustomTab = FirstVisibleTab;
 
 	MainView.HSplitTop(LineSize, &TabBar, &MainView);
 	const float TabWidth = TabBar.w / TabCount;
@@ -344,16 +372,17 @@ void CMenus::RenderSettingsTClient(CUIRect MainView)
 		TCLocalize("Status Bar"),
 		TCLocalize("Info")};
 
+	int VisibleIndex = 0;
 	for(int Tab = 0; Tab < NUMBER_OF_TCLIENT_TABS; ++Tab)
 	{
-		if(IsFlagSet(g_Config.m_TcTClientSettingsTabs, Tab))
+		if(IsTabHidden(Tab))
 			continue;
 
 		TabBar.VSplitLeft(TabWidth, &Button, &TabBar);
-		const int Corners = Tab == 0 ? IGraphics::CORNER_L : Tab == NUMBER_OF_TCLIENT_TABS - 1 ? IGraphics::CORNER_R :
-													 IGraphics::CORNER_NONE;
+		const int Corners = VisibleIndex == 0 ? IGraphics::CORNER_L : (VisibleIndex == TabCount - 1 ? IGraphics::CORNER_R : IGraphics::CORNER_NONE);
 		if(DoButton_MenuTab(&s_aPageTabs[Tab], apTabNames[Tab], s_CurCustomTab == Tab, &Button, Corners, nullptr, nullptr, nullptr, nullptr, 4.0f))
 			s_CurCustomTab = Tab;
+		++VisibleIndex;
 	}
 
 	MainView.HSplitTop(Margin, nullptr, &MainView);

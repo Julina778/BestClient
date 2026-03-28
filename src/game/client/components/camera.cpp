@@ -305,7 +305,10 @@ void CCamera::UpdateCamera()
 	const bool Is0xFServer = IsOnline && str_comp_nocase(GameClient()->m_GameInfo.m_aGameType, "0xf") == 0;
 	const bool IsBlockedCameraServer = IsFngServer || Is0xFServer;
 
-	if(g_Config.m_BcCameraDrift && !IsBlockedCameraServer && !GameClient()->m_Snap.m_SpecInfo.m_Active)
+	if(g_Config.m_BcCameraDrift &&
+		!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CAMERA_DRIFT) &&
+		!IsBlockedCameraServer &&
+		!GameClient()->m_Snap.m_SpecInfo.m_Active)
 	{
 		// Use predicted velocity so camera drift follows local simulation (e.g. fast practice),
 		// not delayed server snapshots.
@@ -335,7 +338,10 @@ void CCamera::UpdateCamera()
 		m_aDyncamCurrentCameraOffset[g_Config.m_ClDummy] += m_DriftCurrentOffset;
 	}
 
-	const bool DynamicFovActive = g_Config.m_BcDynamicFov && !IsBlockedCameraServer && !GameClient()->m_Snap.m_SpecInfo.m_Active;
+	const bool DynamicFovActive = g_Config.m_BcDynamicFov &&
+		!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_DYNAMIC_FOV) &&
+		!IsBlockedCameraServer &&
+		!GameClient()->m_Snap.m_SpecInfo.m_Active;
 	m_DynamicFovTarget = 1.0f;
 	if(DynamicFovActive)
 	{

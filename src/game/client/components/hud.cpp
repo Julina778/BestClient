@@ -136,7 +136,8 @@ void CHud::OnInit()
 
 void CHud::RenderGameTimer()
 {
-	const bool MusicPlayerOccupiesTimerSlot = g_Config.m_BcMusicPlayer != 0 && !(g_Config.m_ClFocusMode && g_Config.m_ClFocusModeHideSongPlayer);
+	const bool MusicPlayerComponentDisabled = GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MUSIC_PLAYER);
+	const bool MusicPlayerOccupiesTimerSlot = !MusicPlayerComponentDisabled && g_Config.m_BcMusicPlayer != 0 && !(g_Config.m_ClFocusMode && g_Config.m_ClFocusModeHideSongPlayer);
 	if(MusicPlayerOccupiesTimerSlot)
 		return;
 
@@ -658,7 +659,8 @@ void CHud::RenderTextInfo()
 	if((g_Config.m_TcShowFrozenText > 0 || g_Config.m_TcShowFrozenHud > 0 || g_Config.m_TcNotifyWhenLast) && GameClient()->m_GameInfo.m_EntitiesDDRace)
 	{
 		const CMusicPlayer::SHudReservation MusicReservation = GameClient()->m_MusicPlayer.HudReservation();
-		const bool MusicPlayerHudActive = g_Config.m_BcMusicPlayer != 0 && MusicReservation.m_Visible && MusicReservation.m_Active;
+		const bool MusicPlayerComponentDisabled = GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MUSIC_PLAYER);
+		const bool MusicPlayerHudActive = !MusicPlayerComponentDisabled && g_Config.m_BcMusicPlayer != 0 && MusicReservation.m_Visible && MusicReservation.m_Active;
 
 		int NumInTeam = 0;
 		int NumFrozen = 0;
@@ -2261,7 +2263,8 @@ void CHud::OnRender()
 			RenderSpectatorHud();
 		}
 
-		if(g_Config.m_BcSpeedrunTimer || m_SpeedrunTimerExpiredTick > 0)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_SPEEDRUN_TIMER) &&
+			(g_Config.m_BcSpeedrunTimer || m_SpeedrunTimerExpiredTick > 0))
 			RenderSpeedrunTimer();
 		if(g_Config.m_ClShowhudTimer)
 			RenderGameTimer();
@@ -2290,6 +2293,9 @@ void CHud::OnRender()
 
 void CHud::RenderSpeedrunTimer()
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_SPEEDRUN_TIMER))
+		return;
+
 	if(!GameClient()->m_Snap.m_pLocalCharacter)
 		return;
 

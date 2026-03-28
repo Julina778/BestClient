@@ -177,12 +177,26 @@ private:
 	{
 		bool m_Open = false;
 		bool m_FullscreenOpen = true;
+		int m_StagedMaskLo = 0;
+		int m_StagedMaskHi = 0;
+		int m_AppliedMaskLo = 0;
+		int m_AppliedMaskHi = 0;
+		bool m_HasUnsavedChanges = false;
+		bool m_ShowExitConfirm = false;
+		bool m_ShowRestartConfirm = false;
 	};
 
 	SAssetsEditorState m_AssetsEditorState;
 	SComponentsEditorState m_ComponentsEditorState;
 	void RenderAssetsEditorScreen(CUIRect MainView);
 	void RenderComponentsEditorScreen(CUIRect MainView);
+	void ComponentsEditorOpen();
+	void ComponentsEditorSyncFromConfig();
+	void ComponentsEditorRequestClose();
+	void ComponentsEditorCloseNow();
+	void ComponentsEditorApply();
+	void ComponentsEditorRenderExitConfirm(const CUIRect &Rect);
+	void ComponentsEditorRenderRestartConfirm(const CUIRect &Rect);
 	void AssetsEditorClearAssets();
 	void AssetsEditorReloadAssets();
 	void AssetsEditorReloadAssetsImagesOnly();

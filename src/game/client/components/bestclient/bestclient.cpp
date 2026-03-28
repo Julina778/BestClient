@@ -10,6 +10,23 @@ CBestClient::CBestClient()
 	OnReset();
 }
 
+bool CBestClient::IsComponentDisabledByMask(int Component, int MaskLo, int MaskHi)
+{
+	if(Component < 0 || Component >= NUM_COMPONENTS_EDITOR_COMPONENTS)
+		return false;
+
+	if(Component < 31)
+		return (MaskLo & (1 << Component)) != 0;
+
+	const int HiBit = Component - 31;
+	return HiBit >= 0 && HiBit < 31 && (MaskHi & (1 << HiBit)) != 0;
+}
+
+bool CBestClient::IsComponentDisabled(EBestClientComponent Component) const
+{
+	return IsComponentDisabledByMask((int)Component, g_Config.m_BcDisabledComponentsMaskLo, g_Config.m_BcDisabledComponentsMaskHi);
+}
+
 void CBestClient::ConToggle45Degrees(IConsole::IResult *pResult, void *pUserData)
 {
 	CBestClient *pSelf = static_cast<CBestClient *>(pUserData);

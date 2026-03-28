@@ -222,7 +222,8 @@ void CAudioVisualizer::CloseCapture()
 
 bool CAudioVisualizer::NeedCapture() const
 {
-	const bool CavaWantsCapture = g_Config.m_BcCavaEnable != 0 || g_Config.m_DbgCava != 0;
+	const bool CavaComponentDisabled = GameClient() && GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CAVA);
+	const bool CavaWantsCapture = ((!CavaComponentDisabled && g_Config.m_BcCavaEnable != 0) || g_Config.m_DbgCava != 0);
 	const bool CavaAllowed = Client()->State() == IClient::STATE_ONLINE && GameClient() && !GameClient()->m_Menus.IsActive();
 	if(CavaWantsCapture && CavaAllowed)
 		return true;

@@ -61,6 +61,7 @@ int KeyToSlotIndex(int Key)
 	default: return -1;
 	}
 }
+
 } // namespace
 
 CFastActions::CFastActions()
@@ -71,12 +72,20 @@ CFastActions::CFastActions()
 void CFastActions::ConFaExecuteHover(IConsole::IResult *pResult, void *pUserData)
 {
 	CFastActions *pThis = (CFastActions *)pUserData;
+	if(pThis->GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_FAST_ACTIONS))
+		return;
 	pThis->ExecuteHoveredBind();
 }
 
 void CFastActions::ConOpenFa(IConsole::IResult *pResult, void *pUserData)
 {
 	CFastActions *pThis = (CFastActions *)pUserData;
+	if(pThis->GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_FAST_ACTIONS))
+	{
+		pThis->m_Active = false;
+		pThis->m_SelectedBind = -1;
+		return;
+	}
 	if(pThis->Client()->State() != IClient::STATE_DEMOPLAYBACK)
 	{
 		if(pThis->GameClient()->m_Emoticon.IsActive())
@@ -245,6 +254,14 @@ bool CFastActions::OnCursorMove(float x, float y, IInput::ECursorType CursorType
 
 bool CFastActions::OnInput(const IInput::CEvent &Event)
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_FAST_ACTIONS))
+	{
+		m_Active = false;
+		m_SelectedBind = -1;
+		m_DisplayBind = -1;
+		return false;
+	}
+
 	if(IsActive() && Event.m_Flags & IInput::FLAG_PRESS && Event.m_Key == KEY_ESCAPE)
 	{
 		OnRelease();
@@ -265,6 +282,15 @@ bool CFastActions::OnInput(const IInput::CEvent &Event)
 
 void CFastActions::OnRender()
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_FAST_ACTIONS))
+	{
+		m_Active = false;
+		m_SelectedBind = -1;
+		m_DisplayBind = -1;
+		m_AnimationTime = 0.0f;
+		return;
+	}
+
 	if(Client()->State() != IClient::STATE_ONLINE && Client()->State() != IClient::STATE_DEMOPLAYBACK)
 		return;
 
@@ -358,6 +384,9 @@ void CFastActions::OnRender()
 
 void CFastActions::ExecuteBind(int Bind)
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_FAST_ACTIONS))
+		return;
+
 	if(Bind >= 0 && Bind < FAST_ACTIONS_FIXED_SLOTS && m_vBinds[Bind].m_aCommand[0] != '\0')
 	{
 		const char *pCommand = m_vBinds[Bind].m_aCommand;
@@ -381,6 +410,9 @@ void CFastActions::ExecuteBind(int Bind)
 
 void CFastActions::ExecuteHoveredBind()
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_FAST_ACTIONS))
+		return;
+
 	if(m_SelectedBind >= 0)
 		Console()->ExecuteLine(m_vBinds[m_SelectedBind].m_aCommand, IConsole::CLIENT_ID_UNSPECIFIED);
 }

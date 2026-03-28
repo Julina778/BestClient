@@ -158,6 +158,13 @@ bool C3DParticles::ShouldRender() const
 
 void C3DParticles::OnRender()
 {
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_3D_PARTICLES))
+	{
+		if(!m_vParticles.empty())
+			ResetParticles();
+		return;
+	}
+
 	if(!ShouldRender())
 	{
 		if(!m_vParticles.empty())

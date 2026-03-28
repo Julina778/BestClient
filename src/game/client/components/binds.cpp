@@ -140,7 +140,11 @@ bool CBinds::OnInput(const IInput::CEvent &Event)
 						m_MouseOnAction = true;
 					}
 				}
-				if(g_Config.m_BcGoresMode && !GameClient()->m_Controls.m_WeaponsGot && str_find(aBind, "+fire") && !str_find(aBind, "+prevweapon"))
+				if(g_Config.m_BcGoresMode &&
+					!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_GORES_MODE) &&
+					!GameClient()->m_Controls.m_WeaponsGot &&
+					str_find(aBind, "+fire") &&
+					!str_find(aBind, "+prevweapon"))
 				{
 					str_append(aBind, ";+prevweapon", sizeof(aBind));
 				}
@@ -170,7 +174,11 @@ bool CBinds::OnInput(const IInput::CEvent &Event)
 			{
 				char aBind[512];
 				str_copy(aBind, m_aapKeyBindings[ActiveBind->m_ModifierMask][ActiveBind->m_Key], sizeof(aBind));
-				if(g_Config.m_BcGoresMode && !GameClient()->m_Controls.m_WeaponsGot && str_find(aBind, "+fire") && !str_find(aBind, "+prevweapon"))
+				if(g_Config.m_BcGoresMode &&
+					!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_GORES_MODE) &&
+					!GameClient()->m_Controls.m_WeaponsGot &&
+					str_find(aBind, "+fire") &&
+					!str_find(aBind, "+prevweapon"))
 				{
 					str_append(aBind, ";+prevweapon", sizeof(aBind));
 				}
@@ -199,7 +207,11 @@ bool CBinds::OnInput(const IInput::CEvent &Event)
 			}
 			char aBind[512];
 			str_copy(aBind, m_aapKeyBindings[Bind.m_ModifierMask][Bind.m_Key], sizeof(aBind));
-			if(g_Config.m_BcGoresMode && !GameClient()->m_Controls.m_WeaponsGot && str_find(aBind, "+fire") && !str_find(aBind, "+prevweapon"))
+			if(g_Config.m_BcGoresMode &&
+				!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_GORES_MODE) &&
+				!GameClient()->m_Controls.m_WeaponsGot &&
+				str_find(aBind, "+fire") &&
+				!str_find(aBind, "+prevweapon"))
 			{
 				str_append(aBind, ";+prevweapon", sizeof(aBind));
 			}
