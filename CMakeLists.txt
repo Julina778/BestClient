@@ -2640,10 +2640,6 @@ if(CLIENT)
     components/bestclient/admin_panel.h
     components/bestclient/afterimage.cpp
     components/bestclient/afterimage.h
-    components/bestclient/audio_capture_device_score.cpp
-    components/bestclient/audio_capture_device_score.h
-    components/bestclient/audio_visualizer.cpp
-    components/bestclient/audio_visualizer.h
     components/bestclient/bestclient.cpp
     components/bestclient/bestclient.h
     components/bestclient/clientindicator/browser_cache.cpp

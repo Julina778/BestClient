@@ -2184,20 +2184,7 @@ public:
 
 	void UpdateVisualizerLevels(CMusicPlayer *pOwner, const SNowPlayingSnapshot &Snapshot, int64_t PositionMs, float Delta)
 	{
-		if(pOwner && pOwner->GameClient())
-		{
-			float aBands[VISUALIZER_BARS] = {};
-			if(pOwner->GameClient()->m_AudioVisualizer.GetBands(VISUALIZER_BARS, aBands))
-			{
-				for(int i = 0; i < VISUALIZER_BARS; ++i)
-				{
-					const float Target = std::clamp(aBands[i], 0.0f, 1.0f);
-					const float Speed = Target > m_aVisualizerLevels[i] ? 11.0f : 6.0f;
-					m_aVisualizerLevels[i] = ApproachAnim(m_aVisualizerLevels[i], Target, Delta, Speed);
-				}
-				return;
-			}
-		}
+		(void)pOwner;
 
 		if(Snapshot.m_PlaybackState != EMusicPlaybackState::PLAYING)
 		{
@@ -2424,7 +2411,7 @@ void CMusicPlayer::OnUpdate()
 		m_pImpl->m_LastPollTick = Now;
 	}
 
-	// Keep polling now playing info even if the HUD element is disabled (used by other features like Cava).
+	// Keep polling now playing info even if the HUD element is disabled.
 	if(g_Config.m_BcMusicPlayer == 0)
 	{
 		m_pImpl->ResetHudState();
