@@ -2665,11 +2665,14 @@ void CMenus::RenderSettingsTClientConfigs(CUIRect MainView)
 		RightRow.y = ApplyBar.y + (ApplyBar.h - LineSize) / 2.0f;
 		const float RightInset = 24.0f;
 		RightRow.VSplitLeft(RightInset, nullptr, &RightRow);
-		CUIRect TopCol1, TopCol2;
-		RightRow.VSplitMid(&TopCol1, &TopCol2, 0.0f);
+		CUIRect TopCol1, TopCol23, TopCol2, TopCol3;
+		RightRow.VSplitLeft(RightRow.w / 3.0f, &TopCol1, &TopCol23);
+		TopCol23.VSplitMid(&TopCol2, &TopCol3, 0.0f);
 		if(DoButton_CheckBox(&g_Config.m_TcUiShowTClient, Localize("TClient"), g_Config.m_TcUiShowTClient, &TopCol1))
 			g_Config.m_TcUiShowTClient ^= 1;
-		if(DoButton_CheckBox(&g_Config.m_TcUiCompactList, Localize("Compact List"), g_Config.m_TcUiCompactList, &TopCol2))
+		if(DoButton_CheckBox(&g_Config.m_TcUiShowBestClient, Localize("BestClient"), g_Config.m_TcUiShowBestClient, &TopCol2))
+			g_Config.m_TcUiShowBestClient ^= 1;
+		if(DoButton_CheckBox(&g_Config.m_TcUiCompactList, Localize("Compact List"), g_Config.m_TcUiCompactList, &TopCol3))
 			g_Config.m_TcUiCompactList ^= 1;
 	}
 
@@ -2717,7 +2720,9 @@ void CMenus::RenderSettingsTClientConfigs(CUIRect MainView)
 			return g_Config.m_TcUiShowDDNet != 0;
 		if(Domain == ConfigDomain::TCLIENT)
 			return g_Config.m_TcUiShowTClient != 0;
-		// only show DDNet and TClient domains
+		if(Domain == ConfigDomain::BESTCLIENT)
+			return g_Config.m_TcUiShowBestClient != 0;
+		// only show DDNet, TClient and BestClient domains
 		return false;
 	};
 
@@ -2789,6 +2794,7 @@ void CMenus::RenderSettingsTClientConfigs(CUIRect MainView)
 		{
 		case ConfigDomain::DDNET: return "DDNet";
 		case ConfigDomain::TCLIENT: return "TClient";
+		case ConfigDomain::BESTCLIENT: return "BestClient";
 		default: return "Other";
 		}
 	};
