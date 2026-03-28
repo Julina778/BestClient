@@ -3528,9 +3528,9 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		"Gameplay",
 		Localize("Others"),
 		Localize("Fun"),
-		TCLocalize("Texture Shop"),
+		"shop",
 		Localize("Editors"),
-		Localize("Info"),
+		"info",
 	};
 	const int aTabOrder[NUM_BESTCLIENT_TABS] = {
 		BESTCLIENT_TAB_VISUALS,
@@ -5835,9 +5835,9 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 		"Gameplay",
 		Localize("Others"),
 		Localize("Fun"),
-		TCLocalize("Texture Shop"),
+		"shop",
 		Localize("Editors"),
-		Localize("Info"),
+		"info",
 	};
 	const int aTabOrder[NUM_BESTCLIENT_TABS] = {
 		BESTCLIENT_TAB_VISUALS,
