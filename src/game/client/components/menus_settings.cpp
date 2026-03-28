@@ -3535,7 +3535,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		"Gameplay",
 		Localize("Others"),
 		Localize("Fun"),
-		"shop",
+		"Shop",
 		Localize("Editors"),
 		"info",
 	};
