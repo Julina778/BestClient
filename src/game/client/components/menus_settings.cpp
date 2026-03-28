@@ -4648,8 +4648,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			UpdateRevealPhase(s_FocusModePhase, Enabled);
 
 			const float KeyReaderHeight = LineSize + MarginSmall;
-			const float TargetHeight = 7.0f * LineSize;
-			const float ContentHeight = LineSize + MarginSmall + LineSize + KeyReaderHeight + TargetHeight * s_FocusModePhase;
+			const float ExpandedTargetHeight = KeyReaderHeight + 7.0f * LineSize;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedTargetHeight * s_FocusModePhase;
 			CUIRect Content, Label, Visible;
 			BeginBlock(Column, ContentHeight, Content);
 
@@ -4661,7 +4661,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			static CButtonContainer s_FocusModeBindReader;
 			static CButtonContainer s_FocusModeBindClear;
 
-			const float CurHeight = TargetHeight * s_FocusModePhase;
+			const float CurHeight = ExpandedTargetHeight * s_FocusModePhase;
 			if(CurHeight > 0.0f)
 			{
 				Content.HSplitTop(CurHeight, &Visible, &Content);
@@ -4672,7 +4672,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					~SScopedClip() { m_pUi->ClipDisable(); }
 				} ClipGuard{Ui()};
 
-				CUIRect Expand = {Visible.x, Visible.y, Visible.w, TargetHeight};
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExpandedTargetHeight};
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClFocusModeHideNames, Localize("Hide Player Names"), &g_Config.m_ClFocusModeHideNames, &Expand, LineSize);
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClFocusModeHideEffects, Localize("Hide Visual Effects"), &g_Config.m_ClFocusModeHideEffects, &Expand, LineSize);
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClFocusModeHideHud, Localize("Hide HUD"), &g_Config.m_ClFocusModeHideHud, &Expand, LineSize);
@@ -4680,9 +4680,9 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClFocusModeHideUI, Localize("Hide Unnecessary UI"), &g_Config.m_ClFocusModeHideUI, &Expand, LineSize);
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClFocusModeHideChat, Localize("Hide Chat"), &g_Config.m_ClFocusModeHideChat, &Expand, LineSize);
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClFocusModeHideScoreboard, Localize("Hide Scoreboard"), &g_Config.m_ClFocusModeHideScoreboard, &Expand, LineSize);
+				DoLine_KeyReader(Expand, s_FocusModeBindReader, s_FocusModeBindClear, Localize("Focus mode bind"), "toggle p_focus_mode 0 1");
 			}
 
-			DoLine_KeyReader(Content, s_FocusModeBindReader, s_FocusModeBindClear, Localize("Focus mode bind"), "toggle p_focus_mode 0 1");
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
 
