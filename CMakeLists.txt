@@ -172,6 +172,12 @@ option(FUSE_LD "Linker to use" OFF)
 option(SECURITY_COMPILER_FLAGS "Whether to set security-relevant compiler flags like -D_FORTIFY_SOURCE=2 and -fstack-protector-strong" ON)
 option(MACOS_CODESIGN "Whether to sign code when building the DMG on macOS" OFF)
 
+if(TARGET_OS STREQUAL "windows")
+  # Keep FFmpeg-dependent features enabled on Windows without requiring
+  # -DVIDEORECORDER=ON on every configure.
+  set(VIDEORECORDER ON CACHE BOOL "Enable video recording support via FFmpeg" FORCE)
+endif()
+
 if(TARGET_OS STREQUAL "mac" AND DEFINED ENV{MACOS_APP_IDENTITY})
   set(MACOS_APP_IDENTITY "$ENV{MACOS_APP_IDENTITY}")
 endif()
@@ -564,7 +570,30 @@ find_package(ZLIB)
 find_package(Crypto)
 find_package(Curl)
 if(CLIENT AND VIDEORECORDER)
-  find_package(FFMPEG)
+  if(TARGET_OS STREQUAL "windows")
+    # Prefer the FFmpeg build used by the working BestClient variant on Windows.
+    set(FFMPEG_CUSTOM_ROOT "${PROJECT_SOURCE_DIR}/bestclient/noxy-libs/ffmpeg-msvc")
+    if(EXISTS "${FFMPEG_CUSTOM_ROOT}/include/libavcodec/avcodec.h" AND
+       EXISTS "${FFMPEG_CUSTOM_ROOT}/lib/avformat.lib" AND
+       EXISTS "${FFMPEG_CUSTOM_ROOT}/lib/avcodec.lib" AND
+       EXISTS "${FFMPEG_CUSTOM_ROOT}/lib/avutil.lib" AND
+       EXISTS "${FFMPEG_CUSTOM_ROOT}/lib/swscale.lib" AND
+       EXISTS "${FFMPEG_CUSTOM_ROOT}/lib/swresample.lib")
+      set(FFMPEG_INCLUDE_DIRS
+        "${FFMPEG_CUSTOM_ROOT}/include"
+        CACHE PATH "Custom FFmpeg include dir" FORCE)
+      set(FFMPEG_LIBRARIES
+        "${FFMPEG_CUSTOM_ROOT}/lib/avformat.lib;${FFMPEG_CUSTOM_ROOT}/lib/avcodec.lib;${FFMPEG_CUSTOM_ROOT}/lib/avutil.lib;${FFMPEG_CUSTOM_ROOT}/lib/swscale.lib;${FFMPEG_CUSTOM_ROOT}/lib/swresample.lib"
+        CACHE STRING "Custom FFmpeg libs" FORCE)
+      set(FFMPEG_FOUND TRUE CACHE BOOL "Custom FFmpeg present" FORCE)
+      set(FFMPEG_BUNDLED FALSE CACHE BOOL "Using bundled FFmpeg" FORCE)
+      message(STATUS "Using custom FFmpeg from ${FFMPEG_CUSTOM_ROOT}")
+    else()
+      find_package(FFMPEG)
+    endif()
+  else()
+    find_package(FFMPEG)
+  endif()
 endif()
 find_package(Freetype)
 if(DOWNLOAD_GTEST)

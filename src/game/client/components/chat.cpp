@@ -92,6 +92,24 @@ protected:
 		if(State() == IJob::STATE_ABORTED || m_vData.empty())
 			return;
 
+		auto DecodeSingleFrameFallback = [&]() -> bool {
+			CImageInfo Image;
+			if(!MediaDecoder::DecodeImageToRgba(m_pGraphics, m_vData.data(), m_vData.size(), m_aContextName, Image))
+				return false;
+
+			m_DecodedFrames.Free();
+			m_DecodedFrames.m_Width = (int)Image.m_Width;
+			m_DecodedFrames.m_Height = (int)Image.m_Height;
+			m_DecodedFrames.m_Animated = false;
+			m_DecodedFrames.m_AnimationStart = time_get();
+
+			SMediaRawFrame Frame;
+			Frame.m_DurationMs = 100;
+			Frame.m_Image = std::move(Image);
+			m_DecodedFrames.m_vFrames.push_back(std::move(Frame));
+			return !m_DecodedFrames.m_vFrames.empty();
+		};
+
 		SMediaDecodeLimits Limits;
 		Limits.m_MaxDimension = CHAT_MEDIA_MAX_DIMENSION;
 		Limits.m_MaxFrames = CHAT_MEDIA_MAX_GIF_FRAMES;
@@ -102,6 +120,8 @@ protected:
 		{
 		case EMediaKind::PHOTO:
 			m_Success = MediaDecoder::DecodeStaticImageCpu(m_pGraphics, m_vData.data(), m_vData.size(), m_aContextName, m_DecodedFrames, CHAT_MEDIA_MAX_DIMENSION);
+			if(!m_Success)
+				m_Success = DecodeSingleFrameFallback();
 			break;
 		case EMediaKind::ANIMATED:
 			// Animate previews for short animations within limits (frames/dimension/memory).
@@ -114,6 +134,8 @@ protected:
 				Limits.m_DecodeAllFrames = false;
 				m_Success = MediaDecoder::DecodeImageWithFfmpegCpu(m_pGraphics, m_vData.data(), m_vData.size(), m_aContextName, m_DecodedFrames, Limits);
 			}
+			if(!m_Success)
+				m_Success = DecodeSingleFrameFallback();
 			break;
 		case EMediaKind::VIDEO:
 			Limits.m_DecodeAllFrames = CHAT_MEDIA_ANIMATE_VIDEOS;
@@ -124,6 +146,8 @@ protected:
 				Limits.m_DecodeAllFrames = false;
 				m_Success = MediaDecoder::DecodeImageWithFfmpegCpu(m_pGraphics, m_vData.data(), m_vData.size(), m_aContextName, m_DecodedFrames, Limits);
 			}
+			if(!m_Success)
+				m_Success = DecodeSingleFrameFallback();
 			break;
 		case EMediaKind::UNKNOWN:
 		default:
@@ -1031,12 +1055,11 @@ static bool ExtractImgurMediaId(const std::string &Url, std::string &OutMediaId)
 	if(Path.empty() || Path == "/")
 		return false;
 
-	const char *apPrefixes[] = {"/a/", "/gallery/", "/t/"};
-	for(const char *pPrefix : apPrefixes)
-	{
-		if(str_startswith(Path.c_str(), pPrefix))
-			return false;
-	}
+	// Imgur album/gallery share links often still use a media-like ID that can be
+	// resolved through i.imgur.com/<id>.<ext>. Keep /t/ blocked because topic URLs
+	// are category pages and not stable media IDs.
+	if(str_startswith(Path.c_str(), "/t/"))
+		return false;
 
 	size_t SegmentStart = Path.find_last_of('/');
 	if(SegmentStart == std::string::npos || SegmentStart + 1 >= Path.size())
@@ -1153,6 +1176,28 @@ static bool IsWebmSignature(const unsigned char *pData, size_t DataSize)
 	return DataSize >= 4 && mem_comp(pData, s_aWebmSig, 4) == 0;
 }
 
+static bool IsAviSignature(const unsigned char *pData, size_t DataSize)
+{
+	return DataSize >= 12 && mem_comp(pData, "RIFF", 4) == 0 && mem_comp(pData + 8, "AVI ", 4) == 0;
+}
+
+static bool IsFlvSignature(const unsigned char *pData, size_t DataSize)
+{
+	return DataSize >= 3 && mem_comp(pData, "FLV", 3) == 0;
+}
+
+static bool IsMpegProgramStreamSignature(const unsigned char *pData, size_t DataSize)
+{
+	static const unsigned char s_aMpegPsSig[4] = {0x00, 0x00, 0x01, 0xba};
+	return DataSize >= 4 && mem_comp(pData, s_aMpegPsSig, 4) == 0;
+}
+
+static bool IsMpegTransportStreamSignature(const unsigned char *pData, size_t DataSize)
+{
+	// MPEG-TS packets are 188 bytes and start with sync byte 0x47.
+	return DataSize >= 376 && pData[0] == 0x47 && pData[188] == 0x47;
+}
+
 static bool IsOggSignature(const unsigned char *pData, size_t DataSize)
 {
 	return DataSize >= 4 && mem_comp(pData, "OggS", 4) == 0;
@@ -1165,7 +1210,9 @@ static bool IsImagePayloadSignature(const unsigned char *pData, size_t DataSize)
 
 static bool IsVideoPayloadSignature(const unsigned char *pData, size_t DataSize)
 {
-	return IsMp4LikeSignature(pData, DataSize) || IsWebmSignature(pData, DataSize) || IsOggSignature(pData, DataSize);
+	return IsMp4LikeSignature(pData, DataSize) || IsWebmSignature(pData, DataSize) || IsOggSignature(pData, DataSize) ||
+		IsAviSignature(pData, DataSize) || IsFlvSignature(pData, DataSize) || IsMpegProgramStreamSignature(pData, DataSize) ||
+		IsMpegTransportStreamSignature(pData, DataSize);
 }
 
 static std::string ToLowerAscii(std::string Value)
@@ -2282,7 +2329,6 @@ void CChat::UpdateMediaDownloads()
 					const bool IsVideoCandidate = IsLikelyVideoExtension(Ext) || IsVideoPayloadSignature(pResult, ResultSize);
 					const bool IsImageCandidate = IsLikelyImageExtension(Ext) || IsImagePayloadSignature(pResult, ResultSize);
 					const bool IsAnimatedImageCandidate = IsLikelyAnimatedImageExtension(Ext) && !IsVideoCandidate;
-					const bool LooksLikeMediaPayload = IsGif || IsVideoCandidate || IsImageCandidate;
 					EMediaKind MediaKind = EMediaKind::UNKNOWN;
 					if(IsGif || IsAnimatedImageCandidate)
 						MediaKind = EMediaKind::ANIMATED;
@@ -2290,10 +2336,16 @@ void CChat::UpdateMediaDownloads()
 						MediaKind = EMediaKind::VIDEO;
 					else if(IsImageCandidate)
 						MediaKind = EMediaKind::PHOTO;
+
+					// Allow unknown payload signatures to be decoded as a fallback.
+					// Some CDNs return uncommon containers/codecs without filename extension.
+					if(MediaKind == EMediaKind::UNKNOWN)
+						MediaKind = EMediaKind::VIDEO;
 					Line.m_MediaKind = MediaKind;
-					if(!LooksLikeMediaPayload)
+
+					if(!Ext.empty() && IsBlockedMediaExtension(Ext))
 					{
-						pFailureReason = "unsupported payload";
+						pFailureReason = "blocked extension";
 					}
 					else if(ResultSize < 16)
 					{
