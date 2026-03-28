@@ -323,6 +323,13 @@ bool CFastPractice::ResolvePracticeRoles(int &LocalClientId, int &DummyClientId)
 	DummyClientId = -1;
 
 	if(LocalClientId < 0)
+	{
+		const bool Spectating = GameClient()->m_Snap.m_SpecInfo.m_Active ||
+			(GameClient()->m_Snap.m_pLocalInfo && GameClient()->m_Snap.m_pLocalInfo->m_Team == TEAM_SPECTATORS);
+		if(Spectating)
+			LocalClientId = m_EnableLocalClientId;
+	}
+	if(LocalClientId < 0)
 		return false;
 	if(LocalClientId != m_EnableLocalClientId && LocalClientId != m_EnableDummyClientId)
 		return false;
@@ -344,6 +351,10 @@ int CFastPractice::CurrentPracticeDummyId() const
 {
 	if(!m_Enabled || !m_RequireDummy)
 		return -1;
+	const bool Spectating = GameClient()->m_Snap.m_SpecInfo.m_Active ||
+		(GameClient()->m_Snap.m_pLocalInfo && GameClient()->m_Snap.m_pLocalInfo->m_Team == TEAM_SPECTATORS);
+	if(Spectating)
+		return -1;
 
 	int LocalClientId = -1;
 	int DummyClientId = -1;
@@ -364,22 +375,30 @@ bool CFastPractice::IsPracticeDummy(int ClientId) const
 
 bool CFastPractice::ForcePredictWeapons() const
 {
-	return m_Enabled;
+	const bool Spectating = GameClient()->m_Snap.m_SpecInfo.m_Active ||
+		(GameClient()->m_Snap.m_pLocalInfo && GameClient()->m_Snap.m_pLocalInfo->m_Team == TEAM_SPECTATORS);
+	return m_Enabled && !Spectating;
 }
 
 bool CFastPractice::ForcePredictGrenade() const
 {
-	return m_Enabled;
+	const bool Spectating = GameClient()->m_Snap.m_SpecInfo.m_Active ||
+		(GameClient()->m_Snap.m_pLocalInfo && GameClient()->m_Snap.m_pLocalInfo->m_Team == TEAM_SPECTATORS);
+	return m_Enabled && !Spectating;
 }
 
 bool CFastPractice::ForcePredictGunfire() const
 {
-	return m_Enabled;
+	const bool Spectating = GameClient()->m_Snap.m_SpecInfo.m_Active ||
+		(GameClient()->m_Snap.m_pLocalInfo && GameClient()->m_Snap.m_pLocalInfo->m_Team == TEAM_SPECTATORS);
+	return m_Enabled && !Spectating;
 }
 
 bool CFastPractice::ForcePredictPlayers() const
 {
-	return m_Enabled;
+	const bool Spectating = GameClient()->m_Snap.m_SpecInfo.m_Active ||
+		(GameClient()->m_Snap.m_pLocalInfo && GameClient()->m_Snap.m_pLocalInfo->m_Team == TEAM_SPECTATORS);
+	return m_Enabled && !Spectating;
 }
 
 void CFastPractice::PrunePracticeWorld(CGameWorld &World) const
@@ -712,6 +731,8 @@ void CFastPractice::PrepareInputForSend(int *pData, int Size, bool Dummy) const
 {
 	if(!m_Enabled || !pData || Size < (int)sizeof(CNetObj_PlayerInput))
 		return;
+	if(GameClient()->m_Snap.m_SpecInfo.m_Active || (GameClient()->m_Snap.m_pLocalInfo && GameClient()->m_Snap.m_pLocalInfo->m_Team == TEAM_SPECTATORS))
+		return;
 
 	auto *pInput = reinterpret_cast<CNetObj_PlayerInput *>(pData);
 	NeutralizeInput(*pInput);
@@ -906,7 +927,7 @@ bool CFastPractice::OverridePredict()
 		Disable();
 		return false;
 	}
-	if(GameClient()->m_Snap.m_SpecInfo.m_Active)
+	if(GameClient()->m_Snap.m_SpecInfo.m_Active || (GameClient()->m_Snap.m_pLocalInfo && GameClient()->m_Snap.m_pLocalInfo->m_Team == TEAM_SPECTATORS))
 	{
 		// Keep practice mode state, but don't replace predicted world while spectating.
 		m_PracticeWorldInitialized = false;
@@ -1313,21 +1334,44 @@ int CFastPractice::ApplyVisualFastInputPrediction(int FinalTickRegular, int Loca
 
 void CFastPractice::UpdateGhostForClientId(int ClientId, SGhostData &Ghost)
 {
-	if(ClientId < 0 || ClientId >= MAX_CLIENTS || !GameClient()->m_Snap.m_aCharacters[ClientId].m_Active)
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
 	{
 		Ghost = SGhostData{};
 		return;
 	}
 
-	const CNetObj_Character &Char = GameClient()->m_Snap.m_aCharacters[ClientId].m_Cur;
-	Ghost.m_Valid = true;
-	Ghost.m_ClientId = ClientId;
-	Ghost.m_Pos = vec2(Char.m_X, Char.m_Y);
-	Ghost.m_Direction = vec2(Char.m_Direction == 0 ? 1.0f : (float)Char.m_Direction, 0.0f);
-	Ghost.m_Angle = Char.m_Angle;
-	Ghost.m_Weapon = Char.m_Weapon;
-	Ghost.m_HookState = Char.m_HookState;
-	Ghost.m_HookPos = vec2(Char.m_HookX, Char.m_HookY);
+	if(GameClient()->m_Snap.m_aCharacters[ClientId].m_Active)
+	{
+		const CNetObj_Character &Char = GameClient()->m_Snap.m_aCharacters[ClientId].m_Cur;
+		Ghost.m_Valid = true;
+		Ghost.m_ClientId = ClientId;
+		Ghost.m_Pos = vec2(Char.m_X, Char.m_Y);
+		Ghost.m_Direction = vec2(Char.m_Direction == 0 ? 1.0f : (float)Char.m_Direction, 0.0f);
+		Ghost.m_Angle = Char.m_Angle;
+		Ghost.m_Weapon = Char.m_Weapon;
+		Ghost.m_HookState = Char.m_HookState;
+		Ghost.m_HookPos = vec2(Char.m_HookX, Char.m_HookY);
+		return;
+	}
+
+	if(m_Enabled)
+	{
+		if(CCharacter *pChar = m_PracticeBaseWorld.GetCharacterById(ClientId))
+		{
+			const CCharacterCore *pCore = pChar->Core();
+			Ghost.m_Valid = true;
+			Ghost.m_ClientId = ClientId;
+			Ghost.m_Pos = pCore->m_Pos;
+			Ghost.m_Direction = vec2(pCore->m_Direction == 0 ? 1.0f : (float)pCore->m_Direction, 0.0f);
+			Ghost.m_Angle = pCore->m_Angle;
+			Ghost.m_Weapon = pCore->m_ActiveWeapon;
+			Ghost.m_HookState = pCore->m_HookState;
+			Ghost.m_HookPos = pCore->m_HookPos;
+			return;
+		}
+	}
+
+	Ghost = SGhostData{};
 }
 
 void CFastPractice::UpdateGhostData()
@@ -1357,7 +1401,10 @@ void CFastPractice::OnNewSnapshot()
 		return;
 	}
 
-	GameClient()->m_PredictedDummyId = CurrentPracticeDummyId();
+	if(GameClient()->m_Snap.m_SpecInfo.m_Active || (GameClient()->m_Snap.m_pLocalInfo && GameClient()->m_Snap.m_pLocalInfo->m_Team == TEAM_SPECTATORS))
+		GameClient()->m_PredictedDummyId = -1;
+	else
+		GameClient()->m_PredictedDummyId = CurrentPracticeDummyId();
 }
 
 void CFastPractice::RenderGhost(const SGhostData &Ghost, float Alpha) const
