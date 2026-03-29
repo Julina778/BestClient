@@ -91,8 +91,12 @@ static const SBestClientComponentEntry gs_aBestClientComponentEntries[] = {
 	{CBestClient::COMPONENT_GAMEPLAY_GORES_MODE, "Gores Mode", COMPONENTS_GROUP_GAMEPLAY},
 	{CBestClient::COMPONENT_VISUALS_OPTIMIZER, "Optimizer", COMPONENTS_GROUP_GAMEPLAY},
 	{CBestClient::COMPONENT_VISUALS_FOCUS_MODE, "Focus Mode", COMPONENTS_GROUP_GAMEPLAY},
-	{CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR, "Client Indicator", COMPONENTS_GROUP_OTHERS},
+	{CBestClient::COMPONENT_OTHERS_MISC, "Misc", COMPONENTS_GROUP_OTHERS},
+	{CBestClient::COMPONENT_OTHERS_CHAT_MEDIA, "Chat Media", COMPONENTS_GROUP_OTHERS},
 	{CBestClient::COMPONENT_VISUALS_CHAT_BUBBLES, "Chat Bubbles", COMPONENTS_GROUP_OTHERS},
+	{CBestClient::COMPONENT_OTHERS_VOICE_SETTINGS, "Voice Chat", COMPONENTS_GROUP_OTHERS},
+	{CBestClient::COMPONENT_OTHERS_VOICE_BINDS, "Voice Binds", COMPONENTS_GROUP_OTHERS},
+	{CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR, "Client Indicator", COMPONENTS_GROUP_OTHERS},
 	{CBestClient::COMPONENT_TCLIENT_SETTINGS_TAB, "Settings tab", COMPONENTS_GROUP_TCLIENT},
 	{CBestClient::COMPONENT_TCLIENT_BIND_WHEEL_TAB, "Bind wheel tab", COMPONENTS_GROUP_TCLIENT},
 	{CBestClient::COMPONENT_TCLIENT_WAR_LIST_TAB, "War list tab", COMPONENTS_GROUP_TCLIENT},
@@ -5550,6 +5554,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		CUIRect Column = LeftView;
 		Column.HSplitTop(10.0f, nullptr, &Column);
 
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_MISC))
 		{
 			const float ColorPickerLineSize = 25.0f;
 			const float ColorPickerLabelSize = 13.0f;
@@ -5582,9 +5587,10 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				static CButtonContainer s_RealHitboxDotColorButton;
 				DoLine_ColorPicker(&s_RealHitboxDotColorButton, ColorPickerLineSize, ColorPickerLabelSize, ColorPickerLineSpacing, &Content, Localize("Real hitbox dot color"), &g_Config.m_BcShowRealHitboxColor, color_cast<ColorRGBA>(ColorHSLA(DefaultConfig::BcShowRealHitboxColor, true)), false, nullptr, true);
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CHAT_MEDIA))
 		{
 			static float s_ChatMediaPhase = 0.0f;
 			const bool ChatMediaEnabled = g_Config.m_BcChatMediaPreview != 0;
@@ -5654,8 +5660,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				static CButtonContainer s_HideMediaBindClear;
 				DoLine_KeyReader(Expand, s_HideMediaBindReader, s_HideMediaBindClear, Localize("Hide media bind"), "toggle_chat_media_hidden");
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CHAT_BUBBLES))
 		{
@@ -5713,13 +5719,14 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				Expand.HSplitTop(LineSize, &Row, &Expand);
 				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleFadeOut, &g_Config.m_BcChatBubbleFadeOut, &Row, Localize("fade out for"), 15, 100);
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		const float LeftColumnEndY = Column.y;
 		Column = RightView;
 		Column.HSplitTop(10.0f, nullptr, &Column);
 
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_VOICE_SETTINGS))
 		{
 			static float s_VoiceSettingsPhase = 0.0f;
 			const bool VoiceSettingsExpanded = g_Config.m_BcVoiceChatEnable != 0;
@@ -5729,9 +5736,10 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			CUIRect VoiceSettingsView;
 			BeginBlock(Column, VoiceSettingsHeight, VoiceSettingsView);
 			GameClient()->m_VoiceChat.RenderMenuSettingsBlock(VoiceSettingsView, s_VoiceSettingsPhase);
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_VOICE_BINDS))
 		{
 			static CButtonContainer s_VoicePanelBindReader;
 			static CButtonContainer s_VoicePanelBindClear;
@@ -5746,8 +5754,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			DoLine_KeyReader(BindsView, s_VoicePanelBindReader, s_VoicePanelBindClear, Localize("Voice panel"), "toggle_voice_panel");
 			DoLine_KeyReader(BindsView, s_MicMuteBindReader, s_MicMuteBindClear, Localize("Mute microphone"), "toggle_voice_mic_mute");
 			DoLine_KeyReader(BindsView, s_HeadphonesMuteBindReader, s_HeadphonesMuteBindClear, Localize("Mute headphones"), "toggle_voice_headphones_mute");
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR))
 		{
