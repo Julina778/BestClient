@@ -1368,6 +1368,9 @@ void CVoiceChat::RenderHudMuteStatusIndicator(float HudWidth, float HudHeight, b
 
 void CVoiceChat::RenderHudTalkingIndicator(float HudWidth, float HudHeight, bool ForcePreview)
 {
+	if(!ForcePreview && g_Config.m_BcVoiceChatEnable == 0)
+		return;
+
 	const std::vector<STalkingEntry> &vEntries = m_vTalkingEntries;
 	const int LocalClientId = GameClient()->m_Snap.m_LocalClientId;
 
@@ -1891,6 +1894,10 @@ void CVoiceChat::ClearPeerState()
 	m_Peers.clear();
 	m_PeerVolumePercent.clear();
 	m_PeerVolumeSliderButtons.clear();
+	m_PeerResolvedClientIds.clear();
+	m_vSortedPeerIds.clear();
+	m_vVisibleMemberPeerIds.clear();
+	m_vTalkingEntries.clear();
 	InvalidatePeerCaches();
 }
 
