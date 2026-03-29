@@ -368,11 +368,16 @@ void CVoiceChat::OnReset()
 	m_AutoActivationUntilTick = 0;
 	m_SendSequence = 0;
 	m_MicLevel = 0.0f;
+	m_VadNoiseFloor = 0.0f;
 	m_WasTransmitActive = false;
 	m_LastHelloTick = 0;
 	m_LastServerPacketTick = 0;
 	m_LastHeartbeatTick = 0;
 	m_LastBitrate = -1;
+	m_LastEncoderTuneTick = 0;
+	m_LastEncoderLossPerc = -1;
+	m_LastEncoderFec = -1;
+	m_PlaybackQueueErrorLogged = false;
 	m_HelloResetPending = false;
 	m_AdvertisedRoomKey.clear();
 	m_AdvertisedGameClientId = BestClientVoice::INVALID_GAME_CLIENT_ID - 1;
@@ -490,7 +495,11 @@ void CVoiceChat::OnUpdate()
 	{
 		ConfigureVoiceOpusEncoder(m_pEncoder, ClampedBitrate);
 		m_LastBitrate = ClampedBitrate;
+		m_LastEncoderLossPerc = 5;
+		m_LastEncoderFec = 1;
+		m_LastEncoderTuneTick = 0;
 	}
+	TuneEncoderForNetwork();
 
 	const std::string RoomKey = CurrentRoomKey();
 	const int GameClientId = LocalGameClientId();
@@ -1435,6 +1444,9 @@ bool CVoiceChat::CreateEncoder()
 	}
 	m_LastBitrate = std::clamp(g_Config.m_BcVoiceChatBitrate, 6, VOICE_MAX_BITRATE_KBPS);
 	ConfigureVoiceOpusEncoder(m_pEncoder, m_LastBitrate);
+	m_LastEncoderLossPerc = 5;
+	m_LastEncoderFec = 1;
+	m_LastEncoderTuneTick = 0;
 	return true;
 }
 
@@ -1445,6 +1457,73 @@ void CVoiceChat::DestroyEncoder()
 		opus_encoder_destroy(m_pEncoder);
 		m_pEncoder = nullptr;
 	}
+	m_LastEncoderLossPerc = -1;
+	m_LastEncoderFec = -1;
+	m_LastEncoderTuneTick = 0;
+}
+
+void CVoiceChat::TuneEncoderForNetwork()
+{
+	if(!m_pEncoder)
+		return;
+
+	const int64_t Now = time_get();
+	if(m_LastEncoderTuneTick != 0 && Now - m_LastEncoderTuneTick < time_freq())
+		return;
+
+	float LossAvg = 0.0f;
+	float JitterMax = 0.0f;
+	int ActivePeerCount = 0;
+	for(const auto &PeerPair : m_Peers)
+	{
+		const CRemotePeer &Peer = PeerPair.second;
+		if(Peer.m_LastReceiveTick <= 0 || Now - Peer.m_LastReceiveTick > 5 * time_freq())
+			continue;
+
+		LossAvg += std::clamp(Peer.m_LossEwma, 0.0f, 1.0f);
+		JitterMax = maximum(JitterMax, Peer.m_JitterMs);
+		++ActivePeerCount;
+	}
+	if(ActivePeerCount > 0)
+		LossAvg /= (float)ActivePeerCount;
+
+	int TargetLossPerc = 5;
+	int TargetFec = 1;
+	if(ActivePeerCount > 0)
+	{
+		if(LossAvg <= 0.02f && JitterMax < 8.0f)
+		{
+			TargetLossPerc = 0;
+			TargetFec = 0;
+		}
+		else if(LossAvg <= 0.05f)
+		{
+			TargetLossPerc = 5;
+			TargetFec = 1;
+		}
+		else if(LossAvg <= 0.10f)
+		{
+			TargetLossPerc = 10;
+			TargetFec = 1;
+		}
+		else
+		{
+			TargetLossPerc = 20;
+			TargetFec = 1;
+		}
+	}
+
+	if(m_LastEncoderLossPerc != TargetLossPerc)
+	{
+		opus_encoder_ctl(m_pEncoder, OPUS_SET_PACKET_LOSS_PERC(TargetLossPerc));
+		m_LastEncoderLossPerc = TargetLossPerc;
+	}
+	if(m_LastEncoderFec != TargetFec)
+	{
+		opus_encoder_ctl(m_pEncoder, OPUS_SET_INBAND_FEC(TargetFec));
+		m_LastEncoderFec = TargetFec;
+	}
+	m_LastEncoderTuneTick = Now;
 }
 
 void CVoiceChat::ClearPeerState()
@@ -2042,9 +2121,14 @@ void CVoiceChat::ProcessNetwork()
 		Peer.m_Team = Team;
 		Peer.m_Position = vec2((float)PosX, (float)PosY);
 		const int64_t Now = time_get();
+		if(Peer.m_LastArrivalTick > 0)
+		{
+			const float DeltaMs = (float)((Now - Peer.m_LastArrivalTick) * 1000.0 / (double)time_freq());
+			const float Deviation = std::fabs(DeltaMs - 20.0f);
+			Peer.m_JitterMs = Peer.m_JitterMs <= 0.0f ? Deviation : (0.9f * Peer.m_JitterMs + 0.1f * Deviation);
+		}
+		Peer.m_LastArrivalTick = Now;
 		Peer.m_LastReceiveTick = Now;
-		Peer.m_LastVoiceTick = Now;
-		m_TalkingStateDirty = true;
 
 		if(!Peer.m_pDecoder)
 		{
@@ -2065,11 +2149,17 @@ void CVoiceChat::ProcessNetwork()
 
 			const uint16_t Expected = (uint16_t)(Peer.m_LastSequence + 1);
 			const uint16_t MissingPackets = (uint16_t)(Sequence - Expected);
+			const int DeltaPackets = (int)MissingPackets + 1;
+			const float LossRatio = std::clamp(MissingPackets / (float)maximum(DeltaPackets, 1), 0.0f, 1.0f);
+			Peer.m_LossEwma = Peer.m_LossEwma <= 0.0f ? LossRatio : (0.9f * Peer.m_LossEwma + 0.1f * LossRatio);
 			if(MissingPackets > 0)
 			{
 				if(MissingPackets > MAX_PACKET_GAP_FOR_PLC)
 				{
 					Peer.m_DecodedPcm.Clear();
+					if(Peer.m_pDecoder)
+						opus_decoder_ctl(Peer.m_pDecoder, OPUS_RESET_STATE);
+					Peer.m_HasSequence = false;
 				}
 				else
 				{
@@ -2112,10 +2202,21 @@ void CVoiceChat::ProcessNetwork()
 
 		const int DecodedSamples = opus_decode(Peer.m_pDecoder, pRawData + Offset, OpusSize, aDecoded, BestClientVoice::FRAME_SIZE, 0);
 		if(DecodedSamples <= 0)
+		{
+			++Peer.m_ConsecutiveDecodeFails;
+			if(Peer.m_ConsecutiveDecodeFails >= 3 && Peer.m_pDecoder)
+			{
+				opus_decoder_ctl(Peer.m_pDecoder, OPUS_RESET_STATE);
+				Peer.m_ConsecutiveDecodeFails = 0;
+			}
 			continue;
+		}
 
+		Peer.m_ConsecutiveDecodeFails = 0;
 		Peer.m_LastSequence = Sequence;
 		Peer.m_HasSequence = true;
+		Peer.m_LastVoiceTick = Now;
+		m_TalkingStateDirty = true;
 
 		const size_t Dropped = Peer.m_DecodedPcm.PushBack(aDecoded, (size_t)DecodedSamples);
 		if(Dropped > 0 && Peer.m_DecodedPcm.Size() > PLAYBACK_MAX_RESYNC_FRAMES)
@@ -2219,6 +2320,10 @@ void CVoiceChat::ProcessCapture()
 			m_CapturePcm.PushBack(aMixedCapture, (size_t)Frames);
 		}
 	}
+	else if(m_CapturePcm.Size() == 0)
+	{
+		m_MicLevel = mix(m_MicLevel, 0.0f, 0.08f);
+	}
 
 	while(m_CapturePcm.Size() >= (size_t)BestClientVoice::FRAME_SIZE)
 	{
@@ -2261,6 +2366,7 @@ void CVoiceChat::ProcessCapture()
 		if(!ShouldTransmit())
 		{
 			m_WasTransmitActive = false;
+			m_AutoActivationUntilTick = 0;
 			continue;
 		}
 
@@ -2273,8 +2379,21 @@ void CVoiceChat::ProcessCapture()
 		}
 		else
 		{
-			// Automatic activation (VAD): trigger by RMS/peak level and keep it alive shortly to avoid choppy speech.
-			const float StartThreshold = 0.035f;
+			// Automatic activation (VAD): trigger by RMS/peak level with an adaptive noise floor and a short hangover.
+			if(m_AutoActivationUntilTick <= 0 || NowTick > m_AutoActivationUntilTick)
+			{
+				if(m_VadNoiseFloor <= 0.0001f)
+					m_VadNoiseFloor = ActivationLevel;
+				else
+					m_VadNoiseFloor = mix(m_VadNoiseFloor, ActivationLevel, 0.03f);
+			}
+			else
+			{
+				m_VadNoiseFloor = mix(m_VadNoiseFloor, ActivationLevel, 0.002f);
+			}
+
+			const float NoiseThreshold = std::clamp(m_VadNoiseFloor * 2.2f, 0.0f, 0.12f);
+			const float StartThreshold = maximum(0.030f, NoiseThreshold);
 			const int64_t HangoverTicks = (time_freq() * 500) / 1000;
 			if(ActivationLevel >= StartThreshold)
 				m_AutoActivationUntilTick = NowTick + HangoverTicks;
@@ -2306,8 +2425,14 @@ void CVoiceChat::ProcessPlayback()
 	if(!HasPendingPlaybackAudio() && SDL_GetQueuedAudioSize(m_PlaybackDevice) == 0)
 		return;
 
-	const Uint32 QueuedBytes = SDL_GetQueuedAudioSize(m_PlaybackDevice);
+	Uint32 QueuedBytes = SDL_GetQueuedAudioSize(m_PlaybackDevice);
 	const Uint32 TargetBytes = (Uint32)(PLAYBACK_TARGET_FRAMES * 2 * sizeof(int16_t));
+	const Uint32 MaxQueuedBytes = TargetBytes * 3u;
+	if(QueuedBytes > MaxQueuedBytes)
+	{
+		SDL_ClearQueuedAudio(m_PlaybackDevice);
+		QueuedBytes = 0;
+	}
 	if(QueuedBytes >= TargetBytes)
 		return;
 
@@ -2377,7 +2502,16 @@ void CVoiceChat::ProcessPlayback()
 			const int Out = round_to_int(aMix[i] * ClipScale);
 			aOut[i] = (int16_t)std::clamp(Out, (int)std::numeric_limits<int16_t>::min(), (int)std::numeric_limits<int16_t>::max());
 		}
-		SDL_QueueAudio(m_PlaybackDevice, aOut, sizeof(aOut));
+		if(SDL_QueueAudio(m_PlaybackDevice, aOut, sizeof(aOut)) < 0)
+		{
+			if(!m_PlaybackQueueErrorLogged)
+			{
+				dbg_msg("voice", "SDL_QueueAudio failed: %s", SDL_GetError());
+				m_PlaybackQueueErrorLogged = true;
+			}
+			break;
+		}
+		m_PlaybackQueueErrorLogged = false;
 	}
 }
 
@@ -3588,7 +3722,7 @@ void CVoiceChat::ConVoiceStatus(IConsole::IResult *pResult, void *pUserData)
 	(void)pResult;
 	CVoiceChat *pSelf = static_cast<CVoiceChat *>(pUserData);
 	dbg_msg("voice", "enabled=%d connected=%d participants=%d server='%s' ptt=%d",
-		1, pSelf->m_Registered ? 1 : 0, (int)pSelf->m_vVisibleMemberPeerIds.size(), g_Config.m_BcVoiceChatServerAddress, pSelf->m_PushToTalkPressed ? 1 : 0);
+		g_Config.m_BcVoiceChatEnable ? 1 : 0, pSelf->m_Registered ? 1 : 0, (int)pSelf->m_vVisibleMemberPeerIds.size(), g_Config.m_BcVoiceChatServerAddress, pSelf->m_PushToTalkPressed ? 1 : 0);
 }
 
 void CVoiceChat::ConToggleVoicePanel(IConsole::IResult *pResult, void *pUserData)

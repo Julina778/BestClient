@@ -146,12 +146,16 @@ private:
 		OpusDecoder *m_pDecoder = nullptr;
 		CFixedSampleRingBuffer<BestClientVoice::FRAME_SIZE * 8> m_DecodedPcm;
 		int64_t m_LastReceiveTick = 0;
+		int64_t m_LastArrivalTick = 0;
 		uint16_t m_LastSequence = 0;
 		bool m_HasSequence = false;
 		vec2 m_Position = vec2(0.0f, 0.0f);
 		int m_Team = 0;
 		int64_t m_LastVoiceTick = 0;
 		int m_AnnouncedGameClientId = BestClientVoice::INVALID_GAME_CLIENT_ID;
+		float m_JitterMs = 0.0f;
+		float m_LossEwma = 0.0f;
+		int m_ConsecutiveDecodeFails = 0;
 	};
 	struct CVoiceServerEntry
 	{
@@ -199,10 +203,15 @@ private:
 	bool m_PushToTalkPressed = false;
 	int64_t m_AutoActivationUntilTick = 0;
 	float m_MicLevel = 0.0f;
+	float m_VadNoiseFloor = 0.0f;
 	bool m_WasTransmitActive = false;
 	bool m_WasEnabled = false;
 	char m_aLastServerAddr[128] = "";
 	int64_t m_LastStartAttempt = 0;
+	int64_t m_LastEncoderTuneTick = 0;
+	int m_LastEncoderLossPerc = -1;
+	int m_LastEncoderFec = -1;
+	bool m_PlaybackQueueErrorLogged = false;
 	int64_t m_LastServerListPingSweepTick = 0;
 	int64_t m_LastActiveTick = 0;
 	int64_t m_LastProcessNetworkTick = 0;
@@ -271,6 +280,7 @@ private:
 	void CloseAudioDevices();
 	bool CreateEncoder();
 	void DestroyEncoder();
+	void TuneEncoderForNetwork();
 	void ClearPeerState();
 	void SendHello();
 	void SendGoodbye();
