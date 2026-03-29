@@ -5974,6 +5974,15 @@ bool CGameClient::CanDisplayWarning() const
 	return m_Menus.CanDisplayWarning();
 }
 
+const char *CGameClient::LocalPlayerSkinName() const
+{
+	const int LocalId = m_aLocalIds[g_Config.m_ClDummy];
+	if(LocalId < 0 || LocalId >= MAX_CLIENTS)
+		return nullptr;
+	const char *pSkinName = m_aClients[LocalId].m_aSkinName;
+	return pSkinName[0] != '\0' ? pSkinName : nullptr;
+}
+
 CNetObjHandler *CGameClient::GetNetObjHandler()
 {
 	return &m_NetObjHandler;

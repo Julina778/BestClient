@@ -3,6 +3,7 @@
 
 #include <engine/client.h>
 #include <engine/discord.h>
+#include <engine/shared/http.h>
 
 #if defined(CONF_DISCORD)
 #include <discord_game_sdk.h>
@@ -144,8 +145,13 @@ public:
 
 		if(pSkinName && pSkinName[0] != '\0')
 		{
+			char aEscapedSkinName[128];
+			EscapeUrl(aEscapedSkinName, sizeof(aEscapedSkinName), pSkinName);
+			if(aEscapedSkinName[0] == '\0')
+				str_copy(aEscapedSkinName, "default", sizeof(aEscapedSkinName));
+
 			char aSkinUrl[256];
-			str_format(aSkinUrl, sizeof(aSkinUrl), "https://best-client-api.vercel.app/api/assemble-foot/%s.png", pSkinName);
+			str_format(aSkinUrl, sizeof(aSkinUrl), "https://best-client-api.vercel.app/api/assemble-foot/%s.png", aEscapedSkinName);
 			str_copy(m_Activity.assets.small_image, aSkinUrl, sizeof(m_Activity.assets.small_image));
 		}
 
@@ -184,12 +190,29 @@ public:
 		m_UpdateActivity = true;
 	}
 
-	void UpdateServerInfo(const CServerInfo &ServerInfo, const char *pMapName) override
+	void UpdateServerInfo(const CServerInfo &ServerInfo, const char *pMapName, const char *pPlayerName, const char *pSkinName) override
 	{
 		if(!m_Activity.instance)
 			return;
 
 		UpdateServerIp(ServerInfo);
+
+		if(pSkinName && pSkinName[0] != '\0')
+		{
+			char aEscapedSkinName[128];
+			EscapeUrl(aEscapedSkinName, sizeof(aEscapedSkinName), pSkinName);
+			if(aEscapedSkinName[0] == '\0')
+				str_copy(aEscapedSkinName, "default", sizeof(aEscapedSkinName));
+
+			char aSkinUrl[256];
+			str_format(aSkinUrl, sizeof(aSkinUrl), "https://best-client-api.vercel.app/api/assemble-foot/%s.png", aEscapedSkinName);
+			str_copy(m_Activity.assets.small_image, aSkinUrl, sizeof(m_Activity.assets.small_image));
+		}
+		if(pPlayerName && pPlayerName[0] != '\0')
+		{
+			str_copy(m_Activity.assets.small_text, pPlayerName, sizeof(m_Activity.assets.small_text));
+		}
+
 		if(m_ShowMap)
 		{
 			const char *pDisplayMap = (pMapName && pMapName[0] != '\0') ? pMapName : ServerInfo.m_aMap;
@@ -283,7 +306,7 @@ class CDiscordStub : public IDiscord
 	void Update(bool Enabled) override {}
 	void ClearGameInfo() override {}
 	void SetGameInfo(const CServerInfo &ServerInfo, const char *pMapName, const char *pPlayerName, const char *pSkinName, bool ShowMap, bool Registered) override {}
-	void UpdateServerInfo(const CServerInfo &ServerInfo, const char *pMapName) override {}
+	void UpdateServerInfo(const CServerInfo &ServerInfo, const char *pMapName, const char *pPlayerName, const char *pSkinName) override {}
 	void UpdatePlayerCount(int Count) override {}
 };
 

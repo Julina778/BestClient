@@ -824,6 +824,7 @@ public:
 
 	IMap *Map() override { return m_pMap.get(); }
 	const IMap *Map() const override { return m_pMap.get(); }
+	const char *LocalPlayerSkinName() const override;
 	CNetObjHandler *GetNetObjHandler() override;
 	protocol7::CNetObjHandler *GetNetObjHandler7() override;
 
