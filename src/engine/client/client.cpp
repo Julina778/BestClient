@@ -460,8 +460,9 @@ void CClient::SetState(EClientState State)
 	if(State == IClient::STATE_ONLINE)
 	{
 		const bool Registered = m_ServerBrowser.IsRegistered(ServerAddress());
-		Discord()->SetGameInfo(m_CurrentServerInfo, Registered);
-		Steam()->SetGameInfo(ServerAddress(), GameClient()->Map()->BaseName(), Registered);
+		const char *pMapName = GameClient()->Map()->BaseName();
+		Discord()->SetGameInfo(m_CurrentServerInfo, pMapName, PlayerName(), g_Config.m_ClPlayerSkin, true, Registered);
+		Steam()->SetGameInfo(ServerAddress(), pMapName, Registered);
 	}
 	else if(OldState == IClient::STATE_ONLINE)
 	{
@@ -1518,7 +1519,7 @@ void CClient::ProcessServerInfo(int RawType, NETADDR *pFrom, const void *pData, 
 			if(SavedType >= m_CurrentServerInfo.m_Type)
 			{
 				SetCurrentServerInfo(Info);
-				Discord()->UpdateServerInfo(m_CurrentServerInfo);
+				Discord()->UpdateServerInfo(m_CurrentServerInfo, GameClient()->Map()->BaseName());
 			}
 
 			bool ValidPong = false;
