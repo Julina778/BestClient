@@ -773,6 +773,8 @@ constexpr float kVoiceMenuOuterMargin = 2.0f;
 constexpr float kVoiceMenuTitleRowHeight = 24.0f;
 constexpr float kVoiceMenuTitleToEnableSpacing = 4.0f;
 constexpr float kVoiceMenuEnableRowHeight = 22.0f;
+constexpr float kVoiceMenuEnableToInGameOnlySpacing = 3.0f;
+constexpr float kVoiceMenuInGameOnlyRowHeight = 20.0f;
 constexpr float kVoiceMenuServerRowHeight = 22.0f;
 constexpr float kVoiceMenuServerRowGap = 3.0f;
 
@@ -788,14 +790,20 @@ float VoiceMenuExpandedHeightForServerCount(int ServerCount)
 		6.0f + 16.0f + // Status.
 		4.0f + 22.0f + // Reload button.
 		5.0f + 16.0f + 2.0f + // Servers label.
-		ServerListHeight;
+		ServerListHeight +
+		4.0f + 14.0f + 2.0f + 14.0f; // Command hint.
 }
 }
 
 float CVoiceChat::GetMenuSettingsBlockHeight(float RevealPhase) const
 {
 	RevealPhase = std::clamp(RevealPhase, 0.0f, 1.0f);
-	const float HeaderHeight = kVoiceMenuTitleRowHeight + kVoiceMenuTitleToEnableSpacing + kVoiceMenuEnableRowHeight;
+	const float HeaderHeight =
+		kVoiceMenuTitleRowHeight +
+		kVoiceMenuTitleToEnableSpacing +
+		kVoiceMenuEnableRowHeight +
+		kVoiceMenuEnableToInGameOnlySpacing +
+		kVoiceMenuInGameOnlyRowHeight;
 	const int ServerCount = (int)m_vServerEntries.size();
 	const float ExpandedHeight = VoiceMenuExpandedHeightForServerCount(ServerCount);
 	return HeaderHeight + ExpandedHeight * RevealPhase + kVoiceMenuOuterMargin * 2.0f;
@@ -916,6 +924,13 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 		}
 	}
 
+	AddSpacing(kVoiceMenuEnableToInGameOnlySpacing);
+	if(AddRow(kVoiceMenuInGameOnlyRowHeight, Row))
+	{
+		if(GameClient()->m_Menus.DoButton_CheckBox(&m_InGameOnlyButton, Localize("In-Game Only"), g_Config.m_BcVoiceChatInGameOnly, &Row))
+			g_Config.m_BcVoiceChatInGameOnly ^= 1;
+	}
+
 	if(!g_Config.m_BcVoiceChatEnable || RevealPhase <= 0.0f)
 		return;
 
@@ -1024,6 +1039,13 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 			}
 		}
 	}
+
+	AddExpandedSpacing(4.0f);
+	if(AddExpandedRow(14.0f, Row))
+		Ui()->DoLabel(&Row, Localize("Tip: control players by chat commands"), 11.0f, TEXTALIGN_ML);
+	AddExpandedSpacing(2.0f);
+	if(AddExpandedRow(14.0f, Row))
+		Ui()->DoLabel(&Row, Localize("!voice mute \"nickname\" / !voice unmute \"nickname\" / !voice volume \"nickname\" 0-100"), 11.0f, TEXTALIGN_ML);
 }
 
 void CVoiceChat::RenderMenuControlBinds(const CUIRect &View)
@@ -2417,6 +2439,8 @@ void CVoiceChat::ProcessNetwork()
 
 		if(!m_Registered || m_ClientVoiceId == 0)
 			continue;
+		if(IsInGameOnlyBlocked())
+			continue;
 
 		uint16_t SenderId = 0;
 		int16_t Team = 0;
@@ -2612,6 +2636,17 @@ void CVoiceChat::ProcessCapture()
 {
 	if(!m_CaptureDevice || !m_pEncoder)
 		return;
+	if(IsInGameOnlyBlocked())
+	{
+		m_WasTransmitActive = false;
+		m_AutoActivationUntilTick = 0;
+		m_MicLevel = mix(m_MicLevel, 0.0f, 0.25f);
+		m_CapturePcm.Clear();
+		m_MicMonitorPcm.Clear();
+		if(SDL_GetQueuedAudioSize(m_CaptureDevice) > 0)
+			SDL_ClearQueuedAudio(m_CaptureDevice);
+		return;
+	}
 	if(g_Config.m_BcVoiceChatActivationMode == 1 && !m_PushToTalkPressed && !g_Config.m_BcVoiceChatMicCheck)
 	{
 		m_WasTransmitActive = false;
@@ -2748,6 +2783,19 @@ void CVoiceChat::ProcessPlayback()
 {
 	if(!m_PlaybackDevice)
 		return;
+	if(IsInGameOnlyBlocked())
+	{
+		if(SDL_GetQueuedAudioSize(m_PlaybackDevice) > 0)
+			SDL_ClearQueuedAudio(m_PlaybackDevice);
+		m_MicMonitorPcm.Clear();
+		for(auto &PeerPair : m_Peers)
+		{
+			PeerPair.second.m_DecodedPcm.Clear();
+			PeerPair.second.m_LastVoiceTick = 0;
+		}
+		m_TalkingStateDirty = true;
+		return;
+	}
 	if(!HasPendingPlaybackAudio() && SDL_GetQueuedAudioSize(m_PlaybackDevice) == 0)
 		return;
 
@@ -2985,7 +3033,17 @@ bool CVoiceChat::ShouldTransmit() const
 		return false;
 	if(g_Config.m_BcVoiceChatMicMuted)
 		return false;
+	if(IsInGameOnlyBlocked())
+		return false;
 	return true;
+}
+
+bool CVoiceChat::IsInGameOnlyBlocked() const
+{
+	if(g_Config.m_BcVoiceChatInGameOnly == 0)
+		return false;
+	IEngineGraphics *pEngineGraphics = Kernel()->RequestInterface<IEngineGraphics>();
+	return pEngineGraphics && pEngineGraphics->WindowActive() == 0;
 }
 
 bool CVoiceChat::ShouldStartVoicePipeline(bool Online) const
@@ -3467,7 +3525,7 @@ void CVoiceChat::RenderSettingsSection(CUIRect View)
 	// Simplified settings: enable, mode, devices (+ server list below).
 	{
 		CUIRect OptionsCard;
-		const float OptionsInnerHeight = 28.0f + 4.0f + 28.0f + 4.0f + 24.0f + 4.0f + 24.0f;
+		const float OptionsInnerHeight = 28.0f + 4.0f + 24.0f + 4.0f + 28.0f + 4.0f + 24.0f + 4.0f + 24.0f;
 		const float OptionsHeight = OptionsInnerHeight + 20.0f;
 		View.HSplitTop(OptionsHeight, &OptionsCard, &View);
 		OptionsCard.Draw(VoiceCardBgColor(), IGraphics::CORNER_ALL, 6.0f);
@@ -3532,14 +3590,19 @@ void CVoiceChat::RenderSettingsSection(CUIRect View)
 				StopVoice();
 		}
 
-			AddSpacing(4.0f);
-			Options.HSplitTop(28.0f, &Row, &Options);
-			if(GameClient()->m_Menus.DoButton_Menu(&m_ActivationModeButton, g_Config.m_BcVoiceChatActivationMode == 1 ? Localize("Mode: Push-to-talk") : Localize("Mode: Automatic activation"), 0, &Row))
-				g_Config.m_BcVoiceChatActivationMode = g_Config.m_BcVoiceChatActivationMode == 1 ? 0 : 1;
+		AddSpacing(4.0f);
+		Options.HSplitTop(24.0f, &Row, &Options);
+		if(GameClient()->m_Menus.DoButton_CheckBox(&m_InGameOnlyButton, Localize("In-Game Only"), g_Config.m_BcVoiceChatInGameOnly, &Row))
+			g_Config.m_BcVoiceChatInGameOnly ^= 1;
 
-			AddSpacing(4.0f);
-			Options.HSplitTop(24.0f, &Row, &Options);
-			RenderDeviceDropDownRow(Row, Localize("Microphone"), 1, g_Config.m_BcVoiceChatInputDevice, m_InputDeviceDropDownState, s_InputDeviceDropDownScrollRegion);
+		AddSpacing(4.0f);
+		Options.HSplitTop(28.0f, &Row, &Options);
+		if(GameClient()->m_Menus.DoButton_Menu(&m_ActivationModeButton, g_Config.m_BcVoiceChatActivationMode == 1 ? Localize("Mode: Push-to-talk") : Localize("Mode: Automatic activation"), 0, &Row))
+			g_Config.m_BcVoiceChatActivationMode = g_Config.m_BcVoiceChatActivationMode == 1 ? 0 : 1;
+
+		AddSpacing(4.0f);
+		Options.HSplitTop(24.0f, &Row, &Options);
+		RenderDeviceDropDownRow(Row, Localize("Microphone"), 1, g_Config.m_BcVoiceChatInputDevice, m_InputDeviceDropDownState, s_InputDeviceDropDownScrollRegion);
 		AddSpacing(4.0f);
 		Options.HSplitTop(24.0f, &Row, &Options);
 		RenderDeviceDropDownRow(Row, Localize("Headphones"), 0, g_Config.m_BcVoiceChatOutputDevice, m_OutputDeviceDropDownState, s_OutputDeviceDropDownScrollRegion);

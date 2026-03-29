@@ -264,6 +264,7 @@ private:
 	CButtonContainer m_HeadphonesMuteButton;
 	CButtonContainer m_MicCheckButton;
 	CButtonContainer m_EnableVoiceButton;
+	CButtonContainer m_InGameOnlyButton;
 	CButtonContainer m_ActivationModeButton;
 	CButtonContainer m_ReloadServerListButton;
 	CButtonContainer m_ReconnectButton;
@@ -300,6 +301,7 @@ private:
 	void ProcessPlayback();
 	void CleanupPeers();
 	bool ShouldTransmit() const;
+	bool IsInGameOnlyBlocked() const;
 	int LocalTeam() const;
 	int LocalVoiceTeam() const;
 	vec2 LocalPosition() const;
