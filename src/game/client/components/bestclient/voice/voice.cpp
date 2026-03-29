@@ -418,6 +418,8 @@ void CVoiceChat::OnReset()
 	m_SendSequence = 0;
 	m_MicLevel = 0.0f;
 	m_VadNoiseFloor = 0.0f;
+	m_VadSpeechScore = 0.0f;
+	m_VadLastActivationLevel = 0.0f;
 	m_WasTransmitActive = false;
 	m_LastHelloTick = 0;
 	m_LastServerPacketTick = 0;
@@ -2656,6 +2658,8 @@ void CVoiceChat::ProcessCapture()
 		m_LastProcessCaptureTick = time_get();
 		m_WasTransmitActive = false;
 		m_AutoActivationUntilTick = 0;
+		m_VadSpeechScore = 0.0f;
+		m_VadLastActivationLevel = 0.0f;
 		m_MicLevel = mix(m_MicLevel, 0.0f, 0.25f);
 		m_CapturePcm.Clear();
 		m_MicMonitorPcm.Clear();
@@ -2668,6 +2672,7 @@ void CVoiceChat::ProcessCapture()
 		m_LastProcessCaptureTick = time_get();
 		m_WasTransmitActive = false;
 		m_AutoActivationUntilTick = 0;
+		m_VadSpeechScore = 0.0f;
 		m_MicLevel = mix(m_MicLevel, 0.0f, 0.25f);
 		if(SDL_GetQueuedAudioSize(m_CaptureDevice) > 0)
 			SDL_ClearQueuedAudio(m_CaptureDevice);
@@ -2770,6 +2775,7 @@ void CVoiceChat::ProcessCapture()
 		{
 			m_WasTransmitActive = false;
 			m_AutoActivationUntilTick = 0;
+			m_VadSpeechScore = 0.0f;
 			continue;
 		}
 
@@ -2782,7 +2788,7 @@ void CVoiceChat::ProcessCapture()
 		}
 		else
 		{
-			// Automatic activation (VAD): trigger by RMS/peak level with an adaptive noise floor and a short hangover.
+			// Automatic activation (VAD): activate only on speech-like frames, not just loud sounds.
 			if(m_AutoActivationUntilTick <= 0 || NowTick > m_AutoActivationUntilTick)
 			{
 				if(m_VadNoiseFloor <= 0.0001f)
@@ -2797,8 +2803,78 @@ void CVoiceChat::ProcessCapture()
 
 			const float NoiseThreshold = std::clamp(m_VadNoiseFloor * 2.2f, 0.0f, 0.12f);
 			const float StartThreshold = maximum(0.030f, NoiseThreshold);
+			const float TriggerLevel = StartThreshold * 0.9f;
+			if(ActivationLevel < StartThreshold * 0.75f)
+			{
+				m_VadLastActivationLevel = ActivationLevel;
+				m_VadSpeechScore = mix(m_VadSpeechScore, 0.0f, 0.20f);
+				Active = m_AutoActivationUntilTick > 0 && NowTick <= m_AutoActivationUntilTick;
+				if(!Active)
+					m_WasTransmitActive = false;
+				if(!Active)
+					continue;
+			}
+
+			// Feature 1: zero-crossing rate (reject very tonal hum and harsh impulsive noise).
+			int Crossings = 0;
+			const int ZcrDeadZone = 120;
+			int PrevSign = 0;
+			for(int i = 0; i < BestClientVoice::FRAME_SIZE; ++i)
+			{
+				const int Sample = (int)aFrame[i];
+				int Sign = 0;
+				if(Sample > ZcrDeadZone)
+					Sign = 1;
+				else if(Sample < -ZcrDeadZone)
+					Sign = -1;
+				if(Sign != 0 && PrevSign != 0 && Sign != PrevSign)
+					++Crossings;
+				if(Sign != 0)
+					PrevSign = Sign;
+			}
+			const float Zcr = Crossings / (float)maximum(1, BestClientVoice::FRAME_SIZE - 1);
+
+			// Feature 2: pitch-like autocorrelation in human speech range.
+			const int MinLag = BestClientVoice::SAMPLE_RATE / 330; // ~145 samples
+			const int MaxLag = BestClientVoice::SAMPLE_RATE / 85;  // ~564 samples
+			float MaxCorr = 0.0f;
+			for(int Lag = MinLag; Lag <= MaxLag; Lag += 2)
+			{
+				double Dot = 0.0;
+				double E1 = 0.0;
+				double E2 = 0.0;
+				for(int i = Lag; i < BestClientVoice::FRAME_SIZE; ++i)
+				{
+					const double A = (double)aFrame[i];
+					const double B = (double)aFrame[i - Lag];
+					Dot += A * B;
+					E1 += A * A;
+					E2 += B * B;
+				}
+				if(E1 <= 1.0 || E2 <= 1.0)
+					continue;
+				const float Corr = (float)(Dot / std::sqrt(E1 * E2));
+				if(Corr > MaxCorr)
+					MaxCorr = Corr;
+			}
+
+			const float AttackDelta = ActivationLevel - m_VadLastActivationLevel;
+			m_VadLastActivationLevel = ActivationLevel;
+			const bool LikelyTransientBurst = AttackDelta > 0.12f && MaxCorr < 0.22f;
+
+			const bool InVoiceZcrRange = Zcr >= 0.015f && Zcr <= 0.26f;
+			const bool VoiceLikeByPitch = MaxCorr >= 0.30f && InVoiceZcrRange;
+			const bool VoiceLikeFallback = MaxCorr >= 0.24f && Zcr >= 0.02f && Zcr <= 0.30f && ActivationLevel >= StartThreshold * 1.35f;
+			const bool SpeechFrame = ActivationLevel >= TriggerLevel && (VoiceLikeByPitch || VoiceLikeFallback) && !LikelyTransientBurst;
+
+			if(SpeechFrame)
+				m_VadSpeechScore = mix(m_VadSpeechScore, 1.0f, 0.38f);
+			else
+				m_VadSpeechScore = mix(m_VadSpeechScore, 0.0f, 0.16f);
+
+			const bool VoiceDetected = m_VadSpeechScore >= 0.48f;
 			const int64_t HangoverTicks = (time_freq() * 500) / 1000;
-			if(ActivationLevel >= StartThreshold)
+			if(VoiceDetected)
 				m_AutoActivationUntilTick = NowTick + HangoverTicks;
 			Active = m_AutoActivationUntilTick > 0 && NowTick <= m_AutoActivationUntilTick;
 		}

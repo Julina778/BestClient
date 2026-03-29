@@ -212,6 +212,8 @@ private:
 	int64_t m_AutoActivationUntilTick = 0;
 	float m_MicLevel = 0.0f;
 	float m_VadNoiseFloor = 0.0f;
+	float m_VadSpeechScore = 0.0f;
+	float m_VadLastActivationLevel = 0.0f;
 	bool m_WasTransmitActive = false;
 	bool m_WasEnabled = false;
 	char m_aLastServerAddr[128] = "";
