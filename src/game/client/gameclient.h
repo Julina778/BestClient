@@ -39,7 +39,6 @@
 #include "components/bestclient/magic_particles.h"
 #include "components/bestclient/music_player.h"
 #include "components/bestclient/orbit_aura.h"
-#include "components/bestclient/voice/voice.h"
 #include "components/binds.h"
 #include "components/broadcast.h"
 #include "components/camera.h"
@@ -234,7 +233,6 @@ public:
 	CFastActions m_FastActions;
 	CFastPractice m_FastPractice;
 	CBestClient m_BestClient;
-	CVoiceChat m_VoiceChat;
 
 	CTooltips m_Tooltips;
 

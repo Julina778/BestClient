@@ -2288,8 +2288,6 @@ void CHud::OnRender()
 			if(g_Config.m_ClShowRecord)
 				RenderRecord();
 
-			GameClient()->m_VoiceChat.RenderHudMuteStatusIndicator(m_Width, m_Height);
-			GameClient()->m_VoiceChat.RenderHudTalkingIndicator(m_Width, m_Height);
 			GameClient()->m_BestClient.RenderHookCombo();
 		}
 		RenderCursor();
