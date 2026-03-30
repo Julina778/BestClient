@@ -5295,7 +5295,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					if(g_Config.m_BcOptimizerFpsFogMode == 0)
 						Ui()->DoScrollbarOption(&g_Config.m_BcOptimizerFpsFogRadiusTiles, &g_Config.m_BcOptimizerFpsFogRadiusTiles, &Row, Localize("Radius (tiles)"), 5, 300);
 					else
-						Ui()->DoScrollbarOption(&g_Config.m_BcOptimizerFpsFogZoomPercent, &g_Config.m_BcOptimizerFpsFogZoomPercent, &Row, Localize("Visible area (%)"), 10, 100, &CUi::ms_LinearScrollbarScale, 0, "%");
+						Ui()->DoScrollbarOption(&g_Config.m_BcOptimizerFpsFogZoomPercent, &g_Config.m_BcOptimizerFpsFogZoomPercent, &Row, Localize("Visible area (%)"), 10, 120, &CUi::ms_LinearScrollbarScale, 0, "%");
 				}
 			}
 		}

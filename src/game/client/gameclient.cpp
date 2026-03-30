@@ -247,7 +247,7 @@ void CGameClient::OptimizerFpsFogHalfExtents(float &HalfW, float &HalfH) const
 	float Width = 0.0f;
 	float Height = 0.0f;
 	Graphics()->CalcScreenParams(Graphics()->ScreenAspect(), m_Camera.m_Zoom, &Width, &Height);
-	const float Percent = std::clamp(g_Config.m_BcOptimizerFpsFogZoomPercent, 1, 100) / 100.0f;
+	const float Percent = std::clamp(g_Config.m_BcOptimizerFpsFogZoomPercent, 1, 120) / 100.0f;
 	HalfW = Width * Percent * 0.5f;
 	HalfH = Height * Percent * 0.5f;
 }
