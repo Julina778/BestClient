@@ -3455,6 +3455,9 @@ bool CChat::OnInput(const IInput::CEvent &Event)
 
 			char aToken0[64];
 			str_truncate(aToken0, sizeof(aToken0), pInput + aTokenStarts[0], aTokenEnds[0] - aTokenStarts[0]);
+			char aToken1[64] = {};
+			if(NumTokens > 1)
+				str_truncate(aToken1, sizeof(aToken1), pInput + aTokenStarts[1], aTokenEnds[1] - aTokenStarts[1]);
 
 			const char *apSuggestions[24];
 			int NumSuggestions = 0;
@@ -3472,6 +3475,12 @@ bool CChat::OnInput(const IInput::CEvent &Event)
 						apSuggestions[NumSuggestions++] = "mute";
 						apSuggestions[NumSuggestions++] = "unmute";
 						apSuggestions[NumSuggestions++] = "volume";
+						apSuggestions[NumSuggestions++] = "radius";
+					}
+					else if(PlaceholderToken == 2 && str_comp_nocase(aToken1, "radius") == 0)
+					{
+						apSuggestions[NumSuggestions++] = "on";
+						apSuggestions[NumSuggestions++] = "off";
 					}
 					else
 					{

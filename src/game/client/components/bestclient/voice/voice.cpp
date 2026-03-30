@@ -51,6 +51,7 @@ constexpr int VOICE_HEARTBEAT_SECONDS = 5;
 constexpr int VOICE_SERVER_STALE_SECONDS = 10;
 constexpr int VOICE_IDLE_SHUTDOWN_SECONDS = 5;
 constexpr int VOICE_START_RETRY_SECONDS = 5;
+constexpr float VOICE_TILE_WORLD_SIZE = 32.0f;
 constexpr float PANEL_PADDING = 14.0f;
 constexpr float PANEL_HEADER_HEIGHT = 34.0f;
 constexpr float PANEL_SECTION_BUTTON_SIZE = 34.0f;
@@ -788,13 +789,15 @@ float VoiceMenuExpandedHeightForServerCount(int ServerCount)
 		4.0f + 20.0f + // In-Game only checkbox row.
 		4.0f + 18.0f + // Activation mode label.
 		3.0f + 22.0f + // Activation mode segmented control.
+		4.0f + 20.0f + // Radius filter checkbox row.
+		3.0f + 20.0f + // Radius slider row.
 		5.0f + 20.0f + 2.0f + 24.0f + // Microphone.
 		5.0f + 20.0f + 2.0f + 24.0f + // Headphones.
 		6.0f + 16.0f + // Status.
 		4.0f + 22.0f + // Reload button.
 		5.0f + 16.0f + 2.0f + // Servers label.
 		ServerListHeight +
-		5.0f + 16.0f + 2.0f + 14.0f + 2.0f + 14.0f; // Command hint.
+		5.0f + 16.0f + 2.0f + 14.0f + 2.0f + 14.0f + 2.0f + 14.0f; // Command hints.
 }
 }
 
@@ -976,6 +979,19 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 			g_Config.m_BcVoiceChatActivationMode = 1;
 	}
 
+	AddExpandedSpacing(4.0f);
+	if(AddExpandedRow(20.0f, Row))
+	{
+		if(GameClient()->m_Menus.DoButton_CheckBox(&m_RadiusFilterButton, Localize("Radius filter"), g_Config.m_BcVoiceChatRadiusEnabled, &Row))
+			g_Config.m_BcVoiceChatRadiusEnabled ^= 1;
+	}
+
+	AddExpandedSpacing(3.0f);
+	if(AddExpandedRow(20.0f, Row))
+	{
+		Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatRadiusTiles, &g_Config.m_BcVoiceChatRadiusTiles, &Row, Localize("Radius (tiles)"), 1, 500);
+	}
+
 	AddExpandedSpacing(5.0f);
 	static CScrollRegion s_InputDeviceDropDownScrollRegion;
 	static CScrollRegion s_OutputDeviceDropDownScrollRegion;
@@ -1050,6 +1066,9 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 	AddExpandedSpacing(2.0f);
 	if(AddExpandedRow(14.0f, Row))
 		Ui()->DoLabel(&Row, Localize("!voice volume \"name\" 0-100"), 11.0f, TEXTALIGN_ML);
+	AddExpandedSpacing(2.0f);
+	if(AddExpandedRow(14.0f, Row))
+		Ui()->DoLabel(&Row, Localize("!voice radius on/off/<tiles>"), 11.0f, TEXTALIGN_ML);
 }
 
 void CVoiceChat::RenderMenuControlBinds(const CUIRect &View)
@@ -1174,6 +1193,9 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 		str_truncate(pOut, OutSize, pStart, (int)(pCur - pStart));
 		return true;
 	};
+	auto EchoUsage = [&]() {
+		GameClient()->m_Chat.Echo("Usage: !voice mute/unmute \"nickname\" | !voice volume \"nickname\" 0-100 | !voice radius on/off/<tiles>");
+	};
 
 	if(str_startswith_nocase(p, "!voicegroup"))
 	{
@@ -1195,7 +1217,7 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 	char aSub[32];
 	if(!ReadToken(p, aSub, sizeof(aSub)))
 	{
-		GameClient()->m_Chat.Echo("Usage: !voice mute/unmute \"nickname\" | !voice volume \"nickname\" 0-100");
+		EchoUsage();
 		return true;
 	}
 	if(str_comp_nocase(aSub, "mute") == 0)
@@ -1300,8 +1322,78 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 		GameClient()->m_Chat.Echo(aMsg);
 		return true;
 	}
+	if(str_comp_nocase(aSub, "radius") == 0)
+	{
+		char aArg[32];
+		if(!ReadToken(p, aArg, sizeof(aArg)))
+		{
+			char aMsg[128];
+			str_format(aMsg, sizeof(aMsg), "Voice radius: %s (%d tiles)",
+				g_Config.m_BcVoiceChatRadiusEnabled ? "on" : "off",
+				std::clamp(g_Config.m_BcVoiceChatRadiusTiles, 1, 500));
+			GameClient()->m_Chat.Echo(aMsg);
+			GameClient()->m_Chat.Echo("Usage: !voice radius on/off/<tiles>");
+			return true;
+		}
 
-	GameClient()->m_Chat.Echo("Usage: !voice mute/unmute \"nickname\" | !voice volume \"nickname\" 0-100");
+		auto ParseTiles = [&](const char *pValue, int &OutTiles) -> bool {
+			if(!pValue || pValue[0] == '\0')
+				return false;
+			int Tiles = 0;
+			if(!str_toint(pValue, &Tiles))
+				return false;
+			if(Tiles < 1 || Tiles > 500)
+				return false;
+			OutTiles = Tiles;
+			return true;
+		};
+
+		if(str_comp_nocase(aArg, "off") == 0)
+		{
+			g_Config.m_BcVoiceChatRadiusEnabled = 0;
+			char aMsg[128];
+			str_format(aMsg, sizeof(aMsg), "Voice radius: off (%d tiles)", std::clamp(g_Config.m_BcVoiceChatRadiusTiles, 1, 500));
+			GameClient()->m_Chat.Echo(aMsg);
+			return true;
+		}
+
+		if(str_comp_nocase(aArg, "on") == 0)
+		{
+			int Tiles = std::clamp(g_Config.m_BcVoiceChatRadiusTiles, 1, 500);
+			char aTiles[32];
+			if(ReadToken(p, aTiles, sizeof(aTiles)))
+			{
+				if(!ParseTiles(aTiles, Tiles))
+				{
+					GameClient()->m_Chat.Echo("Voice radius: tiles must be 1-500");
+					return true;
+				}
+			}
+			g_Config.m_BcVoiceChatRadiusTiles = Tiles;
+			g_Config.m_BcVoiceChatRadiusEnabled = 1;
+
+			char aMsg[128];
+			str_format(aMsg, sizeof(aMsg), "Voice radius: on (%d tiles)", Tiles);
+			GameClient()->m_Chat.Echo(aMsg);
+			return true;
+		}
+
+		int Tiles = 0;
+		if(!ParseTiles(aArg, Tiles))
+		{
+			GameClient()->m_Chat.Echo("Usage: !voice radius on/off/<tiles>");
+			return true;
+		}
+
+		g_Config.m_BcVoiceChatRadiusTiles = Tiles;
+		g_Config.m_BcVoiceChatRadiusEnabled = 1;
+		char aMsg[128];
+		str_format(aMsg, sizeof(aMsg), "Voice radius: on (%d tiles)", Tiles);
+		GameClient()->m_Chat.Echo(aMsg);
+		return true;
+	}
+
+	EchoUsage();
 	return true;
 }
 
@@ -2534,6 +2626,23 @@ void CVoiceChat::ProcessNetwork()
 		}
 		Peer.m_LastArrivalTick = Now;
 		Peer.m_LastReceiveTick = Now;
+		if(!IsPositionWithinRadiusFilter(Peer.m_Position))
+		{
+			const bool HadBufferedAudio = Peer.m_DecodedPcm.Size() > 0;
+			const bool WasTalking = Peer.m_LastVoiceTick > 0;
+			Peer.m_LastVoiceTick = 0;
+			if(HadBufferedAudio)
+				Peer.m_DecodedPcm.Clear();
+			if(Peer.m_HasSequence)
+			{
+				Peer.m_HasSequence = false;
+				if(Peer.m_pDecoder)
+					opus_decoder_ctl(Peer.m_pDecoder, OPUS_RESET_STATE);
+			}
+			if(WasTalking || HadBufferedAudio)
+				m_TalkingStateDirty = true;
+			continue;
+		}
 
 		if(!Peer.m_pDecoder)
 		{
@@ -3012,7 +3121,13 @@ void CVoiceChat::ProcessPlayback()
 			Gain *= MasterVolume * (PeerVolume / 100.0f);
 			if(Gain <= 0.0f)
 			{
-				Peer.m_DecodedPcm.DiscardFront(minimum(Peer.m_DecodedPcm.Size(), (size_t)BestClientVoice::FRAME_SIZE));
+				if(Peer.m_DecodedPcm.Size() > 0)
+					Peer.m_DecodedPcm.Clear();
+				if(Peer.m_LastVoiceTick > 0)
+				{
+					Peer.m_LastVoiceTick = 0;
+					m_TalkingStateDirty = true;
+				}
 				continue;
 			}
 
@@ -3182,6 +3297,8 @@ void CVoiceChat::RefreshTalkingCache()
 		const auto ItPeerVolume = m_PeerVolumePercent.find(PeerId);
 		const int PeerVolume = ItPeerVolume == m_PeerVolumePercent.end() ? 100 : std::clamp(ItPeerVolume->second, 0, 200);
 		if(PeerVolume <= 0)
+			continue;
+		if(ComputePeerGain(Peer) <= 0.0f)
 			continue;
 
 		if(ClientId >= 0 && ClientId < MAX_CLIENTS)
@@ -3357,8 +3474,32 @@ bool CVoiceChat::ShouldShowPeerInMembers(const CRemotePeer &Peer) const
 
 float CVoiceChat::ComputePeerGain(const CRemotePeer &Peer) const
 {
-	(void)Peer;
+	if(!IsPositionWithinRadiusFilter(Peer.m_Position))
+		return 0.0f;
 	return 1.0f;
+}
+
+bool CVoiceChat::IsRadiusFilterEnabled() const
+{
+	return g_Config.m_BcVoiceChatRadiusEnabled != 0;
+}
+
+float CVoiceChat::RadiusFilterDistanceUnits() const
+{
+	const int RadiusTiles = std::clamp(g_Config.m_BcVoiceChatRadiusTiles, 1, 500);
+	return RadiusTiles * VOICE_TILE_WORLD_SIZE;
+}
+
+bool CVoiceChat::IsPositionWithinRadiusFilter(vec2 Position) const
+{
+	if(!IsRadiusFilterEnabled())
+		return true;
+
+	const vec2 LocalPos = LocalPosition();
+	const vec2 Diff = Position - LocalPos;
+	const float DistSq = Diff.x * Diff.x + Diff.y * Diff.y;
+	const float Radius = RadiusFilterDistanceUnits();
+	return DistSq <= Radius * Radius;
 }
 
 bool CVoiceChat::IsClientTalking(int ClientId) const
@@ -3701,7 +3842,7 @@ void CVoiceChat::RenderSettingsSection(CUIRect View)
 	// Simplified settings: enable, mode, devices (+ server list below).
 	{
 		CUIRect OptionsCard;
-		const float OptionsInnerHeight = 28.0f + 4.0f + 24.0f + 4.0f + 28.0f + 4.0f + 24.0f + 4.0f + 24.0f;
+		const float OptionsInnerHeight = 28.0f + 4.0f + 24.0f + 4.0f + 28.0f + 4.0f + 24.0f + 4.0f + 20.0f + 4.0f + 24.0f + 4.0f + 24.0f;
 		const float OptionsHeight = OptionsInnerHeight + 20.0f;
 		View.HSplitTop(OptionsHeight, &OptionsCard, &View);
 		OptionsCard.Draw(VoiceCardBgColor(), IGraphics::CORNER_ALL, 6.0f);
@@ -3775,6 +3916,15 @@ void CVoiceChat::RenderSettingsSection(CUIRect View)
 		Options.HSplitTop(28.0f, &Row, &Options);
 		if(GameClient()->m_Menus.DoButton_Menu(&m_ActivationModeButton, g_Config.m_BcVoiceChatActivationMode == 1 ? Localize("Mode: Push-to-talk") : Localize("Mode: Automatic activation"), 0, &Row))
 			g_Config.m_BcVoiceChatActivationMode = g_Config.m_BcVoiceChatActivationMode == 1 ? 0 : 1;
+
+		AddSpacing(4.0f);
+		Options.HSplitTop(24.0f, &Row, &Options);
+		if(GameClient()->m_Menus.DoButton_CheckBox(&m_RadiusFilterButton, Localize("Radius filter"), g_Config.m_BcVoiceChatRadiusEnabled, &Row))
+			g_Config.m_BcVoiceChatRadiusEnabled ^= 1;
+
+		AddSpacing(4.0f);
+		Options.HSplitTop(20.0f, &Row, &Options);
+		Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatRadiusTiles, &g_Config.m_BcVoiceChatRadiusTiles, &Row, Localize("Radius (tiles)"), 1, 500);
 
 		AddSpacing(4.0f);
 		Options.HSplitTop(24.0f, &Row, &Options);
@@ -4278,8 +4428,14 @@ void CVoiceChat::ConVoiceStatus(IConsole::IResult *pResult, void *pUserData)
 {
 	(void)pResult;
 	CVoiceChat *pSelf = static_cast<CVoiceChat *>(pUserData);
-	dbg_msg("voice", "enabled=%d connected=%d participants=%d server='%s' ptt=%d",
-		g_Config.m_BcVoiceChatEnable ? 1 : 0, pSelf->m_Registered ? 1 : 0, (int)pSelf->m_vVisibleMemberPeerIds.size(), g_Config.m_BcVoiceChatServerAddress, pSelf->m_PushToTalkPressed ? 1 : 0);
+	dbg_msg("voice", "enabled=%d connected=%d participants=%d server='%s' ptt=%d radius=%d radius_tiles=%d",
+		g_Config.m_BcVoiceChatEnable ? 1 : 0,
+		pSelf->m_Registered ? 1 : 0,
+		(int)pSelf->m_vVisibleMemberPeerIds.size(),
+		g_Config.m_BcVoiceChatServerAddress,
+		pSelf->m_PushToTalkPressed ? 1 : 0,
+		g_Config.m_BcVoiceChatRadiusEnabled ? 1 : 0,
+		std::clamp(g_Config.m_BcVoiceChatRadiusTiles, 1, 500));
 }
 
 void CVoiceChat::ConToggleVoicePanel(IConsole::IResult *pResult, void *pUserData)

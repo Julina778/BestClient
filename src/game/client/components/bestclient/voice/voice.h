@@ -271,6 +271,7 @@ private:
 	CButtonContainer m_EnableVoiceButton;
 	CButtonContainer m_InGameOnlyButton;
 	CButtonContainer m_ActivationModeButton;
+	CButtonContainer m_RadiusFilterButton;
 	CButtonContainer m_ReloadServerListButton;
 	CButtonContainer m_ReconnectButton;
 	CButtonContainer m_DisconnectButton;
@@ -320,6 +321,9 @@ private:
 	int ResolvePeerClientId(const CRemotePeer &Peer) const;
 	bool ShouldShowPeerInMembers(const CRemotePeer &Peer) const;
 	float ComputePeerGain(const CRemotePeer &Peer) const;
+	bool IsRadiusFilterEnabled() const;
+	float RadiusFilterDistanceUnits() const;
+	bool IsPositionWithinRadiusFilter(vec2 Position) const;
 	void SetPanelActive(bool Active);
 	void SetUiMousePos(vec2 Pos);
 	void RenderPanel(const CUIRect &Screen, bool ShowCloseButton);

@@ -153,6 +153,8 @@ MACRO_CONFIG_INT(BcVoiceChatMicMuted, bc_voice_chat_mic_muted, 0, 0, 1, CFGFLAG_
 MACRO_CONFIG_INT(BcVoiceChatHeadphonesMuted, bc_voice_chat_headphones_muted, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Mute voice playback")
 MACRO_CONFIG_INT(BcVoiceChatMicCheck, bc_voice_chat_mic_check, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable microphone check (local loopback)")
 MACRO_CONFIG_INT(BcVoiceChatInGameOnly, bc_voice_chat_ingame_only, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Only allow voice transmit/playback while the game window is active")
+MACRO_CONFIG_INT(BcVoiceChatRadiusEnabled, bc_voice_chat_radius_enabled, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable local voice radius filter")
+MACRO_CONFIG_INT(BcVoiceChatRadiusTiles, bc_voice_chat_radius_tiles, 25, 1, 500, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Voice radius in tiles when local radius filter is enabled")
 MACRO_CONFIG_INT(BcVoiceChatNameplateIcon, bc_voice_chat_nameplate_icon, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show microphone icon in name plates for talking players")
 MACRO_CONFIG_STR(BcVoiceChatServerAddress, bc_voice_chat_server_address, 128, "150.241.70.188:8777", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Voice server address")
 MACRO_CONFIG_STR(BcVoiceChatMutedNames, bc_voice_chat_muted_names, 512, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Comma-separated list of muted voice nicknames (case-insensitive)")
