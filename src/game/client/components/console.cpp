@@ -20,6 +20,7 @@
 
 #include <generated/client_data.h>
 
+#include <game/client/components/bestclient/version.h>
 #include <game/client/components/tclient/colored_parts.h>
 #include <game/client/gameclient.h>
 #include <game/client/ui.h>
@@ -1724,7 +1725,7 @@ void CGameConsole::OnRender()
 		TextRender()->Text(Screen.w - TextRender()->TextWidth(FONT_SIZE, aBuf) - 10.0f, FONT_SIZE / 2.f, FONT_SIZE, aBuf);
 
 		// BestClient: render primary client version
-		const char *pClientVersion = "BestClient " BestClient_VERSION;
+		const char *pClientVersion = "BestClient " BESTCLIENT_VERSION;
 		TextRender()->Text(Screen.w - TextRender()->TextWidth(FONT_SIZE, pClientVersion) - 10.0f, FONT_SIZE / 2.0f + FONT_SIZE * 1.5f, FONT_SIZE, pClientVersion);
 	}
 }

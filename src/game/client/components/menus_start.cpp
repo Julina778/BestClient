@@ -13,6 +13,7 @@
 #include <generated/client_data.h>
 
 #include <game/client/gameclient.h>
+#include <game/client/components/bestclient/version.h>
 #include <game/client/ui.h>
 #include <game/localization.h>
 #include <game/version.h>
@@ -239,7 +240,7 @@ void CMenusStart::RenderStartMenu(CUIRect MainView)
 	char aBestClientBuf[64];
 	str_format(aDDNetBuf, sizeof(aDDNetBuf), "DDNet %s", GAME_RELEASE_VERSION);
 	str_format(aTClientBuf, sizeof(aTClientBuf), "%s %s", CLIENT_NAME, CLIENT_RELEASE_VERSION);
-	str_format(aBestClientBuf, sizeof(aBestClientBuf), "BestClient %s", BestClient_VERSION);
+	str_format(aBestClientBuf, sizeof(aBestClientBuf), "BestClient %s", BESTCLIENT_VERSION);
 	Ui()->DoLabel(&VersionLine1, aDDNetBuf, 14.0f, TEXTALIGN_MR);
 	Ui()->DoLabel(&VersionLine2, aTClientBuf, 14.0f, TEXTALIGN_MR);
 	Ui()->DoLabel(&VersionLine3, aBestClientBuf, 14.0f, TEXTALIGN_MR);
