@@ -39,34 +39,73 @@ It extends the base client with extra HUD tools, prediction tweaks, bind helpers
 
 ## Features
 
-### Gameplay and Utility
+### BestClient Settings
 
-- Run commands on join
-- Auto verify helpers
-- Regex chat ignore
-- Mouse limit to screen
-- Remove anti-delay related issues
-- Improved mouse precision
-- Fast input options
+### Visuals
+- Hook Combo
+- Jelly Tee
+- Chat Bubbles
+- Camera Drift
+- Dynamic FOV
+- Crystal Laser
+- Magic Particles
+- Orbit Aura
+- 3D Particles
+- Afterimage
+- Music Player
+- Media Background
+- Animations
+- Aspect Ratio
 
-### Visuals and HUD
+### Gameplay
+- Input
+- Snap Tap
+- Optimizer
+- Gores mode
+- Fast Actions
+- Speedrun timer
+- Auto team lock
+- Focus Mode
 
-- Freeze colors and freeze stars
-- White feet and custom feet skin overrides
-- Frozen tees HUD
-- Ghost rendering controls
-- Outline rendering for tiles and states
-- Player indicators with detailed tuning
-- Nameplate and spectator display improvements
-- Cursor and hammer visual tweaks
-- Rainbow effects
+### Others
+- Misc
+- Browser Utils
+- Chat Media
+- Voice Chat
+- Voice Binds
+- Client Indicator
 
-### Profiles and Controls
+### Editors
+- Assets editor
+- Components editor
+- HUD editor
 
-- Saved profiles
-- Bindwheel support
-- Hover bind execution
-- Profile skin, name, clan, flag, colors and emote setup
+### Fun
+- Snake
+- Minesweeper
+- 2048
+- Chess
+- Tic-Tac-Toe
+- Lights Out
+- Memory
+- BlockBlast
+- Tetris
+- Pong
+- Packman
+- Flappy Bird
+- Cat Trap
+- Brick Breaker
+
+### Texture shop
+- Entities
+- Game
+- Emoticons
+- Particles
+- HUD
+- Arrows
+- Cursors
+- Audio
+
 
 ## Full `bc_*` Config List
 
