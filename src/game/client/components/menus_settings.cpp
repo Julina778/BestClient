@@ -94,7 +94,7 @@ static const SBestClientComponentEntry gs_aBestClientComponentEntries[] = {
 	{CBestClient::COMPONENT_VISUALS_FOCUS_MODE, "Focus Mode", COMPONENTS_GROUP_GAMEPLAY},
 	{CBestClient::COMPONENT_OTHERS_MISC, "Misc", COMPONENTS_GROUP_OTHERS},
 	{CBestClient::COMPONENT_OTHERS_CHAT_MEDIA, "Chat Media", COMPONENTS_GROUP_OTHERS},
-	{CBestClient::COMPONENT_VISUALS_CHAT_BUBBLES, "Chat Bubbles", COMPONENTS_GROUP_OTHERS},
+	{CBestClient::COMPONENT_VISUALS_CHAT_BUBBLES, "Chat Bubbles", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_OTHERS_VOICE_SETTINGS, "Voice Chat", COMPONENTS_GROUP_OTHERS},
 	{CBestClient::COMPONENT_OTHERS_VOICE_BINDS, "Voice Binds", COMPONENTS_GROUP_OTHERS},
 	{CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR, "Client Indicator", COMPONENTS_GROUP_OTHERS},
@@ -4276,6 +4276,66 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
 
+		// Chat bubbles (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CHAT_BUBBLES))
+		{
+			static float s_BcChatBubblesPhase = 0.0f;
+			static CButtonContainer s_ChatBubblesResetButton;
+			const bool ChatBubblesEnabled = g_Config.m_BcChatBubbles != 0;
+			UpdateRevealPhase(s_BcChatBubblesPhase, ChatBubblesEnabled);
+			const float ExtraTargetHeight = MarginSmall + 6.0f * LineSize;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraTargetHeight * s_BcChatBubblesPhase;
+			CUIRect Content, Label, Row, Visible;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
+			ResetHitbox = ResetButton;
+			const bool ChatBubblesResetClicked = Ui()->DoButton_FontIcon(&s_ChatBubblesResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(&s_ChatBubblesResetButton, &ResetHitbox, Localize("Reset to defaults"));
+			if(ChatBubblesResetClicked)
+			{
+				g_Config.m_BcChatBubblesDemo = DefaultConfig::BcChatBubblesDemo;
+				g_Config.m_BcChatBubblesSelf = DefaultConfig::BcChatBubblesSelf;
+				g_Config.m_BcChatBubbleSize = DefaultConfig::BcChatBubbleSize;
+				g_Config.m_BcChatBubbleShowTime = DefaultConfig::BcChatBubbleShowTime;
+				g_Config.m_BcChatBubbleFadeIn = DefaultConfig::BcChatBubbleFadeIn;
+				g_Config.m_BcChatBubbleFadeOut = DefaultConfig::BcChatBubbleFadeOut;
+			}
+			Ui()->DoLabel(&TitleLabel, Localize("Chat Bubbles"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatBubbles, Localize("Chat Bubbles"), &g_Config.m_BcChatBubbles, &Content, LineSize);
+			const float ExtraHeight = ExtraTargetHeight * s_BcChatBubblesPhase;
+			if(!ChatBubblesResetClicked && ExtraHeight > 0.0f)
+			{
+				Content.HSplitTop(ExtraHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExtraTargetHeight};
+
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatBubblesDemo, Localize("Show Chatbubbles in demo"), &g_Config.m_BcChatBubblesDemo, &Expand, LineSize);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatBubblesSelf, Localize("Show Chatbubbles above you"), &g_Config.m_BcChatBubblesSelf, &Expand, LineSize);
+
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleSize, &g_Config.m_BcChatBubbleSize, &Row, Localize("Chat Bubble Size"), 20, 30);
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleShowTime, &g_Config.m_BcChatBubbleShowTime, &Row, Localize("Show the Bubbles for"), 200, 1000);
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleFadeIn, &g_Config.m_BcChatBubbleFadeIn, &Row, Localize("fade in for"), 15, 100);
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleFadeOut, &g_Config.m_BcChatBubbleFadeOut, &Row, Localize("fade out for"), 15, 100);
+			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+
 		// Music player (right column block)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MUSIC_PLAYER))
 		{
@@ -5657,7 +5717,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			const float ColorPickerLineSpacing = 5.0f;
 			const bool ShowRealHitboxEnabled = g_Config.m_BcShowRealHitbox != 0;
 			const float ColorPickerHeight = ShowRealHitboxEnabled ? (ColorPickerLineSize + ColorPickerLineSpacing) : 0.0f;
-			const float ContentHeight = LineSize + MarginSmall + 9.0f * LineSize + ColorPickerHeight;
+			const float ContentHeight = LineSize + MarginSmall + 8.0f * LineSize + ColorPickerHeight;
 			CUIRect Content, Label, Row;
 			BeginBlock(Column, ContentHeight, Content);
 
@@ -5676,7 +5736,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatSaveDraft, Localize("Save unsent messages"), &g_Config.m_BcChatSaveDraft, &Content, LineSize);
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcShowhudDummyCoordIndicator, TCLocalize("Show player below indicator"), &g_Config.m_BcShowhudDummyCoordIndicator, &Content, LineSize);
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcShowRealHitbox, Localize("Show real hitbox"), &g_Config.m_BcShowRealHitbox, &Content, LineSize);
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcUseShortKogServerName, Localize("Use short KoG server name"), &g_Config.m_BcUseShortKogServerName, &Content, LineSize);
 			Content.HSplitTop(LineSize, &Row, &Content);
 			Ui()->DoScrollbarOption(&g_Config.m_UiScale, &g_Config.m_UiScale, &Row, Localize("UI scale"), 50, 200, &CUi::ms_LinearScrollbarScale, CUi::SCROLLBAR_OPTION_DELAYUPDATE, "%");
 			if(g_Config.m_BcShowRealHitbox)
@@ -5684,6 +5743,23 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				static CButtonContainer s_RealHitboxDotColorButton;
 				DoLine_ColorPicker(&s_RealHitboxDotColorButton, ColorPickerLineSize, ColorPickerLabelSize, ColorPickerLineSpacing, &Content, Localize("Real hitbox dot color"), &g_Config.m_BcShowRealHitboxColor, color_cast<ColorRGBA>(ColorHSLA(DefaultConfig::BcShowRealHitboxColor, true)), false, nullptr, true);
 			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+
+		{
+			const float ContentHeight = LineSize + MarginSmall + 3.0f * LineSize;
+			CUIRect Content, Label, Row;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Browser Utils"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcAutoServerListRefresh, Localize("Auto server list refresh"), &g_Config.m_BcAutoServerListRefresh, &Content, LineSize);
+			Content.HSplitTop(LineSize, &Row, &Content);
+			Ui()->DoScrollbarOption(&g_Config.m_BcAutoServerListRefreshSeconds, &g_Config.m_BcAutoServerListRefreshSeconds, &Row, Localize("Seconds"), 1, 300, &CUi::ms_LinearScrollbarScale, CUi::SCROLLBAR_OPTION_DELAYUPDATE, " s");
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcUseShortKogServerName, Localize("Use short KoG server name"), &g_Config.m_BcUseShortKogServerName, &Content, LineSize);
+
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
 
@@ -5756,65 +5832,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				static CButtonContainer s_HideMediaBindReader;
 				static CButtonContainer s_HideMediaBindClear;
 				DoLine_KeyReader(Expand, s_HideMediaBindReader, s_HideMediaBindClear, Localize("Hide media bind"), "toggle_chat_media_hidden");
-			}
-			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-		}
-
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CHAT_BUBBLES))
-		{
-			static float s_BcChatBubblesPhase = 0.0f;
-			static CButtonContainer s_ChatBubblesResetButton;
-			const bool ChatBubblesEnabled = g_Config.m_BcChatBubbles != 0;
-			UpdateRevealPhase(s_BcChatBubblesPhase, ChatBubblesEnabled);
-			const float ExtraTargetHeight = MarginSmall + 6.0f * LineSize;
-			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraTargetHeight * s_BcChatBubblesPhase;
-			CUIRect Content, Label, Row, Visible;
-			BeginBlock(Column, ContentHeight, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			CUIRect TitleLabel, ResetButton, ResetHitbox;
-			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
-			ResetHitbox = ResetButton;
-			const bool ChatBubblesResetClicked = Ui()->DoButton_FontIcon(&s_ChatBubblesResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
-			GameClient()->m_Tooltips.DoToolTip(&s_ChatBubblesResetButton, &ResetHitbox, Localize("Reset to defaults"));
-			if(ChatBubblesResetClicked)
-			{
-				g_Config.m_BcChatBubblesDemo = DefaultConfig::BcChatBubblesDemo;
-				g_Config.m_BcChatBubblesSelf = DefaultConfig::BcChatBubblesSelf;
-				g_Config.m_BcChatBubbleSize = DefaultConfig::BcChatBubbleSize;
-				g_Config.m_BcChatBubbleShowTime = DefaultConfig::BcChatBubbleShowTime;
-				g_Config.m_BcChatBubbleFadeIn = DefaultConfig::BcChatBubbleFadeIn;
-				g_Config.m_BcChatBubbleFadeOut = DefaultConfig::BcChatBubbleFadeOut;
-			}
-			Ui()->DoLabel(&TitleLabel, Localize("Chat Bubbles"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatBubbles, Localize("Chat Bubbles"), &g_Config.m_BcChatBubbles, &Content, LineSize);
-			const float ExtraHeight = ExtraTargetHeight * s_BcChatBubblesPhase;
-			if(!ChatBubblesResetClicked && ExtraHeight > 0.0f)
-			{
-				Content.HSplitTop(ExtraHeight, &Visible, &Content);
-				Ui()->ClipEnable(&Visible);
-				struct SScopedClip
-				{
-					CUi *m_pUi;
-					~SScopedClip() { m_pUi->ClipDisable(); }
-				} ClipGuard{Ui()};
-
-				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExtraTargetHeight};
-
-				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatBubblesDemo, Localize("Show Chatbubbles in demo"), &g_Config.m_BcChatBubblesDemo, &Expand, LineSize);
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcChatBubblesSelf, Localize("Show Chatbubbles above you"), &g_Config.m_BcChatBubblesSelf, &Expand, LineSize);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleSize, &g_Config.m_BcChatBubbleSize, &Row, Localize("Chat Bubble Size"), 20, 30);
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleShowTime, &g_Config.m_BcChatBubbleShowTime, &Row, Localize("Show the Bubbles for"), 200, 1000);
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleFadeIn, &g_Config.m_BcChatBubbleFadeIn, &Row, Localize("fade in for"), 15, 100);
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcChatBubbleFadeOut, &g_Config.m_BcChatBubbleFadeOut, &Row, Localize("fade out for"), 15, 100);
 			}
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
