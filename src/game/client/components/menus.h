@@ -338,6 +338,7 @@ protected:
 
 	bool m_CreateDefaultFavoriteCommunities = false;
 	bool m_ForceRefreshLanPage = false;
+	int64_t m_LastServerBrowserRefreshTick = 0;
 
 	char m_aNextServer[256];
 
@@ -1044,12 +1045,14 @@ private:
 
 	// found in menus_settings.cpp
 	void RenderSettingsDDNet(CUIRect MainView);
+	void SetBestClientShopVisible(bool Visible);
+	void RenderSettingsAppearance(CUIRect MainView);
+
+	// found in bestclient/menus_bestclient.cpp
 	void RenderSettingsBestClient(CUIRect MainView);
 	void RenderSettingsBestClientInfo(CUIRect MainView);
 	void RenderSettingsBestClientFun(CUIRect MainView);
 	void RenderSettingsBestClientShop(CUIRect MainView);
-	void SetBestClientShopVisible(bool Visible);
-	void RenderSettingsAppearance(CUIRect MainView);
 
 	// found in menus_tclient.cpp
 	void RenderSettingsTClient(CUIRect MainView);
