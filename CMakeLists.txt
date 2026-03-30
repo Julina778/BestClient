@@ -3772,7 +3772,7 @@ set(CPACK_SOURCE_FILES
   data/
   datasrc/
   ddnet-libs/
-  license.txt
+  LICENSE
   lsan.supp
   memcheck.supp
   other/
@@ -3831,7 +3831,7 @@ else()
 endif()
 list(APPEND CPACK_DIRS ${COPY_DIRS})
 set(CPACK_FILES
-  license.txt
+  LICENSE
   steam_appid.txt
   ${COPY_FILES}
 )
