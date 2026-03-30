@@ -26,11 +26,11 @@ It extends the base client with extra HUD tools, prediction tweaks, bind helpers
 
 ## Highlights
 
-- Visual tuning for freeze states, outlines, ghosts, cursors, indicators and nameplates.
-- Better control over HUD elements, notifications, frozen tee display and spectator helpers.
-- Input and mouse improvements for a smoother and more precise feel.
-- Profile, bindwheel and automation helpers for faster in-game setup.
-- Chat filtering, join actions and various gameplay-oriented quality-of-life commands.
+- BestClient delivers deep visual tuning for freeze states, outlines, ghosts, cursors, indicators and nameplates.
+- BestClient gives full control over HUD layout, notifications, frozen tee display and spectator utilities.
+- BestClient improves input and mouse handling for smoother, faster and more precise gameplay.
+- BestClient includes profiles, bindwheel tools and automation helpers for quick in-game setup.
+- BestClient adds chat filtering, join actions and practical quality-of-life commands built for everyday play.
 
 ## Installation
 
