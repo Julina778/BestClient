@@ -1,112 +1,21 @@
-<div align="center">
-  <img src="docs/assets/bestclient-logo.png" alt="BestClient" width="680" />
+# BestClient Authored Functions Scope
 
-  <h1>BestClient</h1>
-  <p>Custom DDNet client forked from Tater, with a cleaner feel, extra utilities, visual tweaks, and competitive quality-of-life features.</p>
+This file defines the exact permission-required scope referenced by the root `LICENSE`.
 
-  <p>
-    <a href="https://bestclient.fun">Website</a>
-    ·
-    <a href="https://t.me/bestddnet">Telegram</a>
-    ·
-    <a href="https://discord.gg/bestclient">Discord</a>
-  </p>
-</div>
+## Permission-required function scope
 
-## About
+1. All function/method implementations that define, read, write, synchronize, or apply BestClient settings listed in the `bc_*` settings registry below, regardless of file path.
+2. All function/method implementations in `src/game/client/components/bestclient/`.
+3. All function/method implementations in:
+- `src/game/client/components/menu_media_background.h`
+- `src/game/client/components/menu_media_background.cpp`
+- `src/game/client/components/media_decoder.h`
+- `src/game/client/components/media_decoder.cpp`
+4. All function/method implementations in `bestclient-voice-server/src/main.rs`.
 
-BestClient is a customized DDNet client focused on comfort, utility and full control over gameplay and visuals.
-It extends the base client with native BestClient systems like Camera Drift, Dynamic FOV, Jelly Tee, 3D/Magic particles, Afterimage, Hook Combo, Fast Input/Low Delta, Snap Tap, Focus Mode, Voice Chat, Chat Media, Client Indicator, plus built-in Editors, Shop and Fun tabs.
+## BestClient settings registry (`bc_*`)
 
-## Links
-
-- Website: [bestclient.fun](https://bestclient.fun)
-- Telegram: [t.me/bestddnet](https://t.me/bestddnet)
-- Discord: [discord.gg/bestclient](https://discord.gg/bestclient)
-
-## Highlights
-
-- BestClient focuses on its own visual stack: Camera Drift, Dynamic FOV, Jelly Tee, Magic/Orbit/3D particles, Afterimage, Crystal Laser, Aspect Ratio and Media Background.
-- BestClient gameplay tools include Fast Input/Low Delta, Snap Tap, Hook Combo, Gores Mode, Auto Team Lock, Speedrun Timer and Focus Mode.
-- BestClient utility features cover Chat Media, integrated Voice Chat and Client Indicator.
-- BestClient comes with native tooling and content flow: Assets Editor, Components Editor, HUD Editor, in-client Shop and Fun tab.
-
-## Installation
-
-- Clone the repository and build it using the standard DDNet build flow.
-- Or open the project in your existing DDNet toolchain and compile the client binaries from source.
-
-## Features
-
-### BestClient Settings
-
-### Visuals
-- Hook Combo
-- Jelly Tee
-- Chat Bubbles
-- Camera Drift
-- Dynamic FOV
-- Crystal Laser
-- Magic Particles
-- Orbit Aura
-- 3D Particles
-- Afterimage
-- Music Player
-- Media Background
-- Animations
-- Aspect Ratio
-
-### Gameplay
-- Input
-- Snap Tap
-- Optimizer
-- Gores mode
-- Fast Actions
-- Speedrun timer
-- Auto team lock
-- Focus Mode
-
-### Others
-- Misc
-- Browser Utils
-- Chat Media
-- Voice Chat
-- Voice Binds
-- Client Indicator
-
-### Editors
-- Assets editor
-- Components editor
-- HUD editor
-
-### Fun
-- Snake
-- Minesweeper
-- 2048
-- Chess
-- Tic-Tac-Toe
-- Lights Out
-- Memory
-- BlockBlast
-- Tetris
-- Pong
-- Packman
-- Flappy Bird
-- Cat Trap
-- Brick Breaker
-
-### Texture shop
-- Entities
-- Game
-- Emoticons
-- Particles
-- HUD
-- Arrows
-- Cursors
-- Audio
-
-
-## Full `bc_*` Config List
+Source of truth: `src/engine/shared/config_variables_bestclient.h` + `src/engine/shared/config_variables_tclient.h`.
 
 ```cfg
 bc_3d_particles
@@ -329,8 +238,13 @@ bc_voice_chat_server_address
 bc_voice_chat_volume
 ```
 
-## License
+## Not in this scope
 
-- `license.txt` contains the upstream DDNet/Teeworlds license and content notices.
-- `LICENSE` defines BestClient mixed licensing and preserves upstream/per-file rights.
-- Permission requests are required only for BestProject-authored functions listed in `docs/BESTCLIENT_AUTHORED_FUNCTIONS.md`.
+- Upstream DDNet/Teeworlds code remains under upstream licenses.
+- Third-party code, assets, fonts, and libraries remain under their own licenses.
+- Content in `data/` remains under per-file/per-directory licenses (including CC-BY-SA where stated).
+
+## Maintenance rule
+
+- When adding/removing `bc_*` settings, update this file in the same commit.
+- If a BestProject-authored feature is implemented outside the listed paths, add that path in the same commit.

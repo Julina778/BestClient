@@ -1,38 +1,30 @@
-BestClient Proprietary License
+BestClient Mixed License Notice
 Copyright (c) 2026 BestProject Team
 
-All rights reserved.
+This repository contains code and content under multiple licenses.
 
-This license applies only to the BestClient fork and to the original code,
-assets, build scripts, configuration, and other materials created or modified
-by BestProject Team for this fork, unless a file or directory states otherwise.
+1) Upstream and third-party materials
+- DDNet/Teeworlds upstream code remains under its original license terms.
+- Third-party libraries, tools, and assets remain under their own licenses.
+- Nothing in this file replaces, narrows, or revokes any upstream or third-party rights.
 
-This license does not replace, limit, or revoke the rights granted by any
-upstream or third-party license that already applies to parts of this
-repository. Such materials remain governed by their original license terms,
-including the notices collected in `license.txt` and in third-party files.
+2) Data/content licenses
+- Content under `data/` remains under the license specified in each file/directory.
+- In particular, DDNet content under CC-BY-SA 3.0 remains under CC-BY-SA 3.0.
+- Where a `license.txt` exists in a subdirectory, that license controls for that material.
 
-Unless you have prior written permission from BestProject Team, you may not:
+3) BestProject-authored functions (permission-required scope)
+- Prior written permission from BestProject Team is required only for reuse or redistribution of BestProject-authored function implementations listed in `docs/BESTCLIENT_AUTHORED_FUNCTIONS.md`.
+- This permission requirement applies only to those listed function implementations and does not apply to upstream/DDNet code or third-party code.
+- If those listed functions are removed or replaced, the remaining code may be used and redistributed under the applicable upstream/per-file licenses.
 
-1. use, copy, reproduce, or modify the BestClient-licensed portions of this
-   repository;
-2. publish, distribute, sublicense, lease, rent, transfer, or sell the
-   BestClient-licensed portions of this repository or derivative works based on
-   them;
-3. remove or alter copyright, attribution, authorship, or license notices; or
-4. present the BestClient fork or its BestProject Team contributions as your
-   own work.
+4) Attribution and modified versions
+- Do not misrepresent the origin of upstream software.
+- Mark altered versions as modified.
+- Preserve existing copyright and license notices.
 
-Any permission granted by BestProject Team must be explicit and in writing.
-Any permitted use must preserve proper credit to the original authors:
-BestProject Team.
+5) Warranty disclaimer
+This software is provided "as is", without warranty of any kind, express or implied, including but not limited to merchantability, fitness for a particular purpose, and noninfringement. In no event shall BestProject Team or contributors be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software.
 
-This software is provided "as is", without warranty of any kind, express or
-implied, including but not limited to the warranties of merchantability,
-fitness for a particular purpose, and noninfringement. In no event shall
-BestProject Team or the contributors be liable for any claim, damages, or
-other liability, whether in an action of contract, tort, or otherwise, arising
-from, out of, or in connection with the software or the use of the software.
-
-For permission requests, contact:
+Permission requests:
 discord.gg/bestclient
