@@ -5856,15 +5856,18 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		{
 			static CButtonContainer s_VoicePanelBindReader;
 			static CButtonContainer s_VoicePanelBindClear;
+			static CButtonContainer s_PushToTalkBindReader;
+			static CButtonContainer s_PushToTalkBindClear;
 			static CButtonContainer s_MicMuteBindReader;
 			static CButtonContainer s_MicMuteBindClear;
 			static CButtonContainer s_HeadphonesMuteBindReader;
 			static CButtonContainer s_HeadphonesMuteBindClear;
 
-			const float ContentHeight = 3.0f * (LineSize + MarginExtraSmall);
+			const float ContentHeight = 4.0f * (LineSize + MarginExtraSmall);
 			CUIRect BindsView;
 			BeginBlock(Column, ContentHeight, BindsView);
 			DoLine_KeyReader(BindsView, s_VoicePanelBindReader, s_VoicePanelBindClear, Localize("Voice panel"), "toggle_voice_panel");
+			DoLine_KeyReader(BindsView, s_PushToTalkBindReader, s_PushToTalkBindClear, Localize("Push-to-talk"), "+voicechat");
 			DoLine_KeyReader(BindsView, s_MicMuteBindReader, s_MicMuteBindClear, Localize("Mute microphone"), "toggle_voice_mic_mute");
 			DoLine_KeyReader(BindsView, s_HeadphonesMuteBindReader, s_HeadphonesMuteBindClear, Localize("Mute headphones"), "toggle_voice_headphones_mute");
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
