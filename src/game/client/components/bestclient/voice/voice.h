@@ -255,6 +255,9 @@ private:
 	std::string m_AdvertisedRoomKey;
 	int m_AdvertisedGameClientId = BestClientVoice::INVALID_GAME_CLIENT_ID - 1;
 	int m_AdvertisedTeam = std::numeric_limits<int>::min();
+	float m_EnableYourGroupRevealPhase = 0.0f;
+	bool m_LastUseTeam0Mode = false;
+	bool m_LastEnableYourGroup = false;
 
 	std::vector<uint16_t> m_vSortedPeerIds;
 	std::vector<uint16_t> m_vVisibleMemberPeerIds;
@@ -275,6 +278,8 @@ private:
 	CButtonContainer m_MicCheckButton;
 	CButtonContainer m_EnableVoiceButton;
 	CButtonContainer m_InGameOnlyButton;
+	CButtonContainer m_UseTeam0Button;
+	CButtonContainer m_EnableYourGroupButton;
 	CButtonContainer m_ActivationModeButton;
 	CButtonContainer m_RadiusFilterButton;
 	CButtonContainer m_ReloadServerListButton;
@@ -315,6 +320,11 @@ private:
 	bool IsInGameOnlyBlocked() const;
 	int LocalTeam() const;
 	int LocalVoiceTeam() const;
+	int LocalOwnVoiceTeam() const;
+	bool IsUseTeam0Mode() const;
+	bool IsEnableYourGroupMode() const;
+	bool ShouldTransmitToOwnGroupAlongsideTeam0() const;
+	bool IsVoiceTeamAudible(int Team) const;
 	vec2 LocalPosition() const;
 	std::string CurrentRoomKey() const;
 	int LocalGameClientId() const;

@@ -18,6 +18,7 @@
 #include <engine/textrender.h>
 
 #include <game/client/animstate.h>
+#include <game/client/bc_ui_animations.h>
 #include <game/client/components/hud_layout.h>
 #include <game/client/gameclient.h>
 #include <game/client/components/countryflags.h>
@@ -574,6 +575,9 @@ void CVoiceChat::OnReset()
 	m_AdvertisedRoomKey.clear();
 	m_AdvertisedGameClientId = BestClientVoice::INVALID_GAME_CLIENT_ID - 1;
 	m_AdvertisedTeam = std::numeric_limits<int>::min();
+	m_EnableYourGroupRevealPhase = g_Config.m_BcVoiceChatUseTeam0 ? 1.0f : 0.0f;
+	m_LastUseTeam0Mode = g_Config.m_BcVoiceChatUseTeam0 != 0;
+	m_LastEnableYourGroup = g_Config.m_BcVoiceChatUseTeam0 != 0 && g_Config.m_BcVoiceChatEnableYourGroup != 0;
 	ClearPeerState();
 	m_CapturePcm.Clear();
 	m_MicMonitorPcm.Clear();
@@ -663,6 +667,36 @@ void CVoiceChat::OnUpdate()
 
 	if(g_Config.m_BcVoiceChatHeadphonesMuted && !g_Config.m_BcVoiceChatMicMuted)
 		g_Config.m_BcVoiceChatMicMuted = 1;
+
+	const bool UseTeam0Mode = g_Config.m_BcVoiceChatUseTeam0 != 0;
+	if(!UseTeam0Mode && g_Config.m_BcVoiceChatEnableYourGroup != 0)
+		g_Config.m_BcVoiceChatEnableYourGroup = 0;
+	const bool EnableYourGroup = UseTeam0Mode && g_Config.m_BcVoiceChatEnableYourGroup != 0;
+
+	const bool ModuleUiRevealAnimationsEnabled = BCUiAnimations::Enabled() && g_Config.m_BcModuleUiRevealAnimation != 0;
+	if(ModuleUiRevealAnimationsEnabled)
+	{
+		BCUiAnimations::UpdatePhase(
+			m_EnableYourGroupRevealPhase,
+			UseTeam0Mode ? 1.0f : 0.0f,
+			Client()->RenderFrameTime(),
+			BCUiAnimations::MsToSeconds(g_Config.m_BcModuleUiRevealAnimationMs));
+	}
+	else
+	{
+		m_EnableYourGroupRevealPhase = UseTeam0Mode ? 1.0f : 0.0f;
+	}
+
+	const bool TeamModeChanged = UseTeam0Mode != m_LastUseTeam0Mode || EnableYourGroup != m_LastEnableYourGroup;
+	if(TeamModeChanged)
+	{
+		m_LastUseTeam0Mode = UseTeam0Mode;
+		m_LastEnableYourGroup = EnableYourGroup;
+		if(m_PlaybackDevice)
+			SDL_ClearQueuedAudio(m_PlaybackDevice);
+		ClearPeerState();
+		InvalidatePeerCaches();
+	}
 
 	if(str_comp(m_aLastMutedNames, g_Config.m_BcVoiceChatMutedNames) != 0)
 	{
@@ -918,12 +952,15 @@ constexpr float kVoiceMenuEnableRowHeight = 22.0f;
 constexpr float kVoiceMenuServerRowHeight = 22.0f;
 constexpr float kVoiceMenuServerRowGap = 3.0f;
 
-float VoiceMenuExpandedHeightForServerCount(int ServerCount, bool RadiusFilterEnabled, bool AutomaticMode)
+float VoiceMenuExpandedHeightForServerCount(int ServerCount, bool RadiusFilterEnabled, bool AutomaticMode, float Team0GroupRevealPhase)
 {
+	Team0GroupRevealPhase = std::clamp(Team0GroupRevealPhase, 0.0f, 1.0f);
 	const int VisibleRows = std::clamp(ServerCount > 0 ? ServerCount : 1, 1, 2);
 	const float ServerListHeight = 2.0f + VisibleRows * kVoiceMenuServerRowHeight + maximum(0, VisibleRows - 1) * kVoiceMenuServerRowGap;
 	return
 		4.0f + 20.0f + // In-Game only checkbox row.
+		4.0f + 20.0f + // Use team0 checkbox row.
+		(4.0f + 20.0f) * Team0GroupRevealPhase + // Enable your group row (animated reveal).
 		4.0f + 20.0f + // Radius filter checkbox row.
 		(RadiusFilterEnabled ? (3.0f + 20.0f) : 0.0f) + // Radius slider row.
 		4.0f + 18.0f + // Activation mode label.
@@ -949,7 +986,8 @@ float CVoiceChat::GetMenuSettingsBlockHeight(float RevealPhase) const
 	const int ServerCount = (int)m_vServerEntries.size();
 	const bool RadiusFilterEnabled = g_Config.m_BcVoiceChatRadiusEnabled != 0;
 	const bool AutomaticMode = g_Config.m_BcVoiceChatActivationMode == 0;
-	const float ExpandedHeight = VoiceMenuExpandedHeightForServerCount(ServerCount, RadiusFilterEnabled, AutomaticMode);
+	const float Team0GroupRevealPhase = std::clamp(m_EnableYourGroupRevealPhase, 0.0f, 1.0f);
+	const float ExpandedHeight = VoiceMenuExpandedHeightForServerCount(ServerCount, RadiusFilterEnabled, AutomaticMode, Team0GroupRevealPhase);
 	return HeaderHeight + ExpandedHeight * RevealPhase + kVoiceMenuOuterMargin * 2.0f;
 }
 
@@ -1074,7 +1112,8 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 	const int InitialServerCount = (int)m_vServerEntries.size();
 	const bool RadiusFilterEnabled = g_Config.m_BcVoiceChatRadiusEnabled != 0;
 	const bool AutomaticMode = g_Config.m_BcVoiceChatActivationMode == 0;
-	const float ExpandedTargetHeight = VoiceMenuExpandedHeightForServerCount(InitialServerCount, RadiusFilterEnabled, AutomaticMode);
+	const float Team0GroupRevealPhase = std::clamp(m_EnableYourGroupRevealPhase, 0.0f, 1.0f);
+	const float ExpandedTargetHeight = VoiceMenuExpandedHeightForServerCount(InitialServerCount, RadiusFilterEnabled, AutomaticMode, Team0GroupRevealPhase);
 	const float ExpandedVisibleHeight = ExpandedTargetHeight * RevealPhase;
 
 	CUIRect ExpandedVisible;
@@ -1101,6 +1140,29 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 	{
 		if(GameClient()->m_Menus.DoButton_CheckBox(&m_InGameOnlyButton, Localize("In-Game Only"), g_Config.m_BcVoiceChatInGameOnly, &Row))
 			g_Config.m_BcVoiceChatInGameOnly ^= 1;
+	}
+
+	AddExpandedSpacing(4.0f);
+	if(AddExpandedRow(20.0f, Row))
+	{
+		if(GameClient()->m_Menus.DoButton_CheckBox(&m_UseTeam0Button, Localize("Use team0"), g_Config.m_BcVoiceChatUseTeam0, &Row))
+		{
+			g_Config.m_BcVoiceChatUseTeam0 ^= 1;
+			if(g_Config.m_BcVoiceChatUseTeam0 == 0)
+				g_Config.m_BcVoiceChatEnableYourGroup = 0;
+		}
+	}
+
+	const float YourGroupRowPhase = std::clamp(m_EnableYourGroupRevealPhase, 0.0f, 1.0f);
+	if(YourGroupRowPhase > 0.0f)
+	{
+		AddExpandedSpacing(4.0f * YourGroupRowPhase);
+		CUIRect ClippedRow;
+		if(AddExpandedRow(20.0f * YourGroupRowPhase, ClippedRow) && ClippedRow.h > 0.0f)
+		{
+			if(GameClient()->m_Menus.DoButton_CheckBox(&m_EnableYourGroupButton, Localize("Enable your group"), g_Config.m_BcVoiceChatEnableYourGroup, &ClippedRow))
+				g_Config.m_BcVoiceChatEnableYourGroup ^= 1;
+		}
 	}
 
 	AddExpandedSpacing(4.0f);
@@ -2772,6 +2834,24 @@ void CVoiceChat::ProcessNetwork()
 			m_PeerVolumePercent[SenderId] = 100;
 		Peer.m_Team = Team;
 		Peer.m_Position = vec2((float)PosX, (float)PosY);
+		if(!IsVoiceTeamAudible(Team))
+		{
+			const bool HadBufferedAudio = Peer.m_DecodedPcm.Size() > 0;
+			const bool WasTalking = Peer.m_LastVoiceTick > 0;
+			Peer.m_LastVoiceTick = 0;
+			if(HadBufferedAudio)
+				Peer.m_DecodedPcm.Clear();
+			if(Peer.m_HasSequence)
+			{
+				Peer.m_HasSequence = false;
+				if(Peer.m_pDecoder)
+					opus_decoder_ctl(Peer.m_pDecoder, OPUS_RESET_STATE);
+			}
+			if(WasTalking || HadBufferedAudio)
+				m_TalkingStateDirty = true;
+			continue;
+		}
+
 		const int64_t Now = time_get();
 		if(Peer.m_LastArrivalTick > 0)
 		{
@@ -3169,7 +3249,18 @@ void CVoiceChat::ProcessCapture()
 		uint8_t aEncoded[BestClientVoice::MAX_OPUS_PACKET_SIZE];
 		const int EncodedSize = opus_encode(m_pEncoder, aFrame, BestClientVoice::FRAME_SIZE, aEncoded, (int)sizeof(aEncoded));
 		if(EncodedSize > 0)
-			SendVoiceFrame(aEncoded, EncodedSize, LocalVoiceTeam(), LocalPosition());
+		{
+			const vec2 Position = LocalPosition();
+			const int PrimaryTeam = LocalVoiceTeam();
+			SendVoiceFrame(aEncoded, EncodedSize, PrimaryTeam, Position);
+
+			if(ShouldTransmitToOwnGroupAlongsideTeam0())
+			{
+				const int OwnTeam = LocalOwnVoiceTeam();
+				if(OwnTeam != PrimaryTeam)
+					SendVoiceFrame(aEncoded, EncodedSize, OwnTeam, Position);
+			}
+		}
 	}
 }
 
@@ -3503,7 +3594,42 @@ int CVoiceChat::LocalTeam() const
 
 int CVoiceChat::LocalVoiceTeam() const
 {
+	return IsUseTeam0Mode() ? 0 : LocalOwnVoiceTeam();
+}
+
+int CVoiceChat::LocalOwnVoiceTeam() const
+{
 	return maximum(LocalTeam(), 0);
+}
+
+bool CVoiceChat::IsUseTeam0Mode() const
+{
+	return g_Config.m_BcVoiceChatUseTeam0 != 0;
+}
+
+bool CVoiceChat::IsEnableYourGroupMode() const
+{
+	return IsUseTeam0Mode() && g_Config.m_BcVoiceChatEnableYourGroup != 0;
+}
+
+bool CVoiceChat::ShouldTransmitToOwnGroupAlongsideTeam0() const
+{
+	return IsEnableYourGroupMode() && LocalOwnVoiceTeam() > 0;
+}
+
+bool CVoiceChat::IsVoiceTeamAudible(int Team) const
+{
+	const int NormalizedTeam = maximum(Team, 0);
+	const int OwnTeam = LocalOwnVoiceTeam();
+
+	if(IsUseTeam0Mode())
+	{
+		if(NormalizedTeam == 0)
+			return true;
+		return IsEnableYourGroupMode() && OwnTeam > 0 && NormalizedTeam == OwnTeam;
+	}
+
+	return NormalizedTeam == OwnTeam;
 }
 
 vec2 CVoiceChat::LocalPosition() const
@@ -3965,9 +4091,13 @@ void CVoiceChat::RenderSettingsSection(CUIRect View)
 		CUIRect OptionsCard;
 		const bool RadiusFilterEnabled = g_Config.m_BcVoiceChatRadiusEnabled != 0;
 		const bool AutomaticMode = g_Config.m_BcVoiceChatActivationMode == 0;
+		const float YourGroupRevealPhase = std::clamp(m_EnableYourGroupRevealPhase, 0.0f, 1.0f);
 		const float OptionsInnerHeight =
 			28.0f + 4.0f + // Voice on/off.
 			24.0f + 4.0f + // In-Game Only.
+			24.0f + // Use team0.
+			(4.0f + 24.0f) * YourGroupRevealPhase + // Enable your group (animated reveal).
+			4.0f + // Gap before radius.
 			24.0f + // Radius checkbox.
 			(RadiusFilterEnabled ? (4.0f + 20.0f) : 0.0f) + // Radius slider.
 			4.0f + 28.0f + // Mode.
@@ -4042,6 +4172,27 @@ void CVoiceChat::RenderSettingsSection(CUIRect View)
 		Options.HSplitTop(24.0f, &Row, &Options);
 		if(GameClient()->m_Menus.DoButton_CheckBox(&m_InGameOnlyButton, Localize("In-Game Only"), g_Config.m_BcVoiceChatInGameOnly, &Row))
 			g_Config.m_BcVoiceChatInGameOnly ^= 1;
+
+		AddSpacing(4.0f);
+		Options.HSplitTop(24.0f, &Row, &Options);
+		if(GameClient()->m_Menus.DoButton_CheckBox(&m_UseTeam0Button, Localize("Use team0"), g_Config.m_BcVoiceChatUseTeam0, &Row))
+		{
+			g_Config.m_BcVoiceChatUseTeam0 ^= 1;
+			if(g_Config.m_BcVoiceChatUseTeam0 == 0)
+				g_Config.m_BcVoiceChatEnableYourGroup = 0;
+		}
+
+		if(YourGroupRevealPhase > 0.0f)
+		{
+			AddSpacing(4.0f * YourGroupRevealPhase);
+			CUIRect ClippedRow;
+			Options.HSplitTop(24.0f * YourGroupRevealPhase, &ClippedRow, &Options);
+			if(ClippedRow.h > 0.0f)
+			{
+				if(GameClient()->m_Menus.DoButton_CheckBox(&m_EnableYourGroupButton, Localize("Enable your group"), g_Config.m_BcVoiceChatEnableYourGroup, &ClippedRow))
+					g_Config.m_BcVoiceChatEnableYourGroup ^= 1;
+			}
+		}
 
 		AddSpacing(4.0f);
 		Options.HSplitTop(24.0f, &Row, &Options);
