@@ -57,6 +57,7 @@ static constexpr int CHAT_MEDIA_MAX_VIDEO_ANIMATION_MS = 15000;
 static constexpr int CHAT_MEDIA_MAX_RETRIES = 3;
 static constexpr float CHAT_MEDIA_MAX_PREVIEW_HEIGHT = 70.0f;
 static constexpr float CHAT_MEDIA_MAX_PREVIEW_HEIGHT_SCOREBOARD = 56.0f;
+static constexpr float CHAT_MEDIA_PREVIEW_SIZE_SCALE = 0.9f;
 static constexpr float CHAT_MEDIA_COMPACT_EXPANDED_HEIGHT = 150.0f;
 static constexpr int CHAT_MEDIA_MAX_URL_LENGTH = 240;
 static constexpr int CHAT_MEDIA_MAX_HTML_CANDIDATES = 32;
@@ -4304,7 +4305,7 @@ void CChat::OnPrepareLines(float y, int StartLine, int HoveredTranslateLineIndex
 	float Begin = x;
 	float TextBegin = Begin + RealMsgPaddingX / 2.0f;
 	int OffsetType = IsScoreBoardOpen ? 1 : 0;
-	const float MaxPreviewHeight = IsScoreBoardOpen ? CHAT_MEDIA_MAX_PREVIEW_HEIGHT_SCOREBOARD : CHAT_MEDIA_MAX_PREVIEW_HEIGHT;
+	const float MaxPreviewHeight = (IsScoreBoardOpen ? CHAT_MEDIA_MAX_PREVIEW_HEIGHT_SCOREBOARD : CHAT_MEDIA_MAX_PREVIEW_HEIGHT) * CHAT_MEDIA_PREVIEW_SIZE_SCALE;
 
 	for(int i = StartLine; i < MAX_LINES; i++)
 	{
@@ -4461,7 +4462,7 @@ void CChat::OnPrepareLines(float y, int StartLine, int HoveredTranslateLineIndex
 			const bool HideMediaPreview = ShouldHideMediaPreview(Line);
 			if(ShowMediaSlot && (HideMediaPreview || (Line.m_MediaState == EMediaState::READY && Line.m_MediaWidth > 0 && Line.m_MediaHeight > 0 && !Line.m_vMediaFrames.empty())))
 			{
-				const float MaxPreviewWidth = minimum(LineWidth, (float)g_Config.m_BcChatMediaPreviewMaxWidth);
+				const float MaxPreviewWidth = minimum(LineWidth, (float)g_Config.m_BcChatMediaPreviewMaxWidth) * CHAT_MEDIA_PREVIEW_SIZE_SCALE;
 				if(MaxPreviewWidth > 0.0f && MaxPreviewHeight > 0.0f)
 				{
 					if(Line.m_MediaState == EMediaState::READY && Line.m_MediaWidth > 0 && Line.m_MediaHeight > 0 && !Line.m_vMediaFrames.empty())
@@ -4490,21 +4491,21 @@ void CChat::OnPrepareLines(float y, int StartLine, int HoveredTranslateLineIndex
 					else
 					{
 						Line.m_aMediaPreviewWidth[OffsetType] = MaxPreviewWidth;
-						Line.m_aMediaPreviewHeight[OffsetType] = maximum(FontSize * 1.6f, 18.0f);
+						Line.m_aMediaPreviewHeight[OffsetType] = maximum(FontSize * 1.6f, 18.0f) * CHAT_MEDIA_PREVIEW_SIZE_SCALE;
 					}
 					TotalHeight += FontSize * 0.4f + Line.m_aMediaPreviewHeight[OffsetType];
 				}
 			}
 			else if(ShowMediaSlot && (Line.m_MediaState == EMediaState::QUEUED || Line.m_MediaState == EMediaState::LOADING || Line.m_MediaState == EMediaState::DECODING))
 			{
-				Line.m_aMediaPreviewWidth[OffsetType] = minimum(LineWidth, (float)g_Config.m_BcChatMediaPreviewMaxWidth);
-				Line.m_aMediaPreviewHeight[OffsetType] = maximum(FontSize * 1.2f, 12.0f);
+				Line.m_aMediaPreviewWidth[OffsetType] = minimum(LineWidth, (float)g_Config.m_BcChatMediaPreviewMaxWidth) * CHAT_MEDIA_PREVIEW_SIZE_SCALE;
+				Line.m_aMediaPreviewHeight[OffsetType] = maximum(FontSize * 1.2f, 12.0f) * CHAT_MEDIA_PREVIEW_SIZE_SCALE;
 				TotalHeight += FontSize * 0.4f + Line.m_aMediaPreviewHeight[OffsetType];
 			}
 			else if(ShowMediaSlot && Line.m_MediaState == EMediaState::FAILED)
 			{
-				Line.m_aMediaPreviewWidth[OffsetType] = minimum(LineWidth, (float)g_Config.m_BcChatMediaPreviewMaxWidth);
-				Line.m_aMediaPreviewHeight[OffsetType] = maximum(FontSize * 2.1f, 18.0f);
+				Line.m_aMediaPreviewWidth[OffsetType] = minimum(LineWidth, (float)g_Config.m_BcChatMediaPreviewMaxWidth) * CHAT_MEDIA_PREVIEW_SIZE_SCALE;
+				Line.m_aMediaPreviewHeight[OffsetType] = maximum(FontSize * 2.1f, 18.0f) * CHAT_MEDIA_PREVIEW_SIZE_SCALE;
 				TotalHeight += FontSize * 0.4f + Line.m_aMediaPreviewHeight[OffsetType];
 			}
 
