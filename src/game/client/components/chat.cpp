@@ -57,6 +57,7 @@ static constexpr int CHAT_MEDIA_MAX_VIDEO_ANIMATION_MS = 15000;
 static constexpr int CHAT_MEDIA_MAX_RETRIES = 3;
 static constexpr float CHAT_MEDIA_MAX_PREVIEW_HEIGHT = 70.0f;
 static constexpr float CHAT_MEDIA_MAX_PREVIEW_HEIGHT_SCOREBOARD = 56.0f;
+static constexpr float CHAT_MEDIA_COMPACT_EXPANDED_HEIGHT = 150.0f;
 static constexpr int CHAT_MEDIA_MAX_URL_LENGTH = 240;
 static constexpr int CHAT_MEDIA_MAX_HTML_CANDIDATES = 32;
 static constexpr size_t CHAT_MEDIA_MAX_ANIMATED_MEMORY_BYTES = 48ull * 1024ull * 1024ull;
@@ -4066,6 +4067,11 @@ void CChat::AddLine(int ClientId, int Team, const char *pLine)
 	}
 
 	m_CurrentLine = (m_CurrentLine + 1) % MAX_LINES;
+	// The previous line switches from "latest" to backlog now. In compact chat
+	// media-related layout (including expanded compact area) may change
+	// immediately, so invalidate cached heights and force relayout next frame.
+	PreviousLine.m_aYOffset[0] = -1.0f;
+	PreviousLine.m_aYOffset[1] = -1.0f;
 	if(m_BacklogCurLine > 0)
 		m_BacklogCurLine = minimum(m_BacklogCurLine + 1, MAX_LINES - 1);
 
@@ -4279,7 +4285,21 @@ void CChat::OnPrepareLines(float y, int StartLine, int HoveredTranslateLineIndex
 	int64_t Now = time();
 	float LineWidth = (IsScoreBoardOpen ? maximum(85.0f * LayoutScale, (FontSize * 85.0f / 6.0f)) : ChatWidth()) - (RealMsgPaddingX * 1.5f) - RealMsgPaddingTee;
 
-	const float VisibleHeight = IsScoreBoardOpen ? 93.0f * LayoutScale : (m_PrevShowChat ? 223.0f * LayoutScale : 73.0f * LayoutScale);
+	const auto ShouldExpandCompactAreaForMedia = [&]() {
+		if(IsScoreBoardOpen || ShowLargeArea || !g_Config.m_BcChatMediaPreview || !AnyMediaAllowed())
+			return false;
+		for(int i = 0; i < 3; ++i)
+		{
+			const CLine &RecentLine = m_aLines[((m_CurrentLine - i) + MAX_LINES) % MAX_LINES];
+			if(!RecentLine.m_Initialized)
+				break;
+			if(ShouldDisplayMediaSlot(RecentLine))
+				return true;
+		}
+		return false;
+	};
+	const bool ExpandCompactAreaForMedia = ShouldExpandCompactAreaForMedia();
+	const float VisibleHeight = IsScoreBoardOpen ? 93.0f * LayoutScale : (ShowLargeArea ? 223.0f * LayoutScale : (ExpandCompactAreaForMedia ? CHAT_MEDIA_COMPACT_EXPANDED_HEIGHT * LayoutScale : 73.0f * LayoutScale));
 	float HeightLimit = y - VisibleHeight;
 	float Begin = x;
 	float TextBegin = Begin + RealMsgPaddingX / 2.0f;
@@ -5006,7 +5026,21 @@ void CChat::OnRender()
 	const bool KeepLinesAlive = m_MediaViewerOpen && ValidateMediaViewerLine();
 
 	int64_t Now = time();
-	const float VisibleHeight = IsScoreBoardOpen ? 93.0f * LayoutScale : (ShowLargeArea ? 223.0f * LayoutScale : 73.0f * LayoutScale);
+	const auto ShouldExpandCompactAreaForMedia = [&]() {
+		if(IsScoreBoardOpen || ShowLargeArea || !g_Config.m_BcChatMediaPreview || !AnyMediaAllowed())
+			return false;
+		for(int i = 0; i < 3; ++i)
+		{
+			const CLine &RecentLine = m_aLines[((m_CurrentLine - i) + MAX_LINES) % MAX_LINES];
+			if(!RecentLine.m_Initialized)
+				break;
+			if(ShouldDisplayMediaSlot(RecentLine))
+				return true;
+		}
+		return false;
+	};
+	const bool ExpandCompactAreaForMedia = ShouldExpandCompactAreaForMedia();
+	const float VisibleHeight = IsScoreBoardOpen ? 93.0f * LayoutScale : (ShowLargeArea ? 223.0f * LayoutScale : (ExpandCompactAreaForMedia ? CHAT_MEDIA_COMPACT_EXPANDED_HEIGHT * LayoutScale : 73.0f * LayoutScale));
 	float HeightLimit = y - VisibleHeight;
 	int OffsetType = IsScoreBoardOpen ? 1 : 0;
 
