@@ -1249,7 +1249,7 @@ void CGameClient::OnRender()
 	// render all systems
 	for(auto &pComponent : m_vpAll)
 	{
-		if(UseGameNoHudAspect && !HudAspectDisabled && pComponent == &m_Hud)
+		if(UseGameNoHudAspect && !HudAspectDisabled && pComponent == &m_MusicPlayer)
 		{
 			Graphics()->SetScreenAspectOverrideEnabled(false);
 			HudAspectDisabled = true;

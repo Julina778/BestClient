@@ -866,6 +866,12 @@ void CHud::RenderCursor()
 	if(Scale <= 0.0f)
 		return;
 
+	// In "game no HUD" mode the HUD itself uses window aspect, but cursor world mapping
+	// must still use gameplay aspect, otherwise the cursor drifts away from the real aim.
+	const bool UseGameNoHudAspect = (Client()->State() == IClient::STATE_ONLINE || Client()->State() == IClient::STATE_DEMOPLAYBACK) && g_Config.m_BcCustomAspectRatioApplyMode == 2;
+	if(UseGameNoHudAspect)
+		Graphics()->SetScreenAspectOverrideEnabled(true);
+
 	int CurWeapon = 0;
 	vec2 TargetPos;
 	float Alpha = 1.0f;
@@ -885,12 +891,20 @@ void CHud::RenderCursor()
 	{
 		// Render spec cursor
 		if(!g_Config.m_ClSpecCursor || !GameClient()->m_CursorInfo.IsAvailable())
+		{
+			if(UseGameNoHudAspect)
+				Graphics()->SetScreenAspectOverrideEnabled(false);
 			return;
+		}
 
 		bool RenderSpecCursor = (GameClient()->m_Snap.m_SpecInfo.m_Active && GameClient()->m_Snap.m_SpecInfo.m_SpectatorId != SPEC_FREEVIEW) || Client()->State() == IClient::STATE_DEMOPLAYBACK;
 
 		if(!RenderSpecCursor)
+		{
+			if(UseGameNoHudAspect)
+				Graphics()->SetScreenAspectOverrideEnabled(false);
 			return;
+		}
 
 		// Calculate factor to keep cursor on screen
 		const vec2 HalfSize = vec2(Center.x - aPoints[0], Center.y - aPoints[1]);
@@ -909,6 +923,9 @@ void CHud::RenderCursor()
 	Graphics()->SetColor(1.0f, 1.0f, 1.0f, Alpha);
 	Graphics()->TextureSet(GameClient()->m_GameSkin.m_aSpriteWeaponCursors[CurWeapon]);
 	Graphics()->RenderQuadContainerAsSprite(m_HudQuadContainerIndex, m_aCursorOffset[CurWeapon], TargetPos.x, TargetPos.y, Scale, Scale);
+
+	if(UseGameNoHudAspect)
+		Graphics()->SetScreenAspectOverrideEnabled(false);
 }
 
 void CHud::PrepareAmmoHealthAndArmorQuads()
