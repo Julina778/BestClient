@@ -655,7 +655,8 @@ void CTClient::SetForcedAspect()
 		Force = false;
 	else if(State == CClient::EClientState::STATE_ONLINE && GameClient()->m_GameInfo.m_AllowZoom && !GameClient()->m_Menus.IsActive())
 		Force = false;
-	const bool ApplyCustomAspect = g_Config.m_BcCustomAspectRatioApplyMode != 0 || !GameClient()->m_Menus.IsActive();
+	const bool IsActiveGameplay = State == CClient::EClientState::STATE_ONLINE || State == CClient::EClientState::STATE_DEMOPLAYBACK;
+	const bool ApplyCustomAspect = g_Config.m_BcCustomAspectRatioApplyMode != 0 || IsActiveGameplay;
 	Graphics()->SetForcedAspect(Force, ApplyCustomAspect);
 }
 

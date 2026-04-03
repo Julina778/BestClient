@@ -2863,6 +2863,8 @@ void CMenus::OnRender()
 	}
 
 	const bool IngameMenu = IsActive() && (Client()->State() == IClient::STATE_ONLINE || Client()->State() == IClient::STATE_DEMOPLAYBACK);
+	const bool UseWindowAspectForUi = IngameMenu && g_Config.m_BcCustomAspectRatioApplyMode == 0;
+	Ui()->SetUseGraphicsScreenAspect(!UseWindowAspectForUi);
 	const bool IngameMenuAnimated = IngameMenu && BCUiAnimations::Enabled() && g_Config.m_BcIngameMenuAnimation != 0 && g_Config.m_BcIngameMenuAnimationMs > 0;
 	if(IngameMenuAnimated)
 	{
@@ -2890,6 +2892,7 @@ void CMenus::OnRender()
 			if(m_BcIngameMenuClosing && m_BcIngameMenuOpenPhase <= 0.0f)
 			{
 				Ui()->SetEnabled(true);
+				Ui()->SetUseGraphicsScreenAspect(true);
 				SetActive(false);
 				Ui()->FinishCheck();
 				Ui()->ClearHotkeys();
@@ -2925,6 +2928,7 @@ void CMenus::OnRender()
 
 	Ui()->FinishCheck();
 	Ui()->ClearHotkeys();
+	Ui()->SetUseGraphicsScreenAspect(true);
 }
 
 void CMenus::UpdateColors()

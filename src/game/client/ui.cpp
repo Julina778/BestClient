@@ -104,6 +104,17 @@ IGraphics *CUIElementBase::Graphics() const { return ms_pUi->Graphics(); }
 IInput *CUIElementBase::Input() const { return ms_pUi->Input(); }
 ITextRender *CUIElementBase::TextRender() const { return ms_pUi->TextRender(); }
 
+float CUi::EffectiveScreenAspect() const
+{
+	if(m_UseGraphicsScreenAspect)
+		return Graphics()->ScreenAspect();
+
+	const int ScreenHeight = Graphics()->ScreenHeight();
+	if(ScreenHeight <= 0)
+		return Graphics()->ScreenAspect();
+	return (float)Graphics()->ScreenWidth() / (float)ScreenHeight;
+}
+
 void CUi::Init(IKernel *pKernel)
 {
 	m_pClient = pKernel->RequestInterface<IClient>();
@@ -185,7 +196,7 @@ void CUi::Update(vec2 MouseWorldPos)
 	const int UiScale = std::clamp(g_Config.m_UiScale, 50, 200);
 	const int ScreenWidth = Graphics()->ScreenWidth();
 	const int ScreenHeight = Graphics()->ScreenHeight();
-	const float ScreenAspect = Graphics()->ScreenAspect();
+	const float ScreenAspect = EffectiveScreenAspect();
 	const bool UiScaleChanged = UiScale != m_LastUiScale;
 	const bool ScreenMetricsChanged = ScreenWidth != m_LastScreenWidth || ScreenHeight != m_LastScreenHeight || absolute(ScreenAspect - m_LastScreenAspect) > 0.0001f;
 	if(UiScaleChanged)
@@ -473,7 +484,7 @@ const CUIRect *CUi::Screen()
 {
 	const float Scale = std::clamp(g_Config.m_UiScale / 100.0f, 0.5f, 2.0f);
 	m_Screen.h = 600.0f / Scale;
-	m_Screen.w = Graphics()->ScreenAspect() * m_Screen.h;
+	m_Screen.w = EffectiveScreenAspect() * m_Screen.h;
 	return &m_Screen;
 }
 
