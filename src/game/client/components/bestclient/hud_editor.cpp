@@ -8,6 +8,8 @@
 #include <base/math.h>
 #include <base/str.h>
 
+#include <cmath>
+
 #include <engine/graphics.h>
 #include <engine/keys.h>
 #include <engine/storage.h>
@@ -50,6 +52,82 @@ bool PointInRect(vec2 Point, const CUIRect &Rect)
 {
 	return Point.x >= Rect.x && Point.x <= Rect.x + Rect.w &&
 	       Point.y >= Rect.y && Point.y <= Rect.y + Rect.h;
+}
+
+void DrawRoundedRectOutline(IGraphics *pGraphics, const CUIRect &Rect, int Corners, float Rounding, ColorRGBA Color)
+{
+	if(Rect.w <= 0.0f || Rect.h <= 0.0f || Color.a <= 0.0f)
+		return;
+
+	const float Radius = std::clamp(Rounding, 0.0f, minimum(Rect.w, Rect.h) * 0.5f);
+	if(Radius <= 0.01f || Corners == IGraphics::CORNER_NONE)
+	{
+		Rect.DrawOutline(Color);
+		return;
+	}
+
+	constexpr int SegmentsPerCorner = 8;
+	IGraphics::CLineItem aLines[SegmentsPerCorner * 4 + 4];
+	int NumLines = 0;
+
+	auto AddLine = [&](vec2 From, vec2 To) {
+		aLines[NumLines++] = IGraphics::CLineItem(From, To);
+	};
+
+	auto AddArc = [&](vec2 Center, float StartAngle, float EndAngle) {
+		vec2 Prev = vec2(
+			Center.x + std::cos(StartAngle) * Radius,
+			Center.y + std::sin(StartAngle) * Radius);
+		for(int i = 1; i <= SegmentsPerCorner; ++i)
+		{
+			const float T = i / (float)SegmentsPerCorner;
+			const float Angle = mix(StartAngle, EndAngle, T);
+			const vec2 Cur(
+				Center.x + std::cos(Angle) * Radius,
+				Center.y + std::sin(Angle) * Radius);
+			AddLine(Prev, Cur);
+			Prev = Cur;
+		}
+	};
+
+	const bool TopLeftRounded = (Corners & IGraphics::CORNER_TL) != 0;
+	const bool TopRightRounded = (Corners & IGraphics::CORNER_TR) != 0;
+	const bool BottomLeftRounded = (Corners & IGraphics::CORNER_BL) != 0;
+	const bool BottomRightRounded = (Corners & IGraphics::CORNER_BR) != 0;
+	const float Left = Rect.x;
+	const float Right = Rect.x + Rect.w;
+	const float Top = Rect.y;
+	const float Bottom = Rect.y + Rect.h;
+
+	AddLine(
+		vec2(Left + (TopLeftRounded ? Radius : 0.0f), Top),
+		vec2(Right - (TopRightRounded ? Radius : 0.0f), Top));
+	if(TopRightRounded)
+		AddArc(vec2(Right - Radius, Top + Radius), -pi / 2.0f, 0.0f);
+
+	AddLine(
+		vec2(Right, Top + (TopRightRounded ? Radius : 0.0f)),
+		vec2(Right, Bottom - (BottomRightRounded ? Radius : 0.0f)));
+	if(BottomRightRounded)
+		AddArc(vec2(Right - Radius, Bottom - Radius), 0.0f, pi / 2.0f);
+
+	AddLine(
+		vec2(Right - (BottomRightRounded ? Radius : 0.0f), Bottom),
+		vec2(Left + (BottomLeftRounded ? Radius : 0.0f), Bottom));
+	if(BottomLeftRounded)
+		AddArc(vec2(Left + Radius, Bottom - Radius), pi / 2.0f, pi);
+
+	AddLine(
+		vec2(Left, Bottom - (BottomLeftRounded ? Radius : 0.0f)),
+		vec2(Left, Top + (TopLeftRounded ? Radius : 0.0f)));
+	if(TopLeftRounded)
+		AddArc(vec2(Left + Radius, Top + Radius), pi, 3.0f * pi / 2.0f);
+
+	pGraphics->TextureClear();
+	pGraphics->LinesBegin();
+	pGraphics->SetColor(Color);
+	pGraphics->LinesDraw(aLines, NumLines);
+	pGraphics->LinesEnd();
 }
 
 CUIRect ClampToBounds(CUIRect Rect, float Width, float Height)
@@ -295,6 +373,7 @@ CHudEditor::SModuleVisual CHudEditor::GetModuleVisual(HudLayout::EModule Module)
 
 	Visual.m_Rounding = std::clamp(Visual.m_Rounding, 2.0f, 12.0f);
 	Visual.m_Rect = ClampToBounds(Visual.m_Rect, Width, Height);
+	Visual.m_Corners = HudLayout::BackgroundCorners(IGraphics::CORNER_ALL, Visual.m_Rect.x, Visual.m_Rect.y, Visual.m_Rect.w, Visual.m_Rect.h, Width, Height);
 	return Visual;
 }
 
@@ -501,16 +580,7 @@ void CHudEditor::RenderModuleOutline(const SModuleVisual &Visual, bool Hovered, 
 	if(!Visual.m_Enabled)
 		Color.a *= 0.82f;
 
-	const float OuterPad = Selected ? 1.4f : (Hovered ? 1.0f : 0.7f);
-	CUIRect OuterRect = {
-		Rect.x - OuterPad,
-		Rect.y - OuterPad,
-		Rect.w + OuterPad * 2.0f,
-		Rect.h + OuterPad * 2.0f};
-	OuterRect.Draw(ColorRGBA(Color.r, Color.g, Color.b, Color.a * (Selected ? 0.26f : (Hovered ? 0.18f : 0.12f))), IGraphics::CORNER_ALL, Visual.m_Rounding + OuterPad);
-
-	CUIRect HighlightRect = Rect;
-	HighlightRect.Draw(ColorRGBA(Color.r, Color.g, Color.b, Color.a * (Selected ? 0.09f : 0.05f)), IGraphics::CORNER_ALL, Visual.m_Rounding);
+	DrawRoundedRectOutline(Graphics(), Rect, Visual.m_Corners, Visual.m_Rounding, Color);
 }
 
 void CHudEditor::RenderModuleLabel(const SModuleVisual &Visual) const
@@ -583,11 +653,11 @@ void CHudEditor::RenderModulePreview(const SModuleVisual &Visual) const
 		Fill = ColorRGBA(0.30f, 0.26f, 0.20f, 0.20f);
 	if(!Visual.m_Enabled)
 		Fill = ColorRGBA(0.12f, 0.14f, 0.18f, LivePreview ? 0.22f : 0.30f);
-	Graphics()->DrawRect(Rect.x, Rect.y, Rect.w, Rect.h, Fill, IGraphics::CORNER_ALL, Visual.m_Rounding);
+	Graphics()->DrawRect(Rect.x, Rect.y, Rect.w, Rect.h, Fill, Visual.m_Corners, Visual.m_Rounding);
 	if(LivePreview)
 	{
 		if(!Visual.m_Enabled)
-			Graphics()->DrawRect(Rect.x, Rect.y, Rect.w, Rect.h, ColorRGBA(0.02f, 0.03f, 0.04f, 0.30f), IGraphics::CORNER_ALL, Visual.m_Rounding);
+			Graphics()->DrawRect(Rect.x, Rect.y, Rect.w, Rect.h, ColorRGBA(0.02f, 0.03f, 0.04f, 0.30f), Visual.m_Corners, Visual.m_Rounding);
 		return;
 	}
 
@@ -723,7 +793,7 @@ void CHudEditor::RenderModulePreview(const SModuleVisual &Visual) const
 
 	DrawPreviewRows(Rect, 4, 2.2f, 4.0f, 0.20f);
 	if(!Visual.m_Enabled)
-		Graphics()->DrawRect(Rect.x, Rect.y, Rect.w, Rect.h, ColorRGBA(0.02f, 0.03f, 0.04f, 0.26f), IGraphics::CORNER_ALL, Visual.m_Rounding);
+		Graphics()->DrawRect(Rect.x, Rect.y, Rect.w, Rect.h, ColorRGBA(0.02f, 0.03f, 0.04f, 0.26f), Visual.m_Corners, Visual.m_Rounding);
 }
 
 void CHudEditor::RenderOverlay(vec2 MousePos)

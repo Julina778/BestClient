@@ -27,6 +27,7 @@ private:
 	{
 		HudLayout::EModule m_Module = HudLayout::MODULE_MUSIC_PLAYER;
 		CUIRect m_Rect{};
+		int m_Corners = IGraphics::CORNER_ALL;
 		float m_Rounding = 6.0f;
 		bool m_UsesBottomAnchor = false;
 		bool m_Editable = false;
