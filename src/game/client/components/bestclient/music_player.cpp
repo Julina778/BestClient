@@ -1683,6 +1683,19 @@ static bool RectsOverlap(const CUIRect &A, const CUIRect &B, float Padding = 0.0
 		A.y + A.h + Padding > B.y;
 }
 
+static void SnapRectXToPixelGrid(float PixelWidth, float &X, float &W)
+{
+	if(PixelWidth <= 0.0f || W <= 0.0f)
+		return;
+
+	const float SnappedLeft = roundf(X / PixelWidth) * PixelWidth;
+	float SnappedRight = roundf((X + W) / PixelWidth) * PixelWidth;
+	if(SnappedRight <= SnappedLeft)
+		SnappedRight = SnappedLeft + PixelWidth;
+	X = SnappedLeft;
+	W = SnappedRight - SnappedLeft;
+}
+
 static float RoundedArtInset(float LocalX, float W, float Radius)
 {
 	if(Radius <= 0.0f || W <= 0.0f)
@@ -2814,6 +2827,7 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 	const unsigned BackgroundColor = Layout.m_BackgroundColor;
 	const CUIRect UiScreen = *Ui()->Screen();
 	const vec2 WindowSize(maximum(1.0f, (float)Graphics()->WindowWidth()), maximum(1.0f, (float)Graphics()->WindowHeight()));
+	const float PixelWidth = Width / WindowSize.x;
 	const vec2 UiMousePos = Ui()->UpdatedMousePos() * vec2(UiScreen.w, UiScreen.h) / WindowSize;
 	const vec2 UiToHudScale(Width / maximum(UiScreen.w, 1.0f), Height / maximum(UiScreen.h, 1.0f));
 	const vec2 MousePos = UiMousePos * UiToHudScale;
@@ -2829,7 +2843,8 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 	const SMusicPlayerMetrics Metrics = ComputeMusicPlayerMetrics(Layout, Width, Height, ExpandT, AnimatedCompactTextSlotWidth);
 	const float Scale = Metrics.m_Scale;
 	const float WidthScale = Metrics.m_WidthScale;
-	const CUIRect View = ForcePreview ? Metrics.m_ViewRect : m_pImpl->m_HudReservation.m_Rect;
+	CUIRect View = ForcePreview ? Metrics.m_ViewRect : m_pImpl->m_HudReservation.m_Rect;
+	SnapRectXToPixelGrid(PixelWidth, View.x, View.w);
 	const float UiFontScale = UiScreen.h / maximum(Height, 1.0f);
 
 	const SMusicPlayerPalette Palette = ForcePreview ?
@@ -2925,19 +2940,22 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 	const float LaneH = maximum(5.2f * Scale, VisualInnerH * 0.94f);
 	const float LaneY = VisualRect.y + VisualInnerPadY + (VisualInnerH - LaneH) * 0.5f;
 	const float BaseMidY = LaneY + LaneH * 0.5f;
+	const float RawLaneW = BarW * 0.72f;
+	const float SnappedLaneW = maximum(PixelWidth, roundf(RawLaneW / PixelWidth) * PixelWidth);
 	const bool CenterMode = g_Config.m_BcMusicPlayerVisualizerMode == 1;
 	for(int i = 0; i < NumBars; ++i)
 	{
 		const float BarT = i / maximum(1.0f, (float)(NumBars - 1));
 		const float Centered = absolute(BarT * 2.0f - 1.0f);
 		const float X = BarsStartX + i * (BarW + Gap);
-		const float LaneW = BarW * 0.72f;
-		const float LaneX = X + (BarW - LaneW) * 0.5f;
+		const float LaneX = X + (BarW - RawLaneW) * 0.5f;
+		const float SnappedLaneX = roundf((LaneX + (RawLaneW - SnappedLaneW) * 0.5f) / PixelWidth) * PixelWidth;
 		if(!HasMusic)
 		{
 			const float PassiveLevel = m_pImpl->m_aVisualizerLevels[i];
-			const float DotSize = maximum(1.00f * Scale, LaneW * (0.28f + PassiveLevel * 0.22f));
-			const float DotX = LaneX + (LaneW - DotSize) * 0.5f;
+			float DotSize = maximum(1.00f * Scale, SnappedLaneW * (0.28f + PassiveLevel * 0.22f));
+			float DotX = SnappedLaneX + (SnappedLaneW - DotSize) * 0.5f;
+			SnapRectXToPixelGrid(PixelWidth, DotX, DotSize);
 			const float DotY = VisualRect.y + VisualRect.h * 0.5f - DotSize * 0.5f;
 			ColorRGBA DotColor = MixColor(Palette.m_Glow, Palette.m_Light, 0.22f + (1.0f - Centered) * 0.58f);
 			DotColor = MixColor(DotColor, ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f), 0.06f + BarT * 0.08f);
@@ -2952,6 +2970,8 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 		const float HeightFactor = powf(std::clamp(m_pImpl->m_aVisualizerLevels[SourceIndex], 0.0f, 1.0f), 0.94f);
 		const float H = minimum(LaneH, maximum(0.0f, LaneH * HeightFactor));
 		const float Y = CenterMode ? (BaseMidY - H * 0.5f) : (LaneY + LaneH - H);
+		const float LaneDrawX = SnappedLaneX;
+		const float LaneDrawW = SnappedLaneW;
 		const float LightT = 0.18f + (1.0f - Centered) * 0.52f;
 		ColorRGBA BarColor = MixColor(Palette.m_Glow, Palette.m_Light, LightT);
 		BarColor = MixColor(BarColor, ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f), 0.05f + BarT * 0.10f);
@@ -2964,8 +2984,8 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 			BarColor = ColorRGBA(1.0f, 1.0f, 1.0f, BarColor.a);
 			LaneColor = ColorRGBA(1.0f, 1.0f, 1.0f, 0.0f);
 		}
-		Graphics()->DrawRect(LaneX, LaneY, LaneW, LaneH, LaneColor, IGraphics::CORNER_ALL, minimum(LaneW, LaneH) * 0.08f);
-		Graphics()->DrawRect(LaneX, Y, LaneW, H, BarColor, IGraphics::CORNER_ALL, minimum(LaneW, H) * 0.10f);
+		Graphics()->DrawRect(LaneDrawX, LaneY, LaneDrawW, LaneH, LaneColor, IGraphics::CORNER_ALL, minimum(LaneDrawW, LaneH) * 0.08f);
+		Graphics()->DrawRect(LaneDrawX, Y, LaneDrawW, H, BarColor, IGraphics::CORNER_ALL, minimum(LaneDrawW, H) * 0.10f);
 	}
 
 	const float ControlsYOffset = (1.0f - ControlsT) * 0.75f * Scale;
