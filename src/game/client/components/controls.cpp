@@ -231,6 +231,21 @@ void CControls::UpdateSnapTapState(int Dummy, bool LeftPressed, bool RightPresse
 	m_aSnapTapPrevRight[Dummy] = RightPressed ? 1 : 0;
 }
 
+int CControls::ResolveMovementDirection(int Dummy, bool LeftPressed, bool RightPressed)
+{
+	UpdateSnapTapState(Dummy, LeftPressed, RightPressed);
+
+	if(IsSnapTapActive() || !UseGammaInputMovement())
+		return ResolveSnapTapDirection(Dummy, LeftPressed, RightPressed);
+
+	int Direction = 0;
+	if(LeftPressed && !RightPressed)
+		Direction = -1;
+	if(!LeftPressed && RightPressed)
+		Direction = 1;
+	return Direction;
+}
+
 int CControls::ResolveSnapTapDirection(int Dummy, bool LeftPressed, bool RightPressed)
 {
 	if(LeftPressed == RightPressed)
@@ -521,20 +536,7 @@ int CControls::SnapInput(int *pData)
 		// set direction
 		const bool LeftPressed = m_aInputDirectionLeft[g_Config.m_ClDummy] != 0;
 		const bool RightPressed = m_aInputDirectionRight[g_Config.m_ClDummy] != 0;
-		if(UseGammaInputMovement())
-		{
-			// Gamma movement intentionally keeps the classic left/right resolver from older clients.
-			m_aInputData[g_Config.m_ClDummy].m_Direction = 0;
-			if(LeftPressed && !RightPressed)
-				m_aInputData[g_Config.m_ClDummy].m_Direction = -1;
-			if(!LeftPressed && RightPressed)
-				m_aInputData[g_Config.m_ClDummy].m_Direction = 1;
-		}
-		else
-		{
-			UpdateSnapTapState(g_Config.m_ClDummy, LeftPressed, RightPressed);
-			m_aInputData[g_Config.m_ClDummy].m_Direction = ResolveSnapTapDirection(g_Config.m_ClDummy, LeftPressed, RightPressed);
-		}
+		m_aInputData[g_Config.m_ClDummy].m_Direction = ResolveMovementDirection(g_Config.m_ClDummy, LeftPressed, RightPressed);
 		ApplyHookTrajectoryPredictor(g_Config.m_ClDummy);
 
 		// dummy copy moves
@@ -768,31 +770,7 @@ bool CControls::CheckNewInput()
 		{
 			const bool LeftPressed = m_aInputDirectionLeft[Dummy] != 0;
 			const bool RightPressed = m_aInputDirectionRight[Dummy] != 0;
-
-			if(UseGammaInputMovement())
-			{
-				TestInput.m_Direction = 0;
-				if(LeftPressed && !RightPressed)
-					TestInput.m_Direction = -1;
-				if(!LeftPressed && RightPressed)
-					TestInput.m_Direction = 1;
-			}
-			else
-			{
-				UpdateSnapTapState(Dummy, LeftPressed, RightPressed);
-				if(IsSnapTapActive())
-				{
-					TestInput.m_Direction = ResolveSnapTapDirection(Dummy, LeftPressed, RightPressed);
-				}
-				else
-				{
-					TestInput.m_Direction = 0;
-					if(LeftPressed && !RightPressed)
-						TestInput.m_Direction = -1;
-					if(!LeftPressed && RightPressed)
-						TestInput.m_Direction = 1;
-				}
-			}
+			TestInput.m_Direction = ResolveMovementDirection(Dummy, LeftPressed, RightPressed);
 		}
 
 		if(m_aFastInput[Dummy].m_Direction != TestInput.m_Direction)

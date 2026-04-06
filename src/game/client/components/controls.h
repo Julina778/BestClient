@@ -77,6 +77,7 @@ public:
 private:
 	bool UseGammaInputMovement() const;
 	void UpdateSnapTapState(int Dummy, bool LeftPressed, bool RightPressed);
+	int ResolveMovementDirection(int Dummy, bool LeftPressed, bool RightPressed);
 	int ResolveSnapTapDirection(int Dummy, bool LeftPressed, bool RightPressed);
 	bool IsSnapTapActive() const;
 	void ResetHookPredictorState(int Dummy);
