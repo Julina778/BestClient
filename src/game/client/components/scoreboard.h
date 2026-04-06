@@ -112,6 +112,7 @@ public:
 	bool OnInput(const IInput::CEvent &Event) override;
 
 	bool IsActive() const;
+	bool IsMouseUnlocked() const { return IsActive() && m_MouseUnlocked; }
 	void OpenPlayerPopup(int ClientId, bool IsSpectating, float PopupX, float PopupY);
 };
 
