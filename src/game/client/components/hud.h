@@ -107,6 +107,8 @@ class CHud : public CComponent
 	void RenderWarmupTimer();
 	void RenderLocalTime(bool ForcePreview = false);
 	CUIRect GetLocalTimeRect(bool ForcePreview) const;
+	void RenderFrozenHud(bool ForcePreview = false);
+	CUIRect GetFrozenHudRect(bool ForcePreview) const;
 
 	static constexpr float MOVEMENT_INFORMATION_LINE_HEIGHT = 8.0f;
 
@@ -122,6 +124,8 @@ public:
 	void OnNewSnapshot() override;
 	CUIRect GetLocalTimeHudEditorRect() const;
 	void RenderLocalTimePreview();
+	CUIRect GetFrozenHudEditorRect() const;
+	void RenderFrozenHudPreview();
 
 	// DDRace
 

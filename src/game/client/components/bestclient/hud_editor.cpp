@@ -39,7 +39,8 @@ bool IsEditorModule(HudLayout::EModule Module)
 	       Module == HudLayout::MODULE_VOICE_TALKERS ||
 	       Module == HudLayout::MODULE_VOICE_STATUS ||
 	       Module == HudLayout::MODULE_VOTES ||
-	       Module == HudLayout::MODULE_LOCAL_TIME;
+	       Module == HudLayout::MODULE_LOCAL_TIME ||
+	       Module == HudLayout::MODULE_FROZEN_HUD;
 }
 
 bool IsLivePreviewModule(HudLayout::EModule Module)
@@ -49,7 +50,8 @@ bool IsLivePreviewModule(HudLayout::EModule Module)
 		Module == HudLayout::MODULE_VOTES ||
 		Module == HudLayout::MODULE_LOCAL_TIME ||
 		Module == HudLayout::MODULE_VOICE_TALKERS ||
-		Module == HudLayout::MODULE_VOICE_STATUS;
+		Module == HudLayout::MODULE_VOICE_STATUS ||
+		Module == HudLayout::MODULE_FROZEN_HUD;
 }
 
 bool PointInRect(vec2 Point, const CUIRect &Rect)
@@ -355,6 +357,10 @@ CHudEditor::SModuleVisual CHudEditor::GetModuleVisual(HudLayout::EModule Module)
 		Visual.m_Rect = GameClient()->m_Hud.GetLocalTimeHudEditorRect();
 		Visual.m_Rounding = 3.75f * std::clamp(HudLayout::Get(HudLayout::MODULE_LOCAL_TIME, Width, Height).m_Scale / 100.0f, 0.25f, 3.0f);
 		break;
+	case HudLayout::MODULE_FROZEN_HUD:
+		Visual.m_Rect = GameClient()->m_Hud.GetFrozenHudEditorRect();
+		Visual.m_Rounding = 5.0f * std::clamp(HudLayout::Get(HudLayout::MODULE_FROZEN_HUD, Width, Height).m_Scale / 100.0f, 0.25f, 3.0f);
+		break;
 	default:
 		Visual.m_Rect = GetFallbackModuleRect(Module);
 		Visual.m_Rounding = 4.0f;
@@ -389,6 +395,7 @@ void CHudEditor::CollectModuleVisuals(SModuleVisual *pOut, int &Count) const
 	AddModule(HudLayout::MODULE_CHAT);
 	AddModule(HudLayout::MODULE_VOTES);
 	AddModule(HudLayout::MODULE_LOCAL_TIME);
+	AddModule(HudLayout::MODULE_FROZEN_HUD);
 	AddModule(HudLayout::MODULE_VOICE_TALKERS);
 	AddModule(HudLayout::MODULE_VOICE_STATUS);
 }
@@ -444,6 +451,14 @@ void CHudEditor::ApplyDraggedPosition(HudLayout::EModule Module, const CUIRect &
 		const float Scale = std::clamp(Layout.m_Scale / 100.0f, 0.25f, 3.0f);
 		const float Padding = 5.0f * Scale;
 		const float AnchorX = (Rect.x + Rect.w + Padding) * (HudLayout::CANVAS_WIDTH / maximum(HudWidth(), 1.0f));
+		HudLayout::SetPosition(Module, AnchorX, Rect.y);
+	}
+	else if(Module == HudLayout::MODULE_FROZEN_HUD)
+	{
+		const auto Layout = HudLayout::Get(HudLayout::MODULE_FROZEN_HUD, HudWidth(), HudHeight());
+		const float Scale = std::clamp(Layout.m_Scale / 100.0f, 0.25f, 3.0f);
+		const float TeeSize = g_Config.m_TcFrozenHudTeeSize * Scale;
+		const float AnchorX = (Rect.x + TeeSize * 0.5f) * (HudLayout::CANVAS_WIDTH / maximum(HudWidth(), 1.0f));
 		HudLayout::SetPosition(Module, AnchorX, Rect.y);
 	}
 	else
@@ -830,6 +845,7 @@ void CHudEditor::RenderOverlay(vec2 MousePos)
 	GameClient()->m_Chat.RenderHud(true);
 	GameClient()->m_Voting.RenderHud(true);
 	GameClient()->m_Hud.RenderLocalTimePreview();
+	GameClient()->m_Hud.RenderFrozenHudPreview();
 	GameClient()->m_VoiceChat.RenderHudTalkingIndicator(Width, Height, true);
 	GameClient()->m_VoiceChat.RenderHudMuteStatusIndicator(Width, Height, true);
 
