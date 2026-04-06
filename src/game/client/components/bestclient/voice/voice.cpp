@@ -1678,7 +1678,10 @@ void CVoiceChat::RenderHudMuteStatusIndicator(float HudWidth, float HudHeight, b
 	const float DrawX = Rect.x;
 	const float DrawY = Rect.y;
 
-	const ColorRGBA BackgroundColor = ApplyVoiceHudAlpha(GameClient(), ColorRGBA(0.0f, 0.0f, 0.0f, 0.32f));
+	ColorRGBA BackgroundColor = ColorRGBA(0.0f, 0.0f, 0.0f, 0.32f);
+	if(Layout.m_BackgroundEnabled)
+		BackgroundColor = color_cast<ColorRGBA>(ColorHSLA(Layout.m_BackgroundColor, true));
+	BackgroundColor = ApplyVoiceHudAlpha(GameClient(), BackgroundColor);
 	const int Corners = VoiceHudBackgroundCorners(GameClient(), HudLayout::MODULE_VOICE_STATUS, IGraphics::CORNER_ALL, DrawX, DrawY, BoxWidth, BoxHeight, HudWidth, HudHeight);
 	Graphics()->DrawRect(DrawX, DrawY, BoxWidth, BoxHeight, BackgroundColor, Corners, 2.3f * Scale);
 
