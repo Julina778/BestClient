@@ -1730,7 +1730,23 @@ CUIRect CVoiceChat::GetHudMuteStatusIndicatorRect(float HudWidth, float HudHeigh
 	const float Gap = 3.4f * Scale;
 	const float Padding = 2.6f * Scale;
 	const float BoxWidth = IconSize * 2.0f + Gap + Padding * 2.0f;
-	return {std::clamp(Layout.m_X, 0.0f, maximum(0.0f, HudWidth - BoxWidth)), std::clamp(Layout.m_Y, 0.0f, maximum(0.0f, HudHeight - BoxHeight)), BoxWidth, BoxHeight};
+	CUIRect Rect = {
+		std::clamp(Layout.m_X, 0.0f, maximum(0.0f, HudWidth - BoxWidth)),
+		std::clamp(Layout.m_Y, 0.0f, maximum(0.0f, HudHeight - BoxHeight)),
+		BoxWidth,
+		BoxHeight};
+	const bool MusicPlayerComponentDisabled = GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MUSIC_PLAYER);
+	const CMusicPlayer::SHudReservation MusicReservation = GameClient()->m_MusicPlayer.HudReservation();
+	const bool MusicPlayerHudActive = !MusicPlayerComponentDisabled && g_Config.m_BcMusicPlayer != 0 && MusicReservation.m_Visible && MusicReservation.m_Active;
+	if(MusicPlayerHudActive)
+	{
+		const float Offset = GameClient()->m_MusicPlayer.GetHudPushOffsetForRect(Rect, HudWidth, 2.0f);
+		Rect.x += Offset;
+	}
+
+	Rect.x = std::clamp(Rect.x, 0.0f, maximum(0.0f, HudWidth - Rect.w));
+	Rect.y = std::clamp(Rect.y, 0.0f, maximum(0.0f, HudHeight - Rect.h));
+	return Rect;
 }
 
 void CVoiceChat::RenderHudTalkingIndicator(float HudWidth, float HudHeight, bool ForcePreview)
