@@ -308,6 +308,44 @@ static std::string BuildSnapshotTrackKey(const SNowPlayingSnapshot &Snapshot)
 	return Snapshot.m_ServiceId + "|" + Snapshot.m_Title + "|" + Snapshot.m_Artist + "|" + std::to_string(Snapshot.m_DurationMs);
 }
 
+static std::string TrimCopy(std::string Value)
+{
+	auto IsSpace = [](unsigned char c) {
+		return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
+	};
+
+	while(!Value.empty() && IsSpace((unsigned char)Value.front()))
+		Value.erase(Value.begin());
+	while(!Value.empty() && IsSpace((unsigned char)Value.back()))
+		Value.pop_back();
+	return Value;
+}
+
+static std::string FirstNonEmpty(std::string_view Primary, std::string_view Secondary)
+{
+	if(!Primary.empty())
+		return std::string(Primary);
+	if(!Secondary.empty())
+		return std::string(Secondary);
+	return {};
+}
+
+static void ApplyBrowserMediaFallbacks(std::string &Title, std::string &Artist, const std::string &Subtitle, const std::string &AlbumArtist)
+{
+	Title = TrimCopy(Title);
+	Artist = TrimCopy(Artist);
+	const std::string TrimmedSubtitle = TrimCopy(Subtitle);
+	const std::string TrimmedAlbumArtist = TrimCopy(AlbumArtist);
+
+	if(Title.empty())
+		Title = FirstNonEmpty(TrimmedSubtitle, TrimmedAlbumArtist);
+	if(Artist.empty())
+		Artist = FirstNonEmpty(TrimmedAlbumArtist, TrimmedSubtitle);
+
+	if(Title == Artist)
+		Artist.clear();
+}
+
 static int MusicServicePriorityScore(std::string_view ServiceId, bool IsCurrentService)
 {
 	const int Priority = BestClientVisualizer::PlayerSourcePriority(ServiceId);
@@ -949,6 +987,9 @@ class CWindowsNowPlayingProvider final : public IMusicPlaybackProvider
 			Out.m_Title = winrt::to_string(MediaProps.Title());
 			Out.m_Artist = winrt::to_string(MediaProps.Artist());
 			Out.m_Album = winrt::to_string(MediaProps.AlbumTitle());
+			ApplyBrowserMediaFallbacks(Out.m_Title, Out.m_Artist,
+				winrt::to_string(MediaProps.Subtitle()),
+				winrt::to_string(MediaProps.AlbumArtist()));
 
 			std::vector<unsigned char> vArtBytes = ReadThumbnailBytes(MediaProps.Thumbnail());
 			if(!vArtBytes.empty())
