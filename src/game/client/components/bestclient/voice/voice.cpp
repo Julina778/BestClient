@@ -2194,6 +2194,8 @@ bool CVoiceChat::OpenAudioDevices()
 		}
 	}
 
+	m_CaptureDevice = 0;
+	m_PlaybackDevice = 0;
 	m_CaptureSpec = {};
 	m_PlaybackSpec = {};
 
@@ -2205,28 +2207,32 @@ bool CVoiceChat::OpenAudioDevices()
 	WantedCapture.callback = nullptr;
 
 	const int CaptureDeviceCount = SDL_GetNumAudioDevices(1);
-	if(CaptureDeviceCount <= 0)
+	if(CaptureDeviceCount < 0)
+	{
+		dbg_msg("voice", "failed to query capture devices, voice transmit disabled: %s", SDL_GetError());
+	}
+	else if(CaptureDeviceCount == 0)
 	{
 		// Keep voice chat usable for playback when the system has no microphone.
 		dbg_msg("voice", "no capture devices available, voice transmit disabled");
 	}
 	else
 	{
+		SDL_AudioSpec ObtainedCapture = {};
 		const char *pCaptureDeviceName = GetAudioDeviceNameByIndex(1, g_Config.m_BcVoiceChatInputDevice);
-		m_CaptureDevice = SDL_OpenAudioDevice(pCaptureDeviceName, 1, &WantedCapture, nullptr, 0);
+		m_CaptureDevice = SDL_OpenAudioDevice(pCaptureDeviceName, 1, &WantedCapture, &ObtainedCapture, 0);
 		if(m_CaptureDevice == 0 && pCaptureDeviceName)
 		{
 			dbg_msg("voice", "failed to open selected capture device, fallback to default: %s", SDL_GetError());
-			m_CaptureDevice = SDL_OpenAudioDevice(nullptr, 1, &WantedCapture, nullptr, 0);
+			m_CaptureDevice = SDL_OpenAudioDevice(nullptr, 1, &WantedCapture, &ObtainedCapture, 0);
 		}
 		if(m_CaptureDevice == 0)
 		{
-			
 			dbg_msg("voice", "failed to open capture device, voice transmit disabled: %s", SDL_GetError());
 		}
 		else
 		{
-			m_CaptureSpec = WantedCapture;
+			m_CaptureSpec = ObtainedCapture;
 		}
 	}
 
@@ -2237,12 +2243,13 @@ bool CVoiceChat::OpenAudioDevices()
 	WantedPlayback.samples = BestClientVoice::FRAME_SIZE;
 	WantedPlayback.callback = nullptr;
 
+	SDL_AudioSpec ObtainedPlayback = {};
 	const char *pPlaybackDeviceName = GetAudioDeviceNameByIndex(0, g_Config.m_BcVoiceChatOutputDevice);
-	m_PlaybackDevice = SDL_OpenAudioDevice(pPlaybackDeviceName, 0, &WantedPlayback, nullptr, 0);
+	m_PlaybackDevice = SDL_OpenAudioDevice(pPlaybackDeviceName, 0, &WantedPlayback, &ObtainedPlayback, 0);
 	if(m_PlaybackDevice == 0 && pPlaybackDeviceName)
 	{
 		dbg_msg("voice", "failed to open selected playback device, fallback to default: %s", SDL_GetError());
-		m_PlaybackDevice = SDL_OpenAudioDevice(nullptr, 0, &WantedPlayback, nullptr, 0);
+		m_PlaybackDevice = SDL_OpenAudioDevice(nullptr, 0, &WantedPlayback, &ObtainedPlayback, 0);
 	}
 	if(m_PlaybackDevice == 0)
 	{
@@ -2250,7 +2257,7 @@ bool CVoiceChat::OpenAudioDevices()
 		CloseAudioDevices();
 		return false;
 	}
-	m_PlaybackSpec = WantedPlayback;
+	m_PlaybackSpec = ObtainedPlayback;
 
 	if(m_CaptureDevice != 0)
 		SDL_PauseAudioDevice(m_CaptureDevice, 0);
