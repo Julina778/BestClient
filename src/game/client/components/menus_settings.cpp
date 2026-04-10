@@ -74,6 +74,7 @@ struct SBestClientComponentEntry
 static const SBestClientComponentEntry gs_aBestClientComponentEntries[] = {
 	{CBestClient::COMPONENT_VISUALS_CAMERA_DRIFT, "Camera Drift", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_JELLY_TEE, "Jelly Tee", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_PLAYER_TRAIL, "Player Trail", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_MAGIC_PARTICLES, "Magic Particles", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_ORBIT_AURA, "Orbit Aura", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_3D_PARTICLES, "3D Particles", COMPONENTS_GROUP_VISUALS},
@@ -3801,6 +3802,67 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 				Expand.HSplitTop(LineSize, &Row, &Expand);
 				Ui()->DoScrollbarOption(&g_Config.m_BcJellyTeeDuration, &g_Config.m_BcJellyTeeDuration, &Row, Localize("Jelly duration"), 1, 500);
+			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+
+		// Player trail (left column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_PLAYER_TRAIL))
+		{
+			static float s_PlayerTrailPhase = 0.0f;
+			static CButtonContainer s_PlayerTrailResetButton;
+			const bool PlayerTrailEnabled = g_Config.m_BcTrail != 0;
+			UpdateRevealPhase(s_PlayerTrailPhase, PlayerTrailEnabled);
+			const float ExtraTargetHeight = 2.0f * LineSize;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraTargetHeight * s_PlayerTrailPhase;
+			CUIRect Content, Label, Row, Visible;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
+			ResetHitbox = ResetButton;
+			const bool PlayerTrailResetClicked = Ui()->DoButton_FontIcon(&s_PlayerTrailResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(&s_PlayerTrailResetButton, &ResetHitbox, Localize("Reset to defaults"));
+			if(PlayerTrailResetClicked)
+			{
+				g_Config.m_BcTrailOthers = DefaultConfig::BcTrailOthers;
+				g_Config.m_BcTrailMode = DefaultConfig::BcTrailMode;
+			}
+			Ui()->DoLabel(&TitleLabel, Localize("Player Trail"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcTrail, Localize("Enable Player Trail"), &g_Config.m_BcTrail, &Content, LineSize);
+
+			const float ExtraHeight = ExtraTargetHeight * s_PlayerTrailPhase;
+			if(!PlayerTrailResetClicked && ExtraHeight > 0.0f)
+			{
+				Content.HSplitTop(ExtraHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExtraTargetHeight};
+
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcTrailOthers, Localize("Show for other players"), &g_Config.m_BcTrailOthers, &Expand, LineSize);
+
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				CUIRect ModeLabel, ModeDropDown;
+				Row.VSplitLeft(150.0f, &ModeLabel, &ModeDropDown);
+				Ui()->DoLabel(&ModeLabel, Localize("Trail mode"), 14.0f, TEXTALIGN_ML);
+
+				static CUi::SDropDownState s_PlayerTrailModeState;
+				static CScrollRegion s_PlayerTrailModeScrollRegion;
+				s_PlayerTrailModeState.m_SelectionPopupContext.m_pScrollRegion = &s_PlayerTrailModeScrollRegion;
+				const char *apPlayerTrailModes[3] = {
+					Localize("Grenade"),
+					Localize("Invisible"),
+					Localize("Ninja"),
+				};
+				g_Config.m_BcTrailMode = Ui()->DoDropDown(&ModeDropDown, g_Config.m_BcTrailMode, apPlayerTrailModes, (int)std::size(apPlayerTrailModes), s_PlayerTrailModeState);
 			}
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
