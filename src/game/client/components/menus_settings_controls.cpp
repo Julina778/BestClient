@@ -131,7 +131,6 @@ void CMenusSettingsControls::OnInterfacesInit(CGameClient *pClient)
 		{EBindOptionGroup::BEST_CLIENT, Localizable("Deepfly toggle"), "BC_deepfly_toggle"},
 		{EBindOptionGroup::BEST_CLIENT, Localizable("45 deg bind"), "+BC_45_degrees"},
 		{EBindOptionGroup::BEST_CLIENT, Localizable("Small sens bind"), "BC_small_sens"},
-		{EBindOptionGroup::BEST_CLIENT, Localizable("Cinematic camera"), "BC_cinematic_camera_toggle"},
 			{EBindOptionGroup::BEST_CLIENT, Localizable("Left jump"), "+jump; +left"},
 			{EBindOptionGroup::BEST_CLIENT, Localizable("Right jump"), "+jump; +right"},
 			{EBindOptionGroup::BEST_CLIENT, Localizable("Admin Panel"), "toggle_admin_panel"},
