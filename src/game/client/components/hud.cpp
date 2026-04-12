@@ -46,10 +46,10 @@ void FormatSpeedrunTime(int64_t RemainingMilliseconds, char *pBuf, size_t BufSiz
 		str_format(pBuf, BufSize, "%02d:%02d.%03d", RemainingMinutes, RemainingSeconds, Milliseconds);
 }
 
-void FormatPredictionTime(int64_t Milliseconds, char *pBuf, size_t BufSize)
+void FormatPredictionTime(int64_t Milliseconds, bool ShowMillis, char *pBuf, size_t BufSize)
 {
 	const int64_t TimeCentiseconds = maximum<int64_t>(0, (Milliseconds + 5) / 10);
-	str_time(TimeCentiseconds, ETimeFormat::HOURS_CENTISECS, pBuf, BufSize);
+	str_time(TimeCentiseconds, ShowMillis ? ETimeFormat::HOURS_CENTISECS : ETimeFormat::HOURS, pBuf, BufSize);
 }
 
 struct SFrozenHudState
@@ -327,7 +327,7 @@ bool CHud::GetFinishPredictionState(SFinishPredictionState &State, bool ForcePre
 	if(ForcePreview)
 	{
 		State.m_Valid = true;
-		State.m_Progress = 0.574f;
+		State.m_Progress = 0.051f;
 		State.m_CurrentTimeMs = 68420;
 		State.m_PredictedFinishTimeMs = 118300;
 		State.m_RemainingTimeMs = State.m_PredictedFinishTimeMs - State.m_CurrentTimeMs;
@@ -337,16 +337,34 @@ bool CHud::GetFinishPredictionState(SFinishPredictionState &State, bool ForcePre
 	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_FINISH_PREDICTION) ||
 		g_Config.m_BcFinishPrediction == 0 ||
 		!GameClient()->m_Snap.m_pLocalCharacter ||
-		GameClient()->m_Snap.m_SpecInfo.m_Active ||
-		GameClient()->LastRaceTick() < 0)
+		GameClient()->m_Snap.m_SpecInfo.m_Active)
 	{
 		const_cast<CHud *>(this)->m_FinishPredictionRaceStartTick = -1;
 		const_cast<CHud *>(this)->m_FinishPredictionRaceStartDistance = -1.0f;
 		return false;
 	}
 
+	if(GameClient()->LastRaceTick() < 0)
+	{
+		const_cast<CHud *>(this)->m_FinishPredictionRaceStartTick = -1;
+		const_cast<CHud *>(this)->m_FinishPredictionRaceStartDistance = -1.0f;
+		State.m_Valid = true;
+		State.m_Progress = 0.0f;
+		State.m_CurrentTimeMs = 0;
+		State.m_PredictedFinishTimeMs = 0;
+		State.m_RemainingTimeMs = 0;
+		return true;
+	}
+
 	if(!const_cast<CHud *>(this)->EnsureFinishPredictionPathData())
-		return false;
+	{
+		State.m_Valid = true;
+		State.m_Progress = 0.0f;
+		State.m_CurrentTimeMs = maximum<int64_t>(0, (int64_t)(Client()->GameTick(g_Config.m_ClDummy) - GameClient()->LastRaceTick()) * 1000 / maximum(1, Client()->GameTickSpeed()));
+		State.m_PredictedFinishTimeMs = State.m_CurrentTimeMs;
+		State.m_RemainingTimeMs = 0;
+		return true;
+	}
 
 	const int CurrentTick = Client()->GameTick(g_Config.m_ClDummy);
 	const int RaceStartTick = GameClient()->LastRaceTick();
@@ -2588,19 +2606,19 @@ CUIRect CHud::GetFinishPredictionRect(bool ForcePreview) const
 	const float PaddingX = 6.0f * Scale;
 	const float PaddingY = 4.0f * Scale;
 	const float Gap = 1.5f * Scale;
-
-	char aTopLine[64];
-	char aTime[32];
-	char aProgress[32];
 	const bool ShowRemaining = g_Config.m_BcFinishPredictionTimeMode == 0;
-	FormatPredictionTime(ShowRemaining ? State.m_RemainingTimeMs : State.m_PredictedFinishTimeMs, aTime, sizeof(aTime));
-	str_format(aTopLine, sizeof(aTopLine), "%s %s", ShowRemaining ? Localize("Left") : Localize("Finish"), aTime);
-	str_format(aProgress, sizeof(aProgress), "%.1f%%", State.m_Progress * 100.0f);
+	const bool ShowPercentage = g_Config.m_BcFinishPredictionShowPercentage != 0;
+	const bool ShowMillis = g_Config.m_BcFinishPredictionShowMillis != 0;
 
-	const float TimeWidth = TextRender()->TextWidth(TitleFontSize, aTopLine, -1, -1.0f);
-	const float ProgressWidth = TextRender()->TextWidth(ProgressFontSize, aProgress, -1, -1.0f);
-	const float RectWidth = maximum(TimeWidth, ProgressWidth) + PaddingX * 2.0f;
-	const float RectHeight = PaddingY * 2.0f + TitleFontSize + Gap + ProgressFontSize;
+	char aSampleTopLine[64];
+	char aProgress[32];
+	str_format(aSampleTopLine, sizeof(aSampleTopLine), "%s %s", Localize("Finish"), ShowMillis ? "00:00:00.00" : "00:00:00");
+	str_format(aProgress, sizeof(aProgress), "100.0%%");
+
+	const float TopWidth = TextRender()->TextWidth(TitleFontSize, aSampleTopLine, -1, -1.0f);
+	const float ProgressWidth = ShowPercentage ? TextRender()->TextWidth(ProgressFontSize, aProgress, -1, -1.0f) : 0.0f;
+	const float RectWidth = maximum(TopWidth, ProgressWidth) + PaddingX * 2.0f;
+	const float RectHeight = PaddingY * 2.0f + TitleFontSize + (ShowPercentage ? Gap + ProgressFontSize : 0.0f);
 	CUIRect Rect = {Layout.m_X, Layout.m_Y, RectWidth, RectHeight};
 	Rect.x = std::clamp(Rect.x, 0.0f, maximum(0.0f, m_Width - Rect.w));
 	Rect.y = std::clamp(Rect.y, 0.0f, maximum(0.0f, m_Height - Rect.h));
@@ -2626,6 +2644,9 @@ void CHud::RenderFinishPrediction(bool ForcePreview)
 	const float Gap = 1.5f * Scale;
 	const ColorRGBA BackgroundColor = color_cast<ColorRGBA>(ColorHSLA(Layout.m_BackgroundColor, true));
 	const int Corners = HudLayout::BackgroundCorners(IGraphics::CORNER_ALL, Rect.x, Rect.y, Rect.w, Rect.h, m_Width, m_Height);
+	const bool ShowRemaining = g_Config.m_BcFinishPredictionTimeMode == 0;
+	const bool ShowPercentage = g_Config.m_BcFinishPredictionShowPercentage != 0;
+	const bool ShowMillis = g_Config.m_BcFinishPredictionShowMillis != 0;
 
 	if(Layout.m_BackgroundEnabled)
 		Graphics()->DrawRect(Rect.x, Rect.y, Rect.w, Rect.h, BackgroundColor, Corners, 5.0f * Scale);
@@ -2633,19 +2654,21 @@ void CHud::RenderFinishPrediction(bool ForcePreview)
 	char aTime[32];
 	char aLabel[32];
 	char aProgress[32];
-	const bool ShowRemaining = g_Config.m_BcFinishPredictionTimeMode == 0;
-	FormatPredictionTime(ShowRemaining ? State.m_RemainingTimeMs : State.m_PredictedFinishTimeMs, aTime, sizeof(aTime));
+	FormatPredictionTime(ShowRemaining ? State.m_RemainingTimeMs : State.m_PredictedFinishTimeMs, ShowMillis, aTime, sizeof(aTime));
 	str_copy(aLabel, ShowRemaining ? Localize("Left") : Localize("Finish"), sizeof(aLabel));
 	str_format(aProgress, sizeof(aProgress), "%.1f%%", State.m_Progress * 100.0f);
 
 	char aTopLine[64];
 	str_format(aTopLine, sizeof(aTopLine), "%s %s", aLabel, aTime);
 	const float TopWidth = TextRender()->TextWidth(TitleFontSize, aTopLine, -1, -1.0f);
-	const float ProgressWidth = TextRender()->TextWidth(ProgressFontSize, aProgress, -1, -1.0f);
 	TextRender()->Text(Rect.x + maximum(PaddingX, (Rect.w - TopWidth) * 0.5f), Rect.y + PaddingY, TitleFontSize, aTopLine, -1.0f);
-	TextRender()->TextColor(0.78f, 0.88f, 1.0f, 1.0f);
-	TextRender()->Text(Rect.x + maximum(PaddingX, (Rect.w - ProgressWidth) * 0.5f), Rect.y + PaddingY + TitleFontSize + Gap, ProgressFontSize, aProgress, -1.0f);
-	TextRender()->TextColor(TextRender()->DefaultTextColor());
+	if(ShowPercentage)
+	{
+		const float ProgressWidth = TextRender()->TextWidth(ProgressFontSize, aProgress, -1, -1.0f);
+		TextRender()->TextColor(0.78f, 0.88f, 1.0f, 1.0f);
+		TextRender()->Text(Rect.x + maximum(PaddingX, (Rect.w - ProgressWidth) * 0.5f), Rect.y + PaddingY + TitleFontSize + Gap, ProgressFontSize, aProgress, -1.0f);
+		TextRender()->TextColor(TextRender()->DefaultTextColor());
+	}
 }
 
 void CHud::RenderFinishPredictionPreview()

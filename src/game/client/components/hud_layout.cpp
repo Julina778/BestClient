@@ -27,7 +27,6 @@ static const SModuleLayout gs_aModuleLayouts[MODULE_COUNT] = {
 	{110.0f, 2.0f, 100, 0, true, true, 0x66000000U},
 	{500.0f, 141.0f, 100, 0, true, true, 0x66000000U},
 	{460.0f, 229.0f, 100, 0, true, true, 0x40000000U},
-	{150.0f, 18.0f, 100, 0, true, true, 0x66000000U},
 	{198.0f, 2.0f, 100, 0, true, false, 0x1E59A36BU},
 	{4.0f, 122.0f, 100, 0, true, false, 0x66000000U},
 	{136.0f, 0.0f, 100, 0, true, false, 0x66000000U},
@@ -35,6 +34,7 @@ static const SModuleLayout gs_aModuleLayouts[MODULE_COUNT] = {
 	{0.0f, 60.0f, 100, 0, true, true, 0x66000000U},
 	{250.0f, 200.0f, 65, 0, true, true, 0x66000000U},
 	{490.0f, 5.0f, 100, 0, true, false, 0x66000000U},
+	{0.0f, 221.0f, 100, 0, true, true, 0x66000000U},
 };
 
 static SModuleLayout gs_aRuntimeModuleLayouts[MODULE_COUNT];
@@ -77,7 +77,6 @@ static const char *gs_apModuleNames[MODULE_COUNT] = {
 	"Local Time",
 	"Spectator Count",
 	"Score",
-	"Finish Prediction",
 	"Music Player",
 	"Voice HUD",
 	"Voice Mute Icons",
@@ -85,6 +84,7 @@ static const char *gs_apModuleNames[MODULE_COUNT] = {
 	"Votes",
 	"Lock Cam",
 	"Killfeed",
+	"Finish Prediction",
 };
 
 SModuleLayout ConfigLayout(EModule Module)

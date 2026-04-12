@@ -104,6 +104,8 @@ MACRO_CONFIG_INT(BcSpeedrunTimerMilliseconds, bc_speedrun_timer_milliseconds, 0,
 MACRO_CONFIG_INT(BcSpeedrunTimerAutoDisable, bc_speedrun_timer_auto_disable, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Disable speedrun timer automatically when time ends")
 MACRO_CONFIG_INT(BcFinishPrediction, bc_finish_prediction, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show finish prediction HUD")
 MACRO_CONFIG_INT(BcFinishPredictionTimeMode, bc_finish_prediction_time_mode, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Finish prediction time mode (0=remaining, 1=predicted finish time)")
+MACRO_CONFIG_INT(BcFinishPredictionShowPercentage, bc_finish_prediction_show_percentage, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show finish prediction progress percentage")
+MACRO_CONFIG_INT(BcFinishPredictionShowMillis, bc_finish_prediction_show_millis, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show finish prediction milliseconds")
 
 // Admin panel
 MACRO_CONFIG_INT(BcAdminPanelAutoScroll, bc_adminpanel_autoscroll, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Auto-scroll logs in admin panel")

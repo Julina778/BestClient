@@ -306,7 +306,7 @@ CUIRect CHudEditor::GetFallbackModuleRect(HudLayout::EModule Module) const
 		break;
 	}
 	case HudLayout::MODULE_FINISH_PREDICTION:
-		Rect = {Layout.m_X, Layout.m_Y, 96.0f, 24.0f};
+		Rect = GameClient()->m_Hud.GetFinishPredictionHudEditorRect();
 		break;
 	case HudLayout::MODULE_MINI_VOTE:
 		Rect = {Layout.m_X, Layout.m_Y, 70.0f, 35.0f};
