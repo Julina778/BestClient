@@ -2,6 +2,8 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #ifndef GAME_CLIENT_COMPONENTS_HUD_H
 #define GAME_CLIENT_COMPONENTS_HUD_H
+#include <base/vmath.h>
+
 #include <engine/client.h>
 #include <engine/shared/protocol.h>
 #include <engine/textrender.h>
@@ -10,6 +12,9 @@
 
 #include <game/client/component.h>
 #include <game/client/ui_rect.h>
+
+#include <cstdint>
+#include <vector>
 
 struct SScoreInfo
 {
@@ -138,6 +143,8 @@ class CHud : public CComponent
 	void RenderWarmupTimer();
 	void RenderLocalTime(bool ForcePreview = false);
 	CUIRect GetLocalTimeRect(bool ForcePreview) const;
+	void RenderFinishPrediction(bool ForcePreview = false);
+	CUIRect GetFinishPredictionRect(bool ForcePreview) const;
 	void RenderFrozenHud(bool ForcePreview = false);
 	CUIRect GetFrozenHudRect(bool ForcePreview) const;
 
@@ -161,6 +168,8 @@ public:
 	void RenderMovementInformationPreview();
 	CUIRect GetLocalTimeHudEditorRect() const;
 	void RenderLocalTimePreview();
+	CUIRect GetFinishPredictionHudEditorRect() const;
+	void RenderFinishPredictionPreview();
 	CUIRect GetFrozenHudEditorRect() const;
 	void RenderFrozenHudPreview();
 
@@ -173,6 +182,20 @@ private:
 	void RenderRecord();
 	void RenderDDRaceEffects();
 	void RenderSpeedrunTimer();
+	struct SFinishPredictionState
+	{
+		bool m_Valid = false;
+		float m_Progress = 0.0f;
+		int64_t m_CurrentTimeMs = 0;
+		int64_t m_PredictedFinishTimeMs = 0;
+		int64_t m_RemainingTimeMs = 0;
+	};
+	bool RebuildFinishPredictionPathData();
+	bool EnsureFinishPredictionPathData();
+	float GetFinishPredictionDistanceAtPos(vec2 Pos) const;
+	float GetFinishPredictionStartDistance() const;
+	int64_t GetFinishPredictionAverageTimeMs() const;
+	bool GetFinishPredictionState(SFinishPredictionState &State, bool ForcePreview) const;
 	float m_TimeCpDiff;
 	float m_aPlayerRecord[NUM_DUMMIES];
 	float m_FinishTimeDiff;
@@ -181,6 +204,13 @@ private:
 	int m_TimeCpLastReceivedTick;
 	int m_SpeedrunTimerExpiredTick;
 	bool m_ShowFinishTime;
+	mutable std::vector<int> m_vFinishPredictionDistances;
+	mutable std::vector<ivec2> m_vFinishPredictionStartTiles;
+	mutable std::vector<ivec2> m_vFinishPredictionFinishTiles;
+	mutable int m_FinishPredictionMapWidth;
+	mutable int m_FinishPredictionMapHeight;
+	mutable int m_FinishPredictionRaceStartTick;
+	mutable float m_FinishPredictionRaceStartDistance;
 
 	inline int GetDigitsIndex(int Value, int Max);
 

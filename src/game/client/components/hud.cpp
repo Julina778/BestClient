@@ -23,11 +23,14 @@
 #include <game/client/components/scoreboard.h>
 #include <game/client/gameclient.h>
 #include <game/client/prediction/entities/character.h>
+#include <game/mapitems.h>
 #include <game/layers.h>
 #include <game/localization.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cmath>
+#include <limits>
 
 namespace
 {
@@ -41,6 +44,12 @@ void FormatSpeedrunTime(int64_t RemainingMilliseconds, char *pBuf, size_t BufSiz
 		str_format(pBuf, BufSize, "%02d:%02d:%02d.%03d", RemainingHours, RemainingMinutes, RemainingSeconds, Milliseconds);
 	else
 		str_format(pBuf, BufSize, "%02d:%02d.%03d", RemainingMinutes, RemainingSeconds, Milliseconds);
+}
+
+void FormatPredictionTime(int64_t Milliseconds, char *pBuf, size_t BufSize)
+{
+	const int64_t TimeCentiseconds = maximum<int64_t>(0, (Milliseconds + 5) / 10);
+	str_time(TimeCentiseconds, ETimeFormat::HOURS_CENTISECS, pBuf, BufSize);
 }
 
 struct SFrozenHudState
@@ -148,8 +157,250 @@ void CHud::OnReset()
 	m_aLastPlayerSpeedChange[1] = ESpeedChange::NONE;
 	m_LastSpectatorCountTick = 0;
 	m_SpeedrunTimerExpiredTick = 0;
+	m_vFinishPredictionDistances.clear();
+	m_vFinishPredictionStartTiles.clear();
+	m_vFinishPredictionFinishTiles.clear();
+	m_FinishPredictionMapWidth = 0;
+	m_FinishPredictionMapHeight = 0;
+	m_FinishPredictionRaceStartTick = -1;
+	m_FinishPredictionRaceStartDistance = -1.0f;
 
 	ResetHudContainers();
+}
+
+bool CHud::RebuildFinishPredictionPathData()
+{
+	m_vFinishPredictionDistances.clear();
+	m_vFinishPredictionStartTiles.clear();
+	m_vFinishPredictionFinishTiles.clear();
+	m_FinishPredictionMapWidth = 0;
+	m_FinishPredictionMapHeight = 0;
+	m_FinishPredictionRaceStartDistance = -1.0f;
+
+	if(!Collision() || Collision()->GetWidth() <= 0 || Collision()->GetHeight() <= 0)
+		return false;
+
+	m_FinishPredictionMapWidth = Collision()->GetWidth();
+	m_FinishPredictionMapHeight = Collision()->GetHeight();
+	const int MapSize = m_FinishPredictionMapWidth * m_FinishPredictionMapHeight;
+	m_vFinishPredictionDistances.assign(MapSize, -1);
+
+	auto IsPassableTile = [&](int TileX, int TileY) {
+		if(TileX < 0 || TileX >= m_FinishPredictionMapWidth || TileY < 0 || TileY >= m_FinishPredictionMapHeight)
+			return false;
+		const vec2 TileCenter(TileX * 32.0f + 16.0f, TileY * 32.0f + 16.0f);
+		return !Collision()->TestBox(TileCenter, vec2(CCharacterCore::PhysicalSize(), CCharacterCore::PhysicalSize()));
+	};
+
+	std::vector<int> vQueue;
+	vQueue.reserve(MapSize);
+	for(int y = 0; y < m_FinishPredictionMapHeight; ++y)
+	{
+		for(int x = 0; x < m_FinishPredictionMapWidth; ++x)
+		{
+			const int Index = y * m_FinishPredictionMapWidth + x;
+			const bool StartTile = Collision()->GetTileIndex(Index) == TILE_START || Collision()->GetFrontTileIndex(Index) == TILE_START;
+			const bool FinishTile = Collision()->GetTileIndex(Index) == TILE_FINISH || Collision()->GetFrontTileIndex(Index) == TILE_FINISH;
+			if(StartTile)
+				m_vFinishPredictionStartTiles.emplace_back(x, y);
+			if(FinishTile && IsPassableTile(x, y))
+			{
+				m_vFinishPredictionFinishTiles.emplace_back(x, y);
+				m_vFinishPredictionDistances[Index] = 0;
+				vQueue.push_back(Index);
+			}
+		}
+	}
+
+	if(vQueue.empty())
+		return false;
+
+	static const ivec2 s_aDirs[] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+	for(size_t Head = 0; Head < vQueue.size(); ++Head)
+	{
+		const int Index = vQueue[Head];
+		const int CurDist = m_vFinishPredictionDistances[Index];
+		const int TileX = Index % m_FinishPredictionMapWidth;
+		const int TileY = Index / m_FinishPredictionMapWidth;
+		for(const ivec2 &Dir : s_aDirs)
+		{
+			const int NextX = TileX + Dir.x;
+			const int NextY = TileY + Dir.y;
+			if(!IsPassableTile(NextX, NextY))
+				continue;
+			const int NextIndex = NextY * m_FinishPredictionMapWidth + NextX;
+			if(m_vFinishPredictionDistances[NextIndex] >= 0)
+				continue;
+			m_vFinishPredictionDistances[NextIndex] = CurDist + 1;
+			vQueue.push_back(NextIndex);
+		}
+	}
+
+	return true;
+}
+
+bool CHud::EnsureFinishPredictionPathData()
+{
+	if(!Collision() || Collision()->GetWidth() <= 0 || Collision()->GetHeight() <= 0)
+		return false;
+	if(m_FinishPredictionMapWidth != Collision()->GetWidth() ||
+		m_FinishPredictionMapHeight != Collision()->GetHeight() ||
+		m_vFinishPredictionDistances.empty())
+		return RebuildFinishPredictionPathData();
+	return !m_vFinishPredictionDistances.empty();
+}
+
+float CHud::GetFinishPredictionDistanceAtPos(vec2 Pos) const
+{
+	if(m_vFinishPredictionDistances.empty() || m_FinishPredictionMapWidth <= 0 || m_FinishPredictionMapHeight <= 0)
+		return -1.0f;
+
+	const int TileX = std::clamp((int)std::floor(Pos.x / 32.0f), 0, m_FinishPredictionMapWidth - 1);
+	const int TileY = std::clamp((int)std::floor(Pos.y / 32.0f), 0, m_FinishPredictionMapHeight - 1);
+
+	float BestDistance = -1.0f;
+	for(int Radius = 0; Radius <= 2; ++Radius)
+	{
+		for(int y = maximum(0, TileY - Radius); y <= minimum(m_FinishPredictionMapHeight - 1, TileY + Radius); ++y)
+		{
+			for(int x = maximum(0, TileX - Radius); x <= minimum(m_FinishPredictionMapWidth - 1, TileX + Radius); ++x)
+			{
+				const int Index = y * m_FinishPredictionMapWidth + x;
+				const int Dist = m_vFinishPredictionDistances[Index];
+				if(Dist < 0)
+					continue;
+				const float OffsetCost = distance(Pos, vec2(x * 32.0f + 16.0f, y * 32.0f + 16.0f)) / 32.0f;
+				const float Total = Dist + OffsetCost;
+				if(BestDistance < 0.0f || Total < BestDistance)
+					BestDistance = Total;
+			}
+		}
+		if(BestDistance >= 0.0f)
+			break;
+	}
+	return BestDistance;
+}
+
+float CHud::GetFinishPredictionStartDistance() const
+{
+	if(m_FinishPredictionRaceStartDistance > 0.0f)
+		return m_FinishPredictionRaceStartDistance;
+
+	float BestDistance = -1.0f;
+	for(const ivec2 &StartTile : m_vFinishPredictionStartTiles)
+	{
+		const int Index = StartTile.y * m_FinishPredictionMapWidth + StartTile.x;
+		if(Index < 0 || Index >= (int)m_vFinishPredictionDistances.size())
+			continue;
+		const int Dist = m_vFinishPredictionDistances[Index];
+		if(Dist < 0)
+			continue;
+		if(BestDistance < 0.0f || Dist < BestDistance)
+			BestDistance = (float)Dist;
+	}
+	return BestDistance;
+}
+
+int64_t CHud::GetFinishPredictionAverageTimeMs() const
+{
+	if(!GameClient()->m_ReceivedDDNetPlayerFinishTimes)
+		return -1;
+
+	int64_t Sum = 0;
+	int Count = 0;
+	for(int i = 0; i < MAX_CLIENTS; ++i)
+	{
+		if(!GameClient()->m_Snap.m_apPlayerInfos[i])
+			continue;
+		const auto &ClientData = GameClient()->m_aClients[i];
+		if(ClientData.m_FinishTimeSeconds == FinishTime::UNSET || ClientData.m_FinishTimeSeconds == FinishTime::NOT_FINISHED_MILLIS)
+			continue;
+		Sum += (int64_t)absolute(ClientData.m_FinishTimeSeconds) * 1000 + (absolute(ClientData.m_FinishTimeMillis) % 1000);
+		++Count;
+	}
+	return Count > 0 ? Sum / Count : -1;
+}
+
+bool CHud::GetFinishPredictionState(SFinishPredictionState &State, bool ForcePreview) const
+{
+	State = {};
+	if(ForcePreview)
+	{
+		State.m_Valid = true;
+		State.m_Progress = 0.574f;
+		State.m_CurrentTimeMs = 68420;
+		State.m_PredictedFinishTimeMs = 118300;
+		State.m_RemainingTimeMs = State.m_PredictedFinishTimeMs - State.m_CurrentTimeMs;
+		return true;
+	}
+
+	if(GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_FINISH_PREDICTION) ||
+		g_Config.m_BcFinishPrediction == 0 ||
+		!GameClient()->m_Snap.m_pLocalCharacter ||
+		GameClient()->m_Snap.m_SpecInfo.m_Active ||
+		GameClient()->LastRaceTick() < 0)
+	{
+		const_cast<CHud *>(this)->m_FinishPredictionRaceStartTick = -1;
+		const_cast<CHud *>(this)->m_FinishPredictionRaceStartDistance = -1.0f;
+		return false;
+	}
+
+	if(!const_cast<CHud *>(this)->EnsureFinishPredictionPathData())
+		return false;
+
+	const int CurrentTick = Client()->GameTick(g_Config.m_ClDummy);
+	const int RaceStartTick = GameClient()->LastRaceTick();
+	const vec2 LocalPos(GameClient()->m_Snap.m_pLocalCharacter->m_X, GameClient()->m_Snap.m_pLocalCharacter->m_Y);
+	const float CurrentDistance = GetFinishPredictionDistanceAtPos(LocalPos);
+	if(CurrentDistance < 0.0f)
+		return false;
+
+	if(m_FinishPredictionRaceStartTick != RaceStartTick)
+	{
+		const_cast<CHud *>(this)->m_FinishPredictionRaceStartTick = RaceStartTick;
+		const_cast<CHud *>(this)->m_FinishPredictionRaceStartDistance = maximum(CurrentDistance, GetFinishPredictionStartDistance());
+	}
+
+	const float StartDistance = maximum(GetFinishPredictionStartDistance(), CurrentDistance);
+	if(StartDistance <= 0.0f)
+		return false;
+
+	State.m_CurrentTimeMs = maximum<int64_t>(0, (int64_t)(CurrentTick - RaceStartTick) * 1000 / maximum(1, Client()->GameTickSpeed()));
+	State.m_Progress = std::clamp(1.0f - CurrentDistance / StartDistance, 0.0f, 1.0f);
+	if(CurrentDistance <= 0.5f)
+		State.m_Progress = 1.0f;
+
+	const int64_t CurrentPacePrediction = State.m_Progress > 0.001f ? (int64_t)(State.m_CurrentTimeMs / maximum(State.m_Progress, 0.001f)) : -1;
+	const int64_t BestTimeMs = GameClient()->m_MapBestTimeSeconds != FinishTime::UNSET && GameClient()->m_MapBestTimeSeconds != FinishTime::NOT_FINISHED_MILLIS ?
+		(int64_t)GameClient()->m_MapBestTimeSeconds * 1000 + GameClient()->m_MapBestTimeMillis : -1;
+	const int64_t AverageTimeMs = GetFinishPredictionAverageTimeMs();
+
+	int64_t ReferenceTimeMs = -1;
+	if(BestTimeMs > 0 && AverageTimeMs > 0)
+		ReferenceTimeMs = (BestTimeMs + AverageTimeMs) / 2;
+	else if(BestTimeMs > 0)
+		ReferenceTimeMs = BestTimeMs;
+	else if(AverageTimeMs > 0)
+		ReferenceTimeMs = AverageTimeMs;
+
+	if(State.m_Progress >= 0.999f)
+		State.m_PredictedFinishTimeMs = State.m_CurrentTimeMs;
+	else if(CurrentPacePrediction > 0 && ReferenceTimeMs > 0)
+	{
+		const float Blend = std::clamp(State.m_Progress * 0.85f + 0.15f, 0.15f, 0.92f);
+		State.m_PredictedFinishTimeMs = (int64_t)mix((float)ReferenceTimeMs, (float)CurrentPacePrediction, Blend);
+	}
+	else if(CurrentPacePrediction > 0)
+		State.m_PredictedFinishTimeMs = CurrentPacePrediction;
+	else if(ReferenceTimeMs > 0)
+		State.m_PredictedFinishTimeMs = ReferenceTimeMs;
+	else
+		return false;
+
+	State.m_PredictedFinishTimeMs = maximum(State.m_PredictedFinishTimeMs, State.m_CurrentTimeMs);
+	State.m_RemainingTimeMs = maximum<int64_t>(0, State.m_PredictedFinishTimeMs - State.m_CurrentTimeMs);
+	State.m_Valid = true;
+	return true;
 }
 
 void CHud::OnInit()
@@ -2321,6 +2572,92 @@ CUIRect CHud::GetLocalTimeHudEditorRect() const
 	return GetLocalTimeRect(true);
 }
 
+CUIRect CHud::GetFinishPredictionRect(bool ForcePreview) const
+{
+	if(!HudLayout::IsEnabled(HudLayout::MODULE_FINISH_PREDICTION))
+		return {0.0f, 0.0f, 0.0f, 0.0f};
+
+	SFinishPredictionState State;
+	if(!GetFinishPredictionState(State, ForcePreview))
+		return {0.0f, 0.0f, 0.0f, 0.0f};
+
+	const auto Layout = HudLayout::Get(HudLayout::MODULE_FINISH_PREDICTION, m_Width, m_Height);
+	const float Scale = std::clamp(Layout.m_Scale / 100.0f, 0.25f, 3.0f);
+	const float TitleFontSize = 5.25f * Scale;
+	const float ProgressFontSize = 4.75f * Scale;
+	const float PaddingX = 6.0f * Scale;
+	const float PaddingY = 4.0f * Scale;
+	const float Gap = 1.5f * Scale;
+
+	char aTopLine[64];
+	char aTime[32];
+	char aProgress[32];
+	const bool ShowRemaining = g_Config.m_BcFinishPredictionTimeMode == 0;
+	FormatPredictionTime(ShowRemaining ? State.m_RemainingTimeMs : State.m_PredictedFinishTimeMs, aTime, sizeof(aTime));
+	str_format(aTopLine, sizeof(aTopLine), "%s %s", ShowRemaining ? Localize("Left") : Localize("Finish"), aTime);
+	str_format(aProgress, sizeof(aProgress), "%.1f%%", State.m_Progress * 100.0f);
+
+	const float TimeWidth = TextRender()->TextWidth(TitleFontSize, aTopLine, -1, -1.0f);
+	const float ProgressWidth = TextRender()->TextWidth(ProgressFontSize, aProgress, -1, -1.0f);
+	const float RectWidth = maximum(TimeWidth, ProgressWidth) + PaddingX * 2.0f;
+	const float RectHeight = PaddingY * 2.0f + TitleFontSize + Gap + ProgressFontSize;
+	CUIRect Rect = {Layout.m_X, Layout.m_Y, RectWidth, RectHeight};
+	Rect.x = std::clamp(Rect.x, 0.0f, maximum(0.0f, m_Width - Rect.w));
+	Rect.y = std::clamp(Rect.y, 0.0f, maximum(0.0f, m_Height - Rect.h));
+	return Rect;
+}
+
+void CHud::RenderFinishPrediction(bool ForcePreview)
+{
+	CUIRect Rect = GetFinishPredictionRect(ForcePreview);
+	if(Rect.w <= 0.0f || Rect.h <= 0.0f)
+		return;
+
+	SFinishPredictionState State;
+	if(!GetFinishPredictionState(State, ForcePreview))
+		return;
+
+	const auto Layout = HudLayout::Get(HudLayout::MODULE_FINISH_PREDICTION, m_Width, m_Height);
+	const float Scale = std::clamp(Layout.m_Scale / 100.0f, 0.25f, 3.0f);
+	const float TitleFontSize = 5.25f * Scale;
+	const float ProgressFontSize = 4.75f * Scale;
+	const float PaddingX = 6.0f * Scale;
+	const float PaddingY = 4.0f * Scale;
+	const float Gap = 1.5f * Scale;
+	const ColorRGBA BackgroundColor = color_cast<ColorRGBA>(ColorHSLA(Layout.m_BackgroundColor, true));
+	const int Corners = HudLayout::BackgroundCorners(IGraphics::CORNER_ALL, Rect.x, Rect.y, Rect.w, Rect.h, m_Width, m_Height);
+
+	if(Layout.m_BackgroundEnabled)
+		Graphics()->DrawRect(Rect.x, Rect.y, Rect.w, Rect.h, BackgroundColor, Corners, 5.0f * Scale);
+
+	char aTime[32];
+	char aLabel[32];
+	char aProgress[32];
+	const bool ShowRemaining = g_Config.m_BcFinishPredictionTimeMode == 0;
+	FormatPredictionTime(ShowRemaining ? State.m_RemainingTimeMs : State.m_PredictedFinishTimeMs, aTime, sizeof(aTime));
+	str_copy(aLabel, ShowRemaining ? Localize("Left") : Localize("Finish"), sizeof(aLabel));
+	str_format(aProgress, sizeof(aProgress), "%.1f%%", State.m_Progress * 100.0f);
+
+	char aTopLine[64];
+	str_format(aTopLine, sizeof(aTopLine), "%s %s", aLabel, aTime);
+	const float TopWidth = TextRender()->TextWidth(TitleFontSize, aTopLine, -1, -1.0f);
+	const float ProgressWidth = TextRender()->TextWidth(ProgressFontSize, aProgress, -1, -1.0f);
+	TextRender()->Text(Rect.x + maximum(PaddingX, (Rect.w - TopWidth) * 0.5f), Rect.y + PaddingY, TitleFontSize, aTopLine, -1.0f);
+	TextRender()->TextColor(0.78f, 0.88f, 1.0f, 1.0f);
+	TextRender()->Text(Rect.x + maximum(PaddingX, (Rect.w - ProgressWidth) * 0.5f), Rect.y + PaddingY + TitleFontSize + Gap, ProgressFontSize, aProgress, -1.0f);
+	TextRender()->TextColor(TextRender()->DefaultTextColor());
+}
+
+void CHud::RenderFinishPredictionPreview()
+{
+	RenderFinishPrediction(true);
+}
+
+CUIRect CHud::GetFinishPredictionHudEditorRect() const
+{
+	return GetFinishPredictionRect(true);
+}
+
 CUIRect CHud::GetScoreHudEditorRect() const
 {
 	return GetScoreHudRect(true);
@@ -2487,6 +2824,8 @@ void CHud::OnRender()
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_SPEEDRUN_TIMER) &&
 			(g_Config.m_BcSpeedrunTimer || m_SpeedrunTimerExpiredTick > 0))
 			RenderSpeedrunTimer();
+		if(!(FocusModeActive && HideUIInFocusMode))
+			RenderFinishPrediction();
 		if(g_Config.m_ClShowhudTimer)
 			RenderGameTimer();
 		RenderPauseNotification();

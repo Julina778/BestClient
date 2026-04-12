@@ -36,6 +36,7 @@ bool IsEditorModule(HudLayout::EModule Module)
 {
 	return Module == HudLayout::MODULE_MUSIC_PLAYER ||
 	       Module == HudLayout::MODULE_SCORE ||
+	       Module == HudLayout::MODULE_FINISH_PREDICTION ||
 	       Module == HudLayout::MODULE_SPECTATOR_COUNT ||
 	       Module == HudLayout::MODULE_MOVEMENT_INFO ||
 	       Module == HudLayout::MODULE_CHAT ||
@@ -50,6 +51,7 @@ bool IsLivePreviewModule(HudLayout::EModule Module)
 {
 	return Module == HudLayout::MODULE_MUSIC_PLAYER ||
 		Module == HudLayout::MODULE_SCORE ||
+		Module == HudLayout::MODULE_FINISH_PREDICTION ||
 		Module == HudLayout::MODULE_SPECTATOR_COUNT ||
 		Module == HudLayout::MODULE_MOVEMENT_INFO ||
 		Module == HudLayout::MODULE_CHAT ||
@@ -303,6 +305,9 @@ CUIRect CHudEditor::GetFallbackModuleRect(HudLayout::EModule Module) const
 		Rect = {Layout.m_X, Layout.m_Y, BoxWidth, BoxHeight};
 		break;
 	}
+	case HudLayout::MODULE_FINISH_PREDICTION:
+		Rect = {Layout.m_X, Layout.m_Y, 96.0f, 24.0f};
+		break;
 	case HudLayout::MODULE_MINI_VOTE:
 		Rect = {Layout.m_X, Layout.m_Y, 70.0f, 35.0f};
 		break;
@@ -374,6 +379,10 @@ CHudEditor::SModuleVisual CHudEditor::GetModuleVisual(HudLayout::EModule Module)
 		Visual.m_Rect = GameClient()->m_Hud.GetScoreHudEditorRect();
 		Visual.m_Rounding = 5.0f * std::clamp(HudLayout::Get(HudLayout::MODULE_SCORE, Width, Height).m_Scale / 100.0f, 0.25f, 3.0f);
 		break;
+	case HudLayout::MODULE_FINISH_PREDICTION:
+		Visual.m_Rect = GameClient()->m_Hud.GetFinishPredictionHudEditorRect();
+		Visual.m_Rounding = 5.0f * std::clamp(HudLayout::Get(HudLayout::MODULE_FINISH_PREDICTION, Width, Height).m_Scale / 100.0f, 0.25f, 3.0f);
+		break;
 	case HudLayout::MODULE_SPECTATOR_COUNT:
 		Visual.m_Rect = GameClient()->m_Hud.GetSpectatorCountHudEditorRect();
 		Visual.m_Rounding = 5.0f * std::clamp(HudLayout::Get(HudLayout::MODULE_SPECTATOR_COUNT, Width, Height).m_Scale / 100.0f, 0.25f, 3.0f);
@@ -418,6 +427,7 @@ void CHudEditor::CollectModuleVisuals(SModuleVisual *pOut, int &Count) const
 
 	AddModule(HudLayout::MODULE_MUSIC_PLAYER);
 	AddModule(HudLayout::MODULE_SCORE);
+	AddModule(HudLayout::MODULE_FINISH_PREDICTION);
 	AddModule(HudLayout::MODULE_SPECTATOR_COUNT);
 	AddModule(HudLayout::MODULE_MOVEMENT_INFO);
 	AddModule(HudLayout::MODULE_CHAT);

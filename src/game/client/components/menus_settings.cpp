@@ -89,6 +89,7 @@ static const SBestClientComponentEntry gs_aBestClientComponentEntries[] = {
 	{CBestClient::COMPONENT_GAMEPLAY_INPUT, "Input", COMPONENTS_GROUP_GAMEPLAY},
 	{CBestClient::COMPONENT_GAMEPLAY_FAST_ACTIONS, "Fast Actions", COMPONENTS_GROUP_GAMEPLAY},
 	{CBestClient::COMPONENT_GAMEPLAY_SPEEDRUN_TIMER, "Speedrun Timer", COMPONENTS_GROUP_GAMEPLAY},
+	{CBestClient::COMPONENT_GAMEPLAY_FINISH_PREDICTION, "Finish Prediction", COMPONENTS_GROUP_GAMEPLAY},
 	{CBestClient::COMPONENT_GAMEPLAY_AUTO_TEAM_LOCK, "Auto Team Lock", COMPONENTS_GROUP_GAMEPLAY},
 	{CBestClient::COMPONENT_GAMEPLAY_GORES_MODE, "Gores Mode", COMPONENTS_GROUP_GAMEPLAY},
 	{CBestClient::COMPONENT_VISUALS_OPTIMIZER, "Optimizer", COMPONENTS_GROUP_GAMEPLAY},
@@ -5705,6 +5706,57 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 			// Keep legacy MMSS setting synchronized for backward compatibility.
 			g_Config.m_BcSpeedrunTimerTime = g_Config.m_BcSpeedrunTimerMinutes * 100 + g_Config.m_BcSpeedrunTimerSeconds;
+		}
+
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_FINISH_PREDICTION))
+		{
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+			static float s_FinishPredictionPhase = 0.0f;
+			const bool FinishPredictionExpanded = g_Config.m_BcFinishPrediction != 0;
+			UpdateRevealPhase(s_FinishPredictionPhase, FinishPredictionExpanded);
+			const float ExpandedTargetHeight = LineSize * 2.0f + MarginSmall * 3.0f;
+			const float ExpandedHeight = ExpandedTargetHeight * s_FinishPredictionPhase;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedHeight;
+			CUIRect Content, Label, Button, Visible;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, Localize("Finish Prediction"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcFinishPrediction, Localize("Show finish prediction HUD"), &g_Config.m_BcFinishPrediction, &Content, LineSize);
+
+			if(ExpandedHeight > 0.0f)
+			{
+				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExpandedTargetHeight};
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				Expand.HSplitTop(LineSize, &Button, &Expand);
+				{
+					static CButtonContainer s_FinishPredictionRemainingButton;
+					static CButtonContainer s_FinishPredictionFinishTimeButton;
+					CUIRect Left, Right;
+					Button.VSplitMid(&Left, &Right, 2.0f);
+					Left.HMargin(2.0f, &Left);
+					Right.HMargin(2.0f, &Right);
+					if(DoButton_Menu(&s_FinishPredictionRemainingButton, Localize("Time left"), g_Config.m_BcFinishPredictionTimeMode == 0, &Left, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
+						g_Config.m_BcFinishPredictionTimeMode = 0;
+					if(DoButton_Menu(&s_FinishPredictionFinishTimeButton, Localize("Finish time"), g_Config.m_BcFinishPredictionTimeMode == 1, &Right, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
+						g_Config.m_BcFinishPredictionTimeMode = 1;
+				}
+
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				Expand.HSplitTop(LineSize * 2.0f, &Label, &Expand);
+				TextRender()->TextColor(0.8f, 0.85f, 0.9f, 1.0f);
+				Ui()->DoLabel(&Label, Localize("Uses finish path, server best and current finished players on the server."), FontSize * 0.9f, TEXTALIGN_ML);
+				TextRender()->TextColor(TextRender()->DefaultTextColor());
+			}
 		}
 
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_AUTO_TEAM_LOCK))
