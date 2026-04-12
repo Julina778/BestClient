@@ -301,22 +301,94 @@ float CHud::GetFinishPredictionStartDistance() const
 	return BestDistance;
 }
 
-int64_t CHud::GetFinishPredictionAverageTimeMs() const
+int64_t CHud::GetFinishPredictionScoreboardTimeMs(int ClientId) const
 {
-	if(!GameClient()->m_ReceivedDDNetPlayerFinishTimes)
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
+		return -1;
+	const CNetObj_PlayerInfo *pPlayerInfo = GameClient()->m_Snap.m_apPlayerInfos[ClientId];
+	if(!pPlayerInfo)
 		return -1;
 
-	int64_t Sum = 0;
-	int Count = 0;
+	const bool Race7 = Client()->IsSixup() && GameClient()->m_Snap.m_pGameInfoObj && (GameClient()->m_Snap.m_pGameInfoObj->m_GameFlags & protocol7::GAMEFLAG_RACE);
+	if(Race7)
+	{
+		if(pPlayerInfo->m_Score == protocol7::FinishTime::NOT_FINISHED)
+			return -1;
+		return maximum<int64_t>(0, pPlayerInfo->m_Score);
+	}
+
+	if(GameClient()->m_GameInfo.m_TimeScore)
+	{
+		if(pPlayerInfo->m_Score == FinishTime::NOT_FINISHED_TIMESCORE)
+			return -1;
+		return maximum<int64_t>(0, pPlayerInfo->m_Score) * 1000;
+	}
+
+	return -1;
+}
+
+int64_t CHud::GetFinishPredictionBestTimeMs() const
+{
+	if(GameClient()->m_MapBestTimeSeconds != FinishTime::UNSET && GameClient()->m_MapBestTimeSeconds != FinishTime::NOT_FINISHED_MILLIS)
+		return (int64_t)GameClient()->m_MapBestTimeSeconds * 1000 + GameClient()->m_MapBestTimeMillis;
+
+	int64_t BestTimeMs = -1;
 	for(int i = 0; i < MAX_CLIENTS; ++i)
 	{
-		if(!GameClient()->m_Snap.m_apPlayerInfos[i])
+		const int64_t ScoreTimeMs = GetFinishPredictionScoreboardTimeMs(i);
+		if(ScoreTimeMs <= 0)
 			continue;
-		const auto &ClientData = GameClient()->m_aClients[i];
-		if(ClientData.m_FinishTimeSeconds == FinishTime::UNSET || ClientData.m_FinishTimeSeconds == FinishTime::NOT_FINISHED_MILLIS)
-			continue;
-		Sum += (int64_t)absolute(ClientData.m_FinishTimeSeconds) * 1000 + (absolute(ClientData.m_FinishTimeMillis) % 1000);
-		++Count;
+		if(BestTimeMs < 0 || ScoreTimeMs < BestTimeMs)
+			BestTimeMs = ScoreTimeMs;
+	}
+	return BestTimeMs;
+}
+
+int64_t CHud::GetFinishPredictionPersonalBestTimeMs() const
+{
+	const int LocalClientId = GameClient()->m_aLocalIds[g_Config.m_ClDummy];
+	if(GameClient()->m_ReceivedDDNetPlayerFinishTimes && LocalClientId >= 0)
+	{
+		const auto &ClientData = GameClient()->m_aClients[LocalClientId];
+		if(ClientData.m_FinishTimeSeconds != FinishTime::UNSET && ClientData.m_FinishTimeSeconds != FinishTime::NOT_FINISHED_MILLIS)
+			return (int64_t)absolute(ClientData.m_FinishTimeSeconds) * 1000 + (absolute(ClientData.m_FinishTimeMillis) % 1000);
+	}
+
+	const int64_t ScoreboardTimeMs = GetFinishPredictionScoreboardTimeMs(LocalClientId);
+	if(ScoreboardTimeMs > 0)
+		return ScoreboardTimeMs;
+
+	const float PlayerRecord = m_aPlayerRecord[g_Config.m_ClDummy];
+	return PlayerRecord > 0.0f ? (int64_t)round(PlayerRecord * 1000.0f) : -1;
+}
+
+int64_t CHud::GetFinishPredictionAverageTimeMs() const
+{
+	int64_t Sum = 0;
+	int Count = 0;
+	if(GameClient()->m_ReceivedDDNetPlayerFinishTimes)
+	{
+		for(int i = 0; i < MAX_CLIENTS; ++i)
+		{
+			if(!GameClient()->m_Snap.m_apPlayerInfos[i])
+				continue;
+			const auto &ClientData = GameClient()->m_aClients[i];
+			if(ClientData.m_FinishTimeSeconds == FinishTime::UNSET || ClientData.m_FinishTimeSeconds == FinishTime::NOT_FINISHED_MILLIS)
+				continue;
+			Sum += (int64_t)absolute(ClientData.m_FinishTimeSeconds) * 1000 + (absolute(ClientData.m_FinishTimeMillis) % 1000);
+			++Count;
+		}
+	}
+	else
+	{
+		for(int i = 0; i < MAX_CLIENTS; ++i)
+		{
+			const int64_t ScoreTimeMs = GetFinishPredictionScoreboardTimeMs(i);
+			if(ScoreTimeMs <= 0)
+				continue;
+			Sum += ScoreTimeMs;
+			++Count;
+		}
 	}
 	return Count > 0 ? Sum / Count : -1;
 }
@@ -391,15 +463,23 @@ bool CHud::GetFinishPredictionState(SFinishPredictionState &State, bool ForcePre
 		State.m_Progress = 1.0f;
 
 	const int64_t CurrentPacePrediction = State.m_Progress > 0.001f ? (int64_t)(State.m_CurrentTimeMs / maximum(State.m_Progress, 0.001f)) : -1;
-	const int64_t BestTimeMs = GameClient()->m_MapBestTimeSeconds != FinishTime::UNSET && GameClient()->m_MapBestTimeSeconds != FinishTime::NOT_FINISHED_MILLIS ?
-		(int64_t)GameClient()->m_MapBestTimeSeconds * 1000 + GameClient()->m_MapBestTimeMillis : -1;
+	const int64_t BestTimeMs = GetFinishPredictionBestTimeMs();
+	const int64_t PersonalBestTimeMs = GetFinishPredictionPersonalBestTimeMs();
 	const int64_t AverageTimeMs = GetFinishPredictionAverageTimeMs();
 
 	int64_t ReferenceTimeMs = -1;
-	if(BestTimeMs > 0 && AverageTimeMs > 0)
+	if(BestTimeMs > 0 && AverageTimeMs > 0 && PersonalBestTimeMs > 0)
+		ReferenceTimeMs = (BestTimeMs + AverageTimeMs + PersonalBestTimeMs) / 3;
+	else if(BestTimeMs > 0 && AverageTimeMs > 0)
 		ReferenceTimeMs = (BestTimeMs + AverageTimeMs) / 2;
+	else if(PersonalBestTimeMs > 0 && AverageTimeMs > 0)
+		ReferenceTimeMs = (PersonalBestTimeMs + AverageTimeMs) / 2;
+	else if(BestTimeMs > 0 && PersonalBestTimeMs > 0)
+		ReferenceTimeMs = (BestTimeMs + PersonalBestTimeMs) / 2;
 	else if(BestTimeMs > 0)
 		ReferenceTimeMs = BestTimeMs;
+	else if(PersonalBestTimeMs > 0)
+		ReferenceTimeMs = PersonalBestTimeMs;
 	else if(AverageTimeMs > 0)
 		ReferenceTimeMs = AverageTimeMs;
 
@@ -2608,19 +2688,22 @@ CUIRect CHud::GetFinishPredictionRect(bool ForcePreview) const
 	const float PaddingX = 6.0f * Scale;
 	const float PaddingY = 4.0f * Scale;
 	const float Gap = 1.5f * Scale;
+	const bool ShowTime = g_Config.m_BcFinishPredictionShowTime != 0;
 	const bool ShowRemaining = g_Config.m_BcFinishPredictionTimeMode == 0;
 	const bool ShowPercentage = g_Config.m_BcFinishPredictionShowPercentage != 0;
 	const bool ShowMillis = g_Config.m_BcFinishPredictionShowMillis != 0;
+	if(!ShowTime && !ShowPercentage)
+		return {0.0f, 0.0f, 0.0f, 0.0f};
 
 	char aSampleTopLine[64];
 	char aProgress[32];
 	str_format(aSampleTopLine, sizeof(aSampleTopLine), "%s %s", Localize("Finish"), ShowMillis ? "00:00:00.00" : "00:00:00");
 	str_format(aProgress, sizeof(aProgress), "100.0%%");
 
-	const float TopWidth = TextRender()->TextWidth(TitleFontSize, aSampleTopLine, -1, -1.0f);
+	const float TopWidth = ShowTime ? TextRender()->TextWidth(TitleFontSize, aSampleTopLine, -1, -1.0f) : 0.0f;
 	const float ProgressWidth = ShowPercentage ? TextRender()->TextWidth(ProgressFontSize, aProgress, -1, -1.0f) : 0.0f;
 	const float RectWidth = maximum(TopWidth, ProgressWidth) + PaddingX * 2.0f;
-	const float RectHeight = PaddingY * 2.0f + TitleFontSize + (ShowPercentage ? Gap + ProgressFontSize : 0.0f);
+	const float RectHeight = PaddingY * 2.0f + (ShowTime ? TitleFontSize : 0.0f) + (ShowTime && ShowPercentage ? Gap : 0.0f) + (ShowPercentage ? ProgressFontSize : 0.0f);
 	CUIRect Rect = {Layout.m_X, Layout.m_Y, RectWidth, RectHeight};
 	Rect.x = std::clamp(Rect.x, 0.0f, maximum(0.0f, m_Width - Rect.w));
 	Rect.y = std::clamp(Rect.y, 0.0f, maximum(0.0f, m_Height - Rect.h));
@@ -2646,6 +2729,7 @@ void CHud::RenderFinishPrediction(bool ForcePreview)
 	const float Gap = 1.5f * Scale;
 	const ColorRGBA BackgroundColor = color_cast<ColorRGBA>(ColorHSLA(Layout.m_BackgroundColor, true));
 	const int Corners = HudLayout::BackgroundCorners(IGraphics::CORNER_ALL, Rect.x, Rect.y, Rect.w, Rect.h, m_Width, m_Height);
+	const bool ShowTime = g_Config.m_BcFinishPredictionShowTime != 0;
 	const bool ShowRemaining = g_Config.m_BcFinishPredictionTimeMode == 0;
 	const bool ShowPercentage = g_Config.m_BcFinishPredictionShowPercentage != 0;
 	const bool ShowMillis = g_Config.m_BcFinishPredictionShowMillis != 0;
@@ -2660,15 +2744,20 @@ void CHud::RenderFinishPrediction(bool ForcePreview)
 	str_copy(aLabel, ShowRemaining ? Localize("Left") : Localize("Finish"), sizeof(aLabel));
 	str_format(aProgress, sizeof(aProgress), "%.1f%%", State.m_Progress * 100.0f);
 
-	char aTopLine[64];
-	str_format(aTopLine, sizeof(aTopLine), "%s %s", aLabel, aTime);
-	const float TopWidth = TextRender()->TextWidth(TitleFontSize, aTopLine, -1, -1.0f);
-	TextRender()->Text(Rect.x + maximum(PaddingX, (Rect.w - TopWidth) * 0.5f), Rect.y + PaddingY, TitleFontSize, aTopLine, -1.0f);
+	float TextY = Rect.y + PaddingY;
+	if(ShowTime)
+	{
+		char aTopLine[64];
+		str_format(aTopLine, sizeof(aTopLine), "%s %s", aLabel, aTime);
+		const float TopWidth = TextRender()->TextWidth(TitleFontSize, aTopLine, -1, -1.0f);
+		TextRender()->Text(Rect.x + maximum(PaddingX, (Rect.w - TopWidth) * 0.5f), TextY, TitleFontSize, aTopLine, -1.0f);
+		TextY += TitleFontSize + Gap;
+	}
 	if(ShowPercentage)
 	{
 		const float ProgressWidth = TextRender()->TextWidth(ProgressFontSize, aProgress, -1, -1.0f);
 		TextRender()->TextColor(0.78f, 0.88f, 1.0f, 1.0f);
-		TextRender()->Text(Rect.x + maximum(PaddingX, (Rect.w - ProgressWidth) * 0.5f), Rect.y + PaddingY + TitleFontSize + Gap, ProgressFontSize, aProgress, -1.0f);
+		TextRender()->Text(Rect.x + maximum(PaddingX, (Rect.w - ProgressWidth) * 0.5f), TextY, ProgressFontSize, aProgress, -1.0f);
 		TextRender()->TextColor(TextRender()->DefaultTextColor());
 	}
 }
@@ -2730,6 +2819,9 @@ void CHud::RenderFrozenHudPreview()
 
 void CHud::OnNewSnapshot()
 {
+	if(g_Config.m_BcFinishPrediction != 0)
+		EnsureFinishPredictionPathData();
+
 	if(Client()->State() != IClient::STATE_ONLINE && Client()->State() != IClient::STATE_DEMOPLAYBACK)
 		return;
 	if(!GameClient()->m_Snap.m_pGameInfoObj)

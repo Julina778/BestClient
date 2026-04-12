@@ -5714,7 +5714,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			static float s_FinishPredictionPhase = 0.0f;
 			const bool FinishPredictionExpanded = g_Config.m_BcFinishPrediction != 0;
 			UpdateRevealPhase(s_FinishPredictionPhase, FinishPredictionExpanded);
-			const float ExpandedTargetHeight = LineSize * 4.0f + MarginSmall * 4.0f;
+			const float ExpandedTargetHeight = LineSize * 5.0f + MarginSmall * 4.0f;
 			const float ExpandedHeight = ExpandedTargetHeight * s_FinishPredictionPhase;
 			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedHeight;
 			CUIRect Content, Label, Button, Visible;
@@ -5752,6 +5752,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				}
 
 				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcFinishPredictionShowTime, Localize("Show time"), &g_Config.m_BcFinishPredictionShowTime, &Expand, LineSize);
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcFinishPredictionShowAlways, Localize("Show always"), &g_Config.m_BcFinishPredictionShowAlways, &Expand, LineSize);
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcFinishPredictionShowPercentage, Localize("Show percentage"), &g_Config.m_BcFinishPredictionShowPercentage, &Expand, LineSize);
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcFinishPredictionShowMillis, Localize("Show milliseconds"), &g_Config.m_BcFinishPredictionShowMillis, &Expand, LineSize);

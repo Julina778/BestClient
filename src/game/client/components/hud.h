@@ -194,6 +194,9 @@ private:
 	bool EnsureFinishPredictionPathData();
 	float GetFinishPredictionDistanceAtPos(vec2 Pos) const;
 	float GetFinishPredictionStartDistance() const;
+	int64_t GetFinishPredictionScoreboardTimeMs(int ClientId) const;
+	int64_t GetFinishPredictionBestTimeMs() const;
+	int64_t GetFinishPredictionPersonalBestTimeMs() const;
 	int64_t GetFinishPredictionAverageTimeMs() const;
 	bool GetFinishPredictionState(SFinishPredictionState &State, bool ForcePreview) const;
 	float m_TimeCpDiff;
