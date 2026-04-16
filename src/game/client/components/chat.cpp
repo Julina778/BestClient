@@ -1206,14 +1206,11 @@ static std::string NormalizeAllowedMediaDomain(std::string Domain)
 	return Domain;
 }
 
-static bool IsAllowedChatMediaHost(const std::string &HostLower)
-{
-	if(!g_Config.m_BcChatMediaContentFilter)
-		return true;
-	if(HostLower.empty())
-		return false;
+static constexpr const char *s_pDefaultChatMediaAllowedDomains = "tenor.com; imgur.com; giphy.com";
 
-	const char *pList = g_Config.m_BcChatMediaAllowedDomains;
+static bool IsAllowedChatMediaHostByDomainList(const std::string &HostLower, const char *pList, bool &HasDomains)
+{
+	HasDomains = false;
 	if(pList == nullptr || pList[0] == '\0')
 		return false;
 
@@ -1225,6 +1222,7 @@ static bool IsAllowedChatMediaHost(const std::string &HostLower)
 		std::string Domain = NormalizeAllowedMediaDomain(std::string(pTokenStart, TokenLen));
 		if(!Domain.empty())
 		{
+			HasDomains = true;
 			if(HostLower == Domain)
 				return true;
 			if(HostLower.size() > Domain.size())
@@ -1241,6 +1239,23 @@ static bool IsAllowedChatMediaHost(const std::string &HostLower)
 	}
 
 	return false;
+}
+
+static bool IsAllowedChatMediaHost(const std::string &HostLower)
+{
+	if(!g_Config.m_BcChatMediaContentFilter)
+		return true;
+	if(HostLower.empty())
+		return false;
+
+	bool HasConfiguredDomains = false;
+	if(IsAllowedChatMediaHostByDomainList(HostLower, g_Config.m_BcChatMediaAllowedDomains, HasConfiguredDomains))
+		return true;
+	if(HasConfiguredDomains)
+		return false;
+
+	bool HasDefaultDomains = false;
+	return IsAllowedChatMediaHostByDomainList(HostLower, s_pDefaultChatMediaAllowedDomains, HasDefaultDomains);
 }
 
 static bool IsAllowedChatMediaUrl(const char *pUrl)
