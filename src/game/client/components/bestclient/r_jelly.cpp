@@ -3,6 +3,7 @@
 
 #include <base/math.h>
 
+#include <engine/shared/video.h>
 #include <engine/shared/config.h>
 
 #include <game/client/gameclient.h>
@@ -96,6 +97,18 @@ JellyTee CRJelly::GetDeform(int ClientId, vec2 PrevVel, vec2 Vel, vec2 LookDir, 
 		return Deform;
 
 	pState->m_ClientId = ClientId;
+	if(m_pClient != nullptr && m_pClient->Client()->State() == IClient::STATE_DEMOPLAYBACK && IVideo::Current())
+	{
+		const float DemoPlaybackTime = (m_pClient->Client()->PrevGameTick(0) + m_pClient->Client()->IntraGameTickSincePrev(0)) / (float)m_pClient->Client()->GameTickSpeed();
+		if(pState->m_HasLastDemoPlaybackTime)
+			DeltaTime = DemoPlaybackTime - pState->m_LastDemoPlaybackTime;
+		pState->m_LastDemoPlaybackTime = DemoPlaybackTime;
+		pState->m_HasLastDemoPlaybackTime = true;
+	}
+	else
+	{
+		pState->m_HasLastDemoPlaybackTime = false;
+	}
 	DeltaTime = std::clamp(DeltaTime, MIN_DELTA_TIME, MAX_DELTA_TIME);
 
 	if(!pState->m_Initialized)

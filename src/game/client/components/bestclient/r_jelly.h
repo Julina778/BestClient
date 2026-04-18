@@ -37,8 +37,10 @@ private:
 		vec2 m_PrevInputVel = vec2(0.0f, 0.0f);
 		float m_Compression = 0.0f;
 		float m_CompressionVelocity = 0.0f;
+		float m_LastDemoPlaybackTime = 0.0f;
 		int m_ClientId = -1;
 		bool m_Initialized = false;
+		bool m_HasLastDemoPlaybackTime = false;
 	};
 
 	CGameClient *m_pClient = nullptr;
