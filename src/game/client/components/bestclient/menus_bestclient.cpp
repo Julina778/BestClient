@@ -1266,7 +1266,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				Ui()->DoScrollbarOption(&g_Config.m_BcDynamicFovAmount, &g_Config.m_BcDynamicFovAmount, &Row, BCLocalize("Dynamic FOV amount"), 1, 200);
 
 				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcDynamicFovSmoothness, &g_Config.m_BcDynamicFovSmoothness, &Row, BCLocalize("Dynamic FOV smoothness"), 1, 20);
+				Ui()->DoScrollbarOption(&g_Config.m_BcDynamicFovSmoothness, &g_Config.m_BcDynamicFovSmoothness, &Row, BCLocalize("Dynamic FOV smoothness"), 1, 100);
 			}
 			if(IsBlockedCameraServer)
 			{

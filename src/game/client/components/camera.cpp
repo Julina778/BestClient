@@ -356,7 +356,8 @@ void CCamera::UpdateCamera()
 
 	if(DynamicFovActive && g_Config.m_BcDynamicFovSmoothness > 0)
 	{
-		float SmoothFactor = (1.0f - (g_Config.m_BcDynamicFovSmoothness / 100.0f)) * 10.0f;
+		// Extended smoothness range: at max (100) gives very smooth transitions
+		float SmoothFactor = (1.0f - (g_Config.m_BcDynamicFovSmoothness / 100.0f)) * 15.0f + 0.5f;
 		m_DynamicFovCurrent += (m_DynamicFovTarget - m_DynamicFovCurrent) * minimum(DeltaTime * SmoothFactor, 1.0f);
 	}
 	else
