@@ -3407,6 +3407,9 @@ bool CChat::OnInput(const IInput::CEvent &Event)
 		return true;
 	}
 
+	if(ChatInputActive && Ui()->IsPopupOpen(&m_TranslateSettingsPopupId) && Ui()->OnInput(Event))
+		return true;
+
 	if(ChatInputActive && Event.m_Key == KEY_MOUSE_1 && m_TranslateButtonRectValid)
 	{
 		const vec2 MousePos = ChatMousePos();
