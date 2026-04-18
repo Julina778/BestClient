@@ -2118,6 +2118,17 @@ CUi::EPopupMenuFunctionResult CUi::PopupColorPicker(void *pContext, CUIRect View
 	CUi *pUI = pColorPicker->m_pUI;
 	pColorPicker->m_State = EEditState::NONE;
 
+	if(Active && pUI->ConsumeHotkey(HOTKEY_ESCAPE))
+	{
+		pUI->DisableMouseLock();
+		pUI->SetActiveItem(nullptr);
+		pUI->m_ActiveValueSelectorState.m_Button = -1;
+		pUI->m_ActiveValueSelectorState.m_DidScroll = false;
+		pUI->m_ActiveValueSelectorState.m_ScrollValue = 0.0f;
+		pUI->m_ActiveValueSelectorState.m_pLastTextId = nullptr;
+		return POPUP_CLOSE_CURRENT;
+	}
+
 	CUIRect ColorsArea, HueArea, BottomArea, ModeButtonArea, HueRect, SatRect, ValueRect, HexRect, AlphaRect;
 
 	View.HSplitTop(140.0f, &ColorsArea, &BottomArea);
