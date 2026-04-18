@@ -72,7 +72,7 @@ public:
 	CUi *MenuUi() const { return Ui(); }
 	IClient *MenuClient() const { return Client(); }
 	IHttp *MenuHttp() const { return Http(); }
-	void MenuButtonSoundEvent(CUi::EButtonSoundEvent Event) { OnButtonSoundEvent(Event); }
+	void MenuButtonSoundEvent(CUi::EUiSoundEvent Event, CUi::EButtonSoundType SoundType, bool Enabled, int Checked, float Pitch) { OnUiSoundEvent(Event, SoundType, Enabled, Checked, Pitch); }
 	void RefreshCustomAssetsTab(int CurTab) { ClearCustomItems(CurTab); }
 
 private:
@@ -821,21 +821,98 @@ protected:
 
 	void SetNeedSendInfo();
 	void UpdateColors();
+
+	enum class EMenuSfxSample
+	{
+		BSS_COMPLETE = 0,
+		BSS_PROGRESS,
+		BSS_STAGE_0,
+		BSS_STAGE_1,
+		BSS_STAGE_2,
+		BSS_STAGE_3,
+		BUTTON_HOVER,
+		BUTTON_SELECT,
+		BUTTON_SIDEBAR_HOVER,
+		BUTTON_SIDEBAR_SELECT,
+		CHECK_OFF,
+		CHECK_ON,
+		CURSOR_TAP,
+		DEFAULT_HOVER,
+		DEFAULT_SELECT_DISABLED,
+		DEFAULT_SELECT,
+		DIALOG_CANCEL_SELECT,
+		DIALOG_DANGEROUS_SELECT,
+		DIALOG_DANGEROUS_TICK,
+		DIALOG_OK_SELECT,
+		DIALOG_POP_IN,
+		DIALOG_POP_OUT,
+		DROPDOWN_CLOSE,
+		DROPDOWN_OPEN,
+		GENERIC_ERROR,
+		ITEM_SWAP,
+		MENU_CLOSE,
+		MENU_OPEN_SELECT,
+		MENU_OPEN,
+		MENU_SUB_OPEN,
+		METRONOME_LATCH,
+		METRONOME_TICK_DOWNBEAT,
+		METRONOME_TICK,
+		NOCLICK_HOVER,
+		NOCLICK_SELECT,
+		NOTCH_TICK,
+		NOTIFICATION_CANCEL,
+		NOTIFICATION_DEFAULT,
+		NOTIFICATION_DONE,
+		NOTIFICATION_ERROR,
+		NOTIFICATION_FRIEND_OFFLINE,
+		NOTIFICATION_FRIEND_ONLINE,
+		NOTIFICATION_MENTION,
+		OSD_CHANGE,
+		OSD_OFF,
+		OSD_ON,
+		OVERLAY_BIG_POP_IN,
+		OVERLAY_BIG_POP_OUT,
+		OVERLAY_POP_IN,
+		OVERLAY_POP_OUT,
+		RULESET_SELECT_FRUITS,
+		RULESET_SELECT_MANIA,
+		RULESET_SELECT_OSU,
+		RULESET_SELECT_TAIKO,
+		SCREEN_BACK,
+		SCROLL_TO_PREVIOUS,
+		SCROLL_TO_TOP,
+		SETTINGS_POP_IN,
+		SHUTTER,
+		SUBMIT_SELECT,
+		TABSELECT_SELECT,
+		TOOLBAR_HOVER,
+		TOOLBAR_SELECT,
+		WAVE_POP_IN,
+		WAVE_POP_OUT,
+		COUNT,
+	};
+
 	void LoadMenuSfx();
 	void UnloadMenuSfx();
-	void PlayMenuSfxSample(int SampleId);
-	void OnButtonSoundEvent(CUi::EButtonSoundEvent Event);
+	void PlayMenuSfxSample(int SampleId, float Pitch = 1.0f);
+	void PlayMenuSfxSample(EMenuSfxSample Sample, float Pitch = 1.0f);
+	void PlayIngameMenuOpenSfx();
+	void PlayIngameMenuCloseSfx();
+	void OnUiSoundEvent(CUi::EUiSoundEvent Event, CUi::EButtonSoundType SoundType, bool Enabled, int Checked, float Pitch);
+	EMenuSfxSample MenuSfxHoverSample(CUi::EButtonSoundType SoundType) const;
+	EMenuSfxSample MenuSfxEventSample(CUi::EUiSoundEvent Event, CUi::EButtonSoundType SoundType, bool Enabled, int Checked) const;
 
-	int m_MenuSfxHoverSample = -1;
-	int m_MenuSfxClickSample = -1;
-	int m_MenuSfxOpenSample = -1;
-	int m_MenuSfxExitSample = -1;
+	std::array<int, (size_t)EMenuSfxSample::COUNT> m_aMenuSfxSamples{};
 	int64_t m_MenuSfxLastHoverTick = 0;
 	int64_t m_MenuSfxLastClickTick = 0;
+	int64_t m_MenuSfxLastScrollTick = 0;
+	int64_t m_MenuSfxLastSliderTick = 0;
+	int64_t m_MenuSfxLastPopupTick = 0;
 	bool m_MenuSfxLoaded = false;
 	bool m_MenuSfxOpenPlayed = false;
 	bool m_MenuSfxExitPlayed = false;
 	bool m_MenuSfxQuitPending = false;
+	bool m_MenuSfxSuppressNextIngameClose = false;
 	int64_t m_MenuSfxQuitAt = 0;
 
 	IGraphics::CTextureHandle m_TextureBlob;

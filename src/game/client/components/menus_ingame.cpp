@@ -477,7 +477,7 @@ void CMenus::RenderEscPlayersCarousel(CUIRect MainView)
 		HoverRect.y -= 2.0f;
 		HoverRect.w += 4.0f;
 		HoverRect.h += 4.0f;
-		const int ButtonResult = Ui()->DoButtonLogic(&m_aEscPlayersCarouselButtons[ClientId], 0, &HoverRect, BUTTONFLAG_LEFT | BUTTONFLAG_RIGHT);
+		const int ButtonResult = Ui()->DoButtonLogic(&m_aEscPlayersCarouselButtons[ClientId], 0, &HoverRect, BUTTONFLAG_LEFT | BUTTONFLAG_RIGHT, CUi::EButtonSoundType::BUTTON);
 		const bool Hot = Ui()->HotItem() == &m_aEscPlayersCarouselButtons[ClientId];
 		if(IsLocal || Hot)
 		{
@@ -738,7 +738,7 @@ void CMenus::RenderPlayers(CUIRect MainView)
 		CRenderTools::GetRenderTeeOffsetToRenderedTee(pIdleState, &TeeInfo, OffsetToMid);
 		vec2 TeeRenderPos(Button.x + Button.h / 2, Button.y + Button.h / 2 + OffsetToMid.y);
 		RenderTools()->RenderTee(pIdleState, &TeeInfo, EMOTE_NORMAL, vec2(1.0f, 0.0f), TeeRenderPos);
-		Ui()->DoButtonLogic(&s_aPlayerIds[Index][3], 0, &Button, BUTTONFLAG_NONE);
+		Ui()->DoButtonLogic(&s_aPlayerIds[Index][3], 0, &Button, BUTTONFLAG_NONE, CUi::EButtonSoundType::SILENT);
 		GameClient()->m_Tooltips.DoToolTip(&s_aPlayerIds[Index][3], &Button, CurrentClient.m_aSkinName);
 
 		Player.HSplitTop(1.5f, nullptr, &Player);
@@ -861,7 +861,7 @@ void CMenus::RenderServerInfo(CUIRect MainView)
 			Label.VSplitLeft(2.0f * Label.h, &Label, nullptr);
 			m_CommunityIcons.Render(pIcon, Label, true);
 			static char s_CommunityTooltipButtonId;
-			Ui()->DoButtonLogic(&s_CommunityTooltipButtonId, 0, &Label, BUTTONFLAG_NONE);
+			Ui()->DoButtonLogic(&s_CommunityTooltipButtonId, 0, &Label, BUTTONFLAG_NONE, CUi::EButtonSoundType::SILENT);
 			GameClient()->m_Tooltips.DoToolTip(&s_CommunityTooltipButtonId, &Label, pCommunity->Name());
 		}
 	}

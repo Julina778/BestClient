@@ -4153,7 +4153,7 @@ void CVoiceChat::RenderServersSection(CUIRect View)
 
 		CButtonContainer &Button = m_ServerRowButtons[i];
 		const bool Selected = (int)i == m_SelectedServerIndex;
-		const int Clicked = Ui()->DoButtonLogic(&Button, Selected, &Row, BUTTONFLAG_LEFT);
+		const int Clicked = Ui()->DoButtonLogic(&Button, Selected, &Row, BUTTONFLAG_LEFT, CUi::EButtonSoundType::BUTTON);
 		const bool Hot = Ui()->HotItem() == &Button;
 
 		const ColorRGBA RowColor = Selected ? VoiceRowSelectedColor() :

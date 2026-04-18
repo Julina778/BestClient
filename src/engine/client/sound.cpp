@@ -42,26 +42,18 @@ void CSound::Mix(short *pFinalOut, unsigned Frames)
 	{
 		if(!Voice.m_pSample)
 			continue;
+		if(Voice.m_pSample->m_NumFrames <= 0)
+		{
+			Voice.m_pSample = nullptr;
+			Voice.m_Age++;
+			continue;
+		}
 
 		// mix voice
 		int *pOut = m_pMixBuffer;
 
-		const int Step = Voice.m_pSample->m_Channels; // setup input sources
-		short *pInL = &Voice.m_pSample->m_pData[Voice.m_Tick * Step];
-		short *pInR = &Voice.m_pSample->m_pData[Voice.m_Tick * Step + 1];
-
-		unsigned End = Voice.m_pSample->m_NumFrames - Voice.m_Tick;
-
 		int VolumeR = round_truncate(Voice.m_pChannel->m_Vol * (Voice.m_Vol / 255.0f));
 		int VolumeL = VolumeR;
-
-		// make sure that we don't go outside the sound data
-		if(Frames < End)
-			End = Frames;
-
-		// check if we have a mono sound
-		if(Voice.m_pSample->m_Channels == 1)
-			pInR = pInL;
 
 		// volume calculation
 		if(Voice.m_Flags & ISound::FLAG_POS && Voice.m_pChannel->m_Pan)
@@ -135,28 +127,40 @@ void CSound::Mix(short *pFinalOut, unsigned Frames)
 			}
 		}
 
+		const int Step = Voice.m_pSample->m_Channels;
+		const int NumFrames = Voice.m_pSample->m_NumFrames;
+		const float Pitch = std::clamp(Voice.m_Pitch, 0.05f, 4.0f);
+		auto WrapLoop = [&Voice, NumFrames]() {
+			const int LoopStart = Voice.m_pSample->m_LoopStart;
+			const int LoopLength = NumFrames - LoopStart;
+			if(LoopLength > 0)
+				Voice.m_Tick = LoopStart + std::fmod(maximum(0.0f, Voice.m_Tick - LoopStart), (float)LoopLength);
+			else
+				Voice.m_Tick = (float)LoopStart;
+		};
+
 		// process all frames
-		for(unsigned s = 0; s < End; s++)
+		for(unsigned s = 0; s < Frames; s++)
 		{
+			if(Voice.m_Tick >= NumFrames)
+			{
+				if(Voice.m_Flags & ISound::FLAG_LOOP)
+					WrapLoop();
+				else
+				{
+					Voice.m_pSample = nullptr;
+					Voice.m_Age++;
+					break;
+				}
+			}
+
+			const int Tick = std::clamp((int)Voice.m_Tick, 0, NumFrames - 1);
+			short *pInL = &Voice.m_pSample->m_pData[Tick * Step];
+			short *pInR = Voice.m_pSample->m_Channels == 1 ? pInL : pInL + 1;
+
 			*pOut++ += (*pInL) * VolumeL;
 			*pOut++ += (*pInR) * VolumeR;
-			pInL += Step;
-			pInR += Step;
-			Voice.m_Tick++;
-		}
-
-		// free voice if not used any more
-		if(Voice.m_Tick == Voice.m_pSample->m_NumFrames)
-		{
-			if(Voice.m_Flags & ISound::FLAG_LOOP)
-			{
-				Voice.m_Tick = Voice.m_pSample->m_LoopStart;
-			}
-			else
-			{
-				Voice.m_pSample = nullptr;
-				Voice.m_Age++;
-			}
+			Voice.m_Tick += Pitch;
 		}
 	}
 
@@ -799,7 +803,7 @@ void CSound::SetSampleCurrentTime(int SampleId, float Time)
 		}
 	}
 
-	pSample->m_PausedAt = pSample->m_NumFrames * Time;
+	pSample->m_PausedAt = (int)(pSample->m_NumFrames * Time);
 }
 
 void CSound::SetChannel(int ChannelId, float Vol, float Pan)
@@ -847,6 +851,20 @@ void CSound::SetVoiceFalloff(CVoiceHandle Voice, float Falloff)
 	m_aVoices[VoiceId].m_Falloff = Falloff;
 }
 
+void CSound::SetVoicePitch(CVoiceHandle Voice, float Pitch)
+{
+	if(!Voice.IsValid())
+		return;
+
+	int VoiceId = Voice.Id();
+
+	const CLockScope LockScope(m_SoundLock);
+	if(m_aVoices[VoiceId].m_Age != Voice.Age())
+		return;
+
+	m_aVoices[VoiceId].m_Pitch = std::clamp(Pitch, 0.05f, 4.0f);
+}
+
 void CSound::SetVoicePosition(CVoiceHandle Voice, vec2 Position)
 {
 	if(!Voice.IsValid())
@@ -875,7 +893,7 @@ void CSound::SetVoiceTimeOffset(CVoiceHandle Voice, float TimeOffset)
 	if(!m_aVoices[VoiceId].m_pSample)
 		return;
 
-	int Tick = 0;
+	float Tick = 0.0f;
 	bool IsLooping = m_aVoices[VoiceId].m_Flags & ISound::FLAG_LOOP;
 	uint64_t TickOffset = m_aVoices[VoiceId].m_pSample->m_Rate * TimeOffset;
 	if(m_aVoices[VoiceId].m_pSample->m_NumFrames > 0 && IsLooping)
@@ -885,21 +903,21 @@ void CSound::SetVoiceTimeOffset(CVoiceHandle Voice, float TimeOffset)
 		if(TickOffset < static_cast<uint64_t>(NumFrames))
 		{
 			// Still in first playthrough
-			Tick = TickOffset;
+			Tick = (float)TickOffset;
 		}
 		else
 		{
 			// Past first playthrough, wrap within loop section only
 			const int LoopLength = NumFrames - LoopStart;
 			if(LoopLength > 0)
-				Tick = LoopStart + ((TickOffset - NumFrames) % LoopLength);
+				Tick = (float)(LoopStart + ((TickOffset - NumFrames) % LoopLength));
 			else
-				Tick = LoopStart;
+				Tick = (float)LoopStart;
 		}
 	}
 	else
 	{
-		Tick = std::clamp<uint64_t>(TickOffset, 0, m_aVoices[VoiceId].m_pSample->m_NumFrames);
+		Tick = (float)std::clamp<uint64_t>(TickOffset, 0, m_aVoices[VoiceId].m_pSample->m_NumFrames);
 	}
 
 	// at least 200msec off, else depend on buffer size
@@ -986,6 +1004,7 @@ ISound::CVoiceHandle CSound::Play(int ChannelId, int SampleId, int Flags, float 
 	m_aVoices[VoiceId].m_Flags = Flags;
 	m_aVoices[VoiceId].m_Position = Position;
 	m_aVoices[VoiceId].m_Falloff = 0.0f;
+	m_aVoices[VoiceId].m_Pitch = 1.0f;
 	m_aVoices[VoiceId].m_Shape = ISound::SHAPE_CIRCLE;
 	m_aVoices[VoiceId].m_Circle.m_Radius = 1500;
 	return CreateVoiceHandle(VoiceId, m_aVoices[VoiceId].m_Age);
@@ -1013,7 +1032,7 @@ void CSound::Pause(int SampleId)
 	{
 		if(Voice.m_pSample == pSample)
 		{
-			Voice.m_pSample->m_PausedAt = Voice.m_Tick;
+			Voice.m_pSample->m_PausedAt = (int)Voice.m_Tick;
 			Voice.m_pSample = nullptr;
 		}
 	}
@@ -1032,7 +1051,7 @@ void CSound::Stop(int SampleId)
 		if(Voice.m_pSample == pSample)
 		{
 			if(Voice.m_Flags & FLAG_LOOP)
-				Voice.m_pSample->m_PausedAt = Voice.m_Tick;
+				Voice.m_pSample->m_PausedAt = (int)Voice.m_Tick;
 			else
 				Voice.m_pSample->m_PausedAt = 0;
 			Voice.m_pSample = nullptr;
@@ -1049,7 +1068,7 @@ void CSound::StopAll()
 		if(Voice.m_pSample)
 		{
 			if(Voice.m_Flags & FLAG_LOOP)
-				Voice.m_pSample->m_PausedAt = Voice.m_Tick;
+				Voice.m_pSample->m_PausedAt = (int)Voice.m_Tick;
 			else
 				Voice.m_pSample->m_PausedAt = 0;
 		}

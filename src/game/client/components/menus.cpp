@@ -60,6 +60,8 @@ float CMenus::ms_ListheaderHeight = 17.0f;
 
 CMenus::CMenus()
 {
+	m_aMenuSfxSamples.fill(-1);
+
 	m_Popup = POPUP_NONE;
 	m_MenuPage = 0;
 	m_GamePage = PAGE_GAME;
@@ -118,7 +120,7 @@ int CMenus::DoButton_Toggle(const void *pId, int Checked, const CUIRect *pRect, 
 	}
 	Graphics()->QuadsEnd();
 
-	return Active ? Ui()->DoButtonLogic(pId, Checked, pRect, Flags) : 0;
+	return Active ? Ui()->DoButtonLogic(pId, Checked, pRect, Flags, CUi::EButtonSoundType::CHECKBOX) : 0;
 }
 
 int CMenus::DoButton_Menu(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, const unsigned Flags, const char *pImageName, int Corners, float Rounding, float FontFactor, ColorRGBA Color)
@@ -161,7 +163,7 @@ int CMenus::DoButton_MenuEx(CButtonContainer *pButtonContainer, const char *pTex
 	Text.HMargin((Text.h * FontFactor) / 2.0f, &Text);
 	Ui()->DoLabel(&Text, pText, Text.h * CUi::ms_FontmodHeight, TEXTALIGN_MC);
 
-	return Ui()->DoButtonLogic(pButtonContainer, Checked, pRect, Flags);
+	return Ui()->DoButtonLogic(pButtonContainer, Checked, pRect, Flags, CUi::EButtonSoundType::BUTTON);
 }
 
 int CMenus::DoButton_MenuTab(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, int Corners, SUIAnimator *pAnimator, const ColorRGBA *pDefaultColor, const ColorRGBA *pActiveColor, const ColorRGBA *pHoverColor, float EdgeRounding, const CCommunityIcon *pCommunityIcon)
@@ -250,7 +252,7 @@ int CMenus::DoButton_MenuTab(CButtonContainer *pButtonContainer, const char *pTe
 		Ui()->DoLabel(&Label, pText, Label.h * CUi::ms_FontmodHeight, TEXTALIGN_MC);
 	}
 
-	return Ui()->DoButtonLogic(pButtonContainer, Checked, pRect, BUTTONFLAG_LEFT);
+	return Ui()->DoButtonLogic(pButtonContainer, Checked, pRect, BUTTONFLAG_LEFT, CUi::EButtonSoundType::TAB_SELECT);
 }
 
 int CMenus::DoButton_GridHeader(const void *pId, const char *pText, int Checked, const CUIRect *pRect, int Align)
@@ -263,7 +265,7 @@ int CMenus::DoButton_GridHeader(const void *pId, const char *pText, int Checked,
 	CUIRect Temp;
 	pRect->VMargin(5.0f, &Temp);
 	Ui()->DoLabel(&Temp, pText, pRect->h * CUi::ms_FontmodHeight, Align);
-	return Ui()->DoButtonLogic(pId, Checked, pRect, BUTTONFLAG_LEFT);
+	return Ui()->DoButtonLogic(pId, Checked, pRect, BUTTONFLAG_LEFT, CUi::EButtonSoundType::BUTTON);
 }
 
 int CMenus::DoButton_Favorite(const void *pButtonId, const void *pParentId, bool Checked, const CUIRect *pRect)
@@ -281,7 +283,7 @@ int CMenus::DoButton_Favorite(const void *pButtonId, const void *pParentId, bool
 		TextRender()->SetRenderFlags(0);
 		TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
 	}
-	return Ui()->DoButtonLogic(pButtonId, 0, pRect, BUTTONFLAG_LEFT);
+	return Ui()->DoButtonLogic(pButtonId, 0, pRect, BUTTONFLAG_LEFT, CUi::EButtonSoundType::TOOLBAR);
 }
 
 int CMenus::DoButton_CheckBox_Common(const void *pId, const char *pText, const char *pBoxText, const CUIRect *pRect, const unsigned Flags)
@@ -307,7 +309,8 @@ int CMenus::DoButton_CheckBox_Common(const void *pId, const char *pText, const c
 	TextRender()->SetRenderFlags(0);
 	Ui()->DoLabel(&Label, pText, Box.h * CUi::ms_FontmodHeight, TEXTALIGN_ML);
 
-	return Ui()->DoButtonLogic(pId, 0, pRect, Flags);
+	const bool IsBinaryCheckBox = *pBoxText == '\0' || Checkable;
+	return Ui()->DoButtonLogic(pId, Checkable ? 1 : 0, pRect, Flags, IsBinaryCheckBox ? CUi::EButtonSoundType::CHECKBOX : CUi::EButtonSoundType::DEFAULT);
 }
 
 void CMenus::DoLaserPreview(const CUIRect *pRect, const ColorHSLA LaserOutlineColor, const ColorHSLA LaserInnerColor, const int LaserType)
@@ -454,7 +457,7 @@ ColorHSLA CMenus::DoButton_ColorPicker(const CUIRect *pRect, unsigned int *pHsla
 	pRect->Draw(Outline, IGraphics::CORNER_ALL, 4.0f);
 	Rect.Draw(color_cast<ColorRGBA>(HslaColor), IGraphics::CORNER_ALL, 4.0f);
 
-	if(Ui()->DoButtonLogic(pHslaColor, 0, pRect, BUTTONFLAG_LEFT))
+	if(Ui()->DoButtonLogic(pHslaColor, 0, pRect, BUTTONFLAG_LEFT, CUi::EButtonSoundType::TOOLBAR))
 	{
 		m_ColorPickerPopupContext.m_pHslaColor = pHslaColor;
 		m_ColorPickerPopupContext.m_HslaColor = HslaColor;
@@ -879,7 +882,7 @@ void CMenus::FinishLoading()
 	m_LoadingState.m_Total = 0;
 	if(!m_MenuSfxOpenPlayed)
 	{
-		PlayMenuSfxSample(m_MenuSfxOpenSample);
+		PlayMenuSfxSample(EMenuSfxSample::MENU_OPEN);
 		m_MenuSfxOpenPlayed = true;
 	}
 }
@@ -1052,22 +1055,85 @@ void CMenus::LoadMenuSfx()
 	if(m_MenuSfxLoaded)
 		return;
 
-	auto LoadFirstExisting = [this](const std::initializer_list<const char *> &vPaths) {
-		for(const char *pPath : vPaths)
-		{
-			const int SampleId = Sound()->LoadWV(pPath);
-			if(SampleId >= 0)
-				return SampleId;
-		}
-		return -1;
+	static constexpr std::array<const char *, (size_t)EMenuSfxSample::COUNT> s_apSampleNames = {
+		"bss-complete",
+		"bss-progress",
+		"bss-stage-0",
+		"bss-stage-1",
+		"bss-stage-2",
+		"bss-stage-3",
+		"button-hover",
+		"button-select",
+		"button-sidebar-hover",
+		"button-sidebar-select",
+		"check-off",
+		"check-on",
+		"cursor-tap",
+		"default-hover",
+		"default-select-disabled",
+		"default-select",
+		"dialog-cancel-select",
+		"dialog-dangerous-select",
+		"dialog-dangerous-tick",
+		"dialog-ok-select",
+		"dialog-pop-in",
+		"dialog-pop-out",
+		"dropdown-close",
+		"dropdown-open",
+		"generic-error",
+		"item-swap",
+		"menu-close",
+		"menu-open-select",
+		"menu-open",
+		"menu-sub-open",
+		"metronome-latch",
+		"metronome-tick-downbeat",
+		"metronome-tick",
+		"noclick-hover",
+		"noclick-select",
+		"notch-tick",
+		"notification-cancel",
+		"notification-default",
+		"notification-done",
+		"notification-error",
+		"notification-friend-offline",
+		"notification-friend-online",
+		"notification-mention",
+		"osd-change",
+		"osd-off",
+		"osd-on",
+		"overlay-big-pop-in",
+		"overlay-big-pop-out",
+		"overlay-pop-in",
+		"overlay-pop-out",
+		"ruleset-select-fruits",
+		"ruleset-select-mania",
+		"ruleset-select-osu",
+		"ruleset-select-taiko",
+		"screen-back",
+		"scroll-to-previous",
+		"scroll-to-top",
+		"settings-pop-in",
+		"shutter",
+		"submit-select",
+		"tabselect-select",
+		"toolbar-hover",
+		"toolbar-select",
+		"wave-pop-in",
+		"wave-pop-out",
 	};
 
-	m_MenuSfxHoverSample = LoadFirstExisting({"BestClient/sfx/white-off.wv", "BestClient/sfx/check-off.wv"});
-	m_MenuSfxClickSample = LoadFirstExisting({"BestClient/sfx/click.wv"});
-	m_MenuSfxOpenSample = LoadFirstExisting({"BestClient/sfx/open-client.wv"});
-	m_MenuSfxExitSample = LoadFirstExisting({"BestClient/sfx/exit-client.wv"});
+	for(size_t i = 0; i < s_apSampleNames.size(); ++i)
+	{
+		char aPath[IO_MAX_PATH_LENGTH];
+		str_format(aPath, sizeof(aPath), "audio/osu/ui/%s.wv", s_apSampleNames[i]);
+		m_aMenuSfxSamples[i] = Sound()->LoadWV(aPath);
+	}
 	m_MenuSfxLastHoverTick = 0;
 	m_MenuSfxLastClickTick = 0;
+	m_MenuSfxLastScrollTick = 0;
+	m_MenuSfxLastSliderTick = 0;
+	m_MenuSfxLastPopupTick = 0;
 	m_MenuSfxLoaded = true;
 }
 
@@ -1076,23 +1142,22 @@ void CMenus::UnloadMenuSfx()
 	if(!m_MenuSfxLoaded)
 		return;
 
-	const int aSamples[] = {m_MenuSfxHoverSample, m_MenuSfxClickSample, m_MenuSfxOpenSample, m_MenuSfxExitSample};
-	for(const int SampleId : aSamples)
+	for(const int SampleId : m_aMenuSfxSamples)
 	{
 		if(SampleId >= 0)
 			Sound()->UnloadSample(SampleId);
 	}
 
-	m_MenuSfxHoverSample = -1;
-	m_MenuSfxClickSample = -1;
-	m_MenuSfxOpenSample = -1;
-	m_MenuSfxExitSample = -1;
+	m_aMenuSfxSamples.fill(-1);
 	m_MenuSfxLastHoverTick = 0;
 	m_MenuSfxLastClickTick = 0;
+	m_MenuSfxLastScrollTick = 0;
+	m_MenuSfxLastSliderTick = 0;
+	m_MenuSfxLastPopupTick = 0;
 	m_MenuSfxLoaded = false;
 }
 
-void CMenus::PlayMenuSfxSample(int SampleId)
+void CMenus::PlayMenuSfxSample(int SampleId, float Pitch)
 {
 	if(SampleId < 0 || !g_Config.m_SndEnable || !g_Config.m_BcMenuSfx)
 		return;
@@ -1101,10 +1166,131 @@ void CMenus::PlayMenuSfxSample(int SampleId)
 	if(Volume <= 0.0f)
 		return;
 
-	Sound()->Play(CSounds::CHN_GUI, SampleId, 0, Volume);
+	const ISound::CVoiceHandle Voice = Sound()->Play(CSounds::CHN_GUI, SampleId, 0, Volume);
+	if(Voice.IsValid())
+		Sound()->SetVoicePitch(Voice, Pitch);
 }
 
-void CMenus::OnButtonSoundEvent(CUi::EButtonSoundEvent Event)
+void CMenus::PlayMenuSfxSample(EMenuSfxSample Sample, float Pitch)
+{
+	if(!m_MenuSfxLoaded)
+		LoadMenuSfx();
+
+	PlayMenuSfxSample(m_aMenuSfxSamples[(size_t)Sample], Pitch);
+}
+
+void CMenus::PlayIngameMenuOpenSfx()
+{
+	PlayMenuSfxSample(EMenuSfxSample::MENU_OPEN);
+	PlayMenuSfxSample(EMenuSfxSample::MENU_SUB_OPEN);
+}
+
+void CMenus::PlayIngameMenuCloseSfx()
+{
+	PlayMenuSfxSample(EMenuSfxSample::MENU_CLOSE);
+	PlayMenuSfxSample(EMenuSfxSample::MENU_SUB_OPEN);
+}
+
+CMenus::EMenuSfxSample CMenus::MenuSfxHoverSample(CUi::EButtonSoundType SoundType) const
+{
+	switch(SoundType)
+	{
+	case CUi::EButtonSoundType::BUTTON:
+		return EMenuSfxSample::BUTTON_HOVER;
+	case CUi::EButtonSoundType::BUTTON_SIDEBAR:
+		return EMenuSfxSample::BUTTON_SIDEBAR_HOVER;
+	case CUi::EButtonSoundType::TOOLBAR:
+		return EMenuSfxSample::TOOLBAR_HOVER;
+	case CUi::EButtonSoundType::SILENT:
+		return EMenuSfxSample::NOCLICK_HOVER;
+	case CUi::EButtonSoundType::DEFAULT:
+	case CUi::EButtonSoundType::TAB_SELECT:
+	case CUi::EButtonSoundType::CHECKBOX:
+	case CUi::EButtonSoundType::DROPDOWN:
+	case CUi::EButtonSoundType::DIALOG_OK:
+	case CUi::EButtonSoundType::DIALOG_CANCEL:
+	case CUi::EButtonSoundType::DIALOG_DANGEROUS:
+	case CUi::EButtonSoundType::MENU_OPEN:
+		return EMenuSfxSample::DEFAULT_HOVER;
+	}
+	dbg_assert(false, "invalid UI button sound type");
+	return EMenuSfxSample::DEFAULT_HOVER;
+}
+
+CMenus::EMenuSfxSample CMenus::MenuSfxEventSample(CUi::EUiSoundEvent Event, CUi::EButtonSoundType SoundType, bool Enabled, int Checked) const
+{
+	if(Event == CUi::EUiSoundEvent::HOVER)
+		return MenuSfxHoverSample(SoundType);
+	if(Event == CUi::EUiSoundEvent::DISABLED_CLICK || !Enabled)
+		return EMenuSfxSample::DEFAULT_SELECT_DISABLED;
+
+	switch(Event)
+	{
+	case CUi::EUiSoundEvent::CHECK_ON:
+		return EMenuSfxSample::CHECK_ON;
+	case CUi::EUiSoundEvent::CHECK_OFF:
+		return EMenuSfxSample::CHECK_OFF;
+	case CUi::EUiSoundEvent::DROPDOWN_OPEN:
+		return EMenuSfxSample::DROPDOWN_OPEN;
+	case CUi::EUiSoundEvent::DROPDOWN_CLOSE:
+		return EMenuSfxSample::DROPDOWN_CLOSE;
+	case CUi::EUiSoundEvent::POPUP_OPEN:
+		return SoundType == CUi::EButtonSoundType::DIALOG_OK || SoundType == CUi::EButtonSoundType::DIALOG_CANCEL || SoundType == CUi::EButtonSoundType::DIALOG_DANGEROUS ? EMenuSfxSample::DIALOG_POP_IN : EMenuSfxSample::OVERLAY_POP_IN;
+	case CUi::EUiSoundEvent::POPUP_CLOSE:
+		return SoundType == CUi::EButtonSoundType::DIALOG_OK || SoundType == CUi::EButtonSoundType::DIALOG_CANCEL || SoundType == CUi::EButtonSoundType::DIALOG_DANGEROUS ? EMenuSfxSample::DIALOG_POP_OUT : EMenuSfxSample::OVERLAY_POP_OUT;
+	case CUi::EUiSoundEvent::SCROLL_TICK:
+	case CUi::EUiSoundEvent::SCROLL_TO_PREVIOUS:
+		return EMenuSfxSample::SCROLL_TO_PREVIOUS;
+	case CUi::EUiSoundEvent::SCROLL_TO_TOP:
+		return EMenuSfxSample::SCROLL_TO_TOP;
+	case CUi::EUiSoundEvent::SLIDER_TICK:
+		return EMenuSfxSample::NOTCH_TICK;
+	case CUi::EUiSoundEvent::VALUE_CHANGE:
+		return EMenuSfxSample::OSD_CHANGE;
+	case CUi::EUiSoundEvent::ITEM_SWAP:
+		return EMenuSfxSample::ITEM_SWAP;
+	case CUi::EUiSoundEvent::ERROR:
+		return EMenuSfxSample::GENERIC_ERROR;
+	case CUi::EUiSoundEvent::SUBMIT:
+		return EMenuSfxSample::SUBMIT_SELECT;
+	case CUi::EUiSoundEvent::CLICK:
+	case CUi::EUiSoundEvent::HOVER:
+	case CUi::EUiSoundEvent::DISABLED_CLICK:
+		break;
+	}
+
+	switch(SoundType)
+	{
+	case CUi::EButtonSoundType::BUTTON:
+		return EMenuSfxSample::BUTTON_SELECT;
+	case CUi::EButtonSoundType::BUTTON_SIDEBAR:
+		return EMenuSfxSample::BUTTON_SIDEBAR_SELECT;
+	case CUi::EButtonSoundType::TAB_SELECT:
+		return EMenuSfxSample::TABSELECT_SELECT;
+	case CUi::EButtonSoundType::TOOLBAR:
+		return EMenuSfxSample::TOOLBAR_SELECT;
+	case CUi::EButtonSoundType::CHECKBOX:
+		return Checked ? EMenuSfxSample::CHECK_OFF : EMenuSfxSample::CHECK_ON;
+	case CUi::EButtonSoundType::DROPDOWN:
+		return EMenuSfxSample::DROPDOWN_OPEN;
+	case CUi::EButtonSoundType::DIALOG_OK:
+		return EMenuSfxSample::DIALOG_OK_SELECT;
+	case CUi::EButtonSoundType::DIALOG_CANCEL:
+		return EMenuSfxSample::DIALOG_CANCEL_SELECT;
+	case CUi::EButtonSoundType::DIALOG_DANGEROUS:
+		return EMenuSfxSample::DIALOG_DANGEROUS_SELECT;
+	case CUi::EButtonSoundType::MENU_OPEN:
+		return EMenuSfxSample::MENU_OPEN_SELECT;
+	case CUi::EButtonSoundType::SILENT:
+		return EMenuSfxSample::NOCLICK_SELECT;
+	case CUi::EButtonSoundType::DEFAULT:
+		return EMenuSfxSample::DEFAULT_SELECT;
+	}
+	dbg_assert(false, "invalid UI button sound type");
+	return EMenuSfxSample::DEFAULT_SELECT;
+}
+
+void CMenus::OnUiSoundEvent(CUi::EUiSoundEvent Event, CUi::EButtonSoundType SoundType, bool Enabled, int Checked, float Pitch)
 {
 	if(!m_MenuSfxLoaded)
 		LoadMenuSfx();
@@ -1112,22 +1298,56 @@ void CMenus::OnButtonSoundEvent(CUi::EButtonSoundEvent Event)
 	const int64_t Now = time_get();
 	const int64_t HoverCooldown = time_freq() / 20; // 50 ms
 	const int64_t ClickCooldown = time_freq() / 25; // 40 ms
+	const int64_t SliderCooldown = time_freq() / 16; // ~63 ms
+	const int64_t ScrollCooldown = time_freq() / 12; // ~83 ms
+	const int64_t PopupCooldown = time_freq() / 33; // ~30 ms
 
 	switch(Event)
 	{
-	case CUi::EButtonSoundEvent::HOVER_ENTER:
+	case CUi::EUiSoundEvent::HOVER:
 		if(Now - m_MenuSfxLastHoverTick >= HoverCooldown)
 		{
-			PlayMenuSfxSample(m_MenuSfxHoverSample);
+			PlayMenuSfxSample(MenuSfxEventSample(Event, SoundType, Enabled, Checked));
 			m_MenuSfxLastHoverTick = Now;
 		}
 		break;
-	case CUi::EButtonSoundEvent::LEFT_CLICK:
-	case CUi::EButtonSoundEvent::RIGHT_CLICK:
-	case CUi::EButtonSoundEvent::MIDDLE_CLICK:
+	case CUi::EUiSoundEvent::SCROLL_TICK:
+	case CUi::EUiSoundEvent::SCROLL_TO_TOP:
+	case CUi::EUiSoundEvent::SCROLL_TO_PREVIOUS:
+		if(Now - m_MenuSfxLastScrollTick >= ScrollCooldown)
+		{
+			PlayMenuSfxSample(MenuSfxEventSample(Event, SoundType, Enabled, Checked));
+			m_MenuSfxLastScrollTick = Now;
+		}
+		break;
+	case CUi::EUiSoundEvent::SLIDER_TICK:
+	case CUi::EUiSoundEvent::VALUE_CHANGE:
+		if(Now - m_MenuSfxLastSliderTick >= SliderCooldown)
+		{
+			PlayMenuSfxSample(MenuSfxEventSample(Event, SoundType, Enabled, Checked), Pitch);
+			m_MenuSfxLastSliderTick = Now;
+		}
+		break;
+	case CUi::EUiSoundEvent::POPUP_OPEN:
+	case CUi::EUiSoundEvent::POPUP_CLOSE:
+		if(Now - m_MenuSfxLastPopupTick >= PopupCooldown)
+		{
+			PlayMenuSfxSample(MenuSfxEventSample(Event, SoundType, Enabled, Checked));
+			m_MenuSfxLastPopupTick = Now;
+		}
+		break;
+	case CUi::EUiSoundEvent::CLICK:
+	case CUi::EUiSoundEvent::DISABLED_CLICK:
+	case CUi::EUiSoundEvent::CHECK_ON:
+	case CUi::EUiSoundEvent::CHECK_OFF:
+	case CUi::EUiSoundEvent::DROPDOWN_OPEN:
+	case CUi::EUiSoundEvent::DROPDOWN_CLOSE:
+	case CUi::EUiSoundEvent::ITEM_SWAP:
+	case CUi::EUiSoundEvent::ERROR:
+	case CUi::EUiSoundEvent::SUBMIT:
 		if(Now - m_MenuSfxLastClickTick >= ClickCooldown)
 		{
-			PlayMenuSfxSample(m_MenuSfxClickSample);
+			PlayMenuSfxSample(MenuSfxEventSample(Event, SoundType, Enabled, Checked));
 			m_MenuSfxLastClickTick = Now;
 		}
 		break;
@@ -1746,7 +1966,7 @@ void CMenus::RenderPopupFullscreen(CUIRect Screen)
 				static char s_CommunityTooltipButtonId;
 				Name.VSplitLeft(2.5f * Name.h, &Icon, &Name);
 				m_CommunityIcons.Render(pIcon, Icon, true);
-				Ui()->DoButtonLogic(&s_CommunityTooltipButtonId, 0, &Icon, BUTTONFLAG_NONE);
+				Ui()->DoButtonLogic(&s_CommunityTooltipButtonId, 0, &Icon, BUTTONFLAG_NONE, CUi::EButtonSoundType::SILENT);
 				GameClient()->m_Tooltips.DoToolTip(&s_CommunityTooltipButtonId, &Icon, pCommunity->Name());
 			}
 
@@ -2683,6 +2903,24 @@ void CMenus::SetActive(bool Active)
 	{
 		Ui()->SetHotItem(nullptr);
 		Ui()->SetActiveItem(nullptr);
+
+		const bool IngameMenuState = Client()->State() == IClient::STATE_ONLINE || Client()->State() == IClient::STATE_DEMOPLAYBACK;
+		if(IngameMenuState)
+		{
+			if(Active)
+			{
+				PlayIngameMenuOpenSfx();
+				m_MenuSfxSuppressNextIngameClose = false;
+			}
+			else if(m_MenuSfxSuppressNextIngameClose)
+			{
+				m_MenuSfxSuppressNextIngameClose = false;
+			}
+			else
+			{
+				PlayIngameMenuCloseSfx();
+			}
+		}
 	}
 	m_MenuActive = Active;
 	if(!m_MenuActive)
@@ -2728,7 +2966,9 @@ void CMenus::OnShutdown()
 {
 	if(!m_MenuSfxExitPlayed)
 	{
-		PlayMenuSfxSample(m_MenuSfxExitSample);
+		if(!m_MenuSfxLoaded)
+			LoadMenuSfx();
+		PlayMenuSfxSample(EMenuSfxSample::SCREEN_BACK);
 		m_MenuSfxExitPlayed = true;
 	}
 	Ui()->ClearButtonSoundEventCallback();
@@ -2757,6 +2997,11 @@ bool CMenus::OnInput(const IInput::CEvent &Event)
 			IsActive() && (Client()->State() == IClient::STATE_ONLINE || Client()->State() == IClient::STATE_DEMOPLAYBACK) &&
 			BCUiAnimations::Enabled() && g_Config.m_BcIngameMenuAnimation != 0 && g_Config.m_BcIngameMenuAnimationMs > 0)
 		{
+			if(!m_BcIngameMenuClosing)
+			{
+				PlayIngameMenuCloseSfx();
+				m_MenuSfxSuppressNextIngameClose = true;
+			}
 			m_BcIngameMenuClosing = true;
 			return true;
 		}
@@ -2776,7 +3021,7 @@ void CMenus::OnStateChange(int NewState, int OldState)
 	{
 		if(!m_MenuSfxLoaded)
 			LoadMenuSfx();
-		PlayMenuSfxSample(m_MenuSfxExitSample);
+		PlayMenuSfxSample(EMenuSfxSample::SCREEN_BACK);
 		m_MenuSfxExitPlayed = true;
 	}
 	if(NewState == IClient::STATE_QUITTING || NewState == IClient::STATE_RESTARTING)
@@ -2813,6 +3058,7 @@ void CMenus::OnStateChange(int NewState, int OldState)
 		if(m_Popup != POPUP_WARNING)
 		{
 			m_Popup = POPUP_NONE;
+			m_MenuSfxSuppressNextIngameClose = true;
 			SetActive(false);
 		}
 	}
@@ -2860,8 +3106,8 @@ void CMenus::OnRender()
 
 	if(IsActive())
 	{
-		Ui()->SetButtonSoundEventCallback([this](CUi::EButtonSoundEvent Event) {
-			MenuButtonSoundEvent(Event);
+		Ui()->SetButtonSoundEventCallback([this](CUi::EUiSoundEvent Event, CUi::EButtonSoundType SoundType, bool Enabled, int Checked, float Pitch) {
+			MenuButtonSoundEvent(Event, SoundType, Enabled, Checked, Pitch);
 		});
 	}
 	else
@@ -2928,7 +3174,14 @@ void CMenus::OnRender()
 		Ui()->SetHotItem(nullptr);
 		Ui()->SetActiveItem(nullptr);
 		if(IngameMenuAnimated)
+		{
+			if(!m_BcIngameMenuClosing)
+			{
+				PlayIngameMenuCloseSfx();
+				m_MenuSfxSuppressNextIngameClose = true;
+			}
 			m_BcIngameMenuClosing = true;
+		}
 		else
 			SetActive(false);
 	}
@@ -3179,18 +3432,19 @@ void CMenus::QuitWithMenuSfx()
 	if(!m_MenuSfxLoaded)
 		LoadMenuSfx();
 
-	const bool CanDelayQuitForSfx = g_Config.m_SndEnable && g_Config.m_BcMenuSfx && m_MenuSfxExitSample >= 0;
+	const int ExitSample = m_aMenuSfxSamples[(size_t)EMenuSfxSample::SCREEN_BACK];
+	const bool CanDelayQuitForSfx = g_Config.m_SndEnable && g_Config.m_BcMenuSfx && ExitSample >= 0;
 	if(CanDelayQuitForSfx)
 	{
 		if(!m_MenuSfxExitPlayed)
 		{
-			PlayMenuSfxSample(m_MenuSfxExitSample);
+			PlayMenuSfxSample(ExitSample);
 			m_MenuSfxExitPlayed = true;
 		}
 
 		if(!m_MenuSfxQuitPending)
 		{
-			const float DelaySeconds = std::clamp(Sound()->GetSampleTotalTime(m_MenuSfxExitSample), 0.08f, 0.35f);
+			const float DelaySeconds = std::clamp(Sound()->GetSampleTotalTime(ExitSample), 0.08f, 0.35f);
 			m_MenuSfxQuitAt = time_get() + (int64_t)(DelaySeconds * time_freq());
 			m_MenuSfxQuitPending = true;
 		}

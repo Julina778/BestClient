@@ -16,6 +16,7 @@
 
 #include <game/localization.h>
 
+#include <cmath>
 #include <limits>
 
 void CUIElement::Init(CUi *pUI, int RequestedRectCount)
@@ -103,6 +104,29 @@ IClient *CUIElementBase::Client() const { return ms_pUi->Client(); }
 IGraphics *CUIElementBase::Graphics() const { return ms_pUi->Graphics(); }
 IInput *CUIElementBase::Input() const { return ms_pUi->Input(); }
 ITextRender *CUIElementBase::TextRender() const { return ms_pUi->TextRender(); }
+
+static bool UiRectContains(const CUIRect &Outer, const CUIRect &Inner)
+{
+	constexpr float Tolerance = 0.5f;
+	return Inner.x + Tolerance >= Outer.x &&
+		Inner.y + Tolerance >= Outer.y &&
+		Inner.x + Inner.w <= Outer.x + Outer.w + Tolerance &&
+		Inner.y + Inner.h <= Outer.y + Outer.h + Tolerance;
+}
+
+bool CUi::SButtonSoundTarget::SameVisibleTarget(const SButtonSoundTarget &Other) const
+{
+	if(!m_Valid || !Other.m_Valid || m_SoundType != Other.m_SoundType)
+		return false;
+	if(m_pId == Other.m_pId)
+		return true;
+
+	constexpr float Tolerance = 0.5f;
+	return std::fabs(m_Rect.x - Other.m_Rect.x) <= Tolerance &&
+		std::fabs(m_Rect.y - Other.m_Rect.y) <= Tolerance &&
+		std::fabs(m_Rect.w - Other.m_Rect.w) <= Tolerance &&
+		std::fabs(m_Rect.h - Other.m_Rect.h) <= Tolerance;
+}
 
 float CUi::EffectiveScreenAspect() const
 {
@@ -280,8 +304,8 @@ void CUi::Update(vec2 MouseWorldPos)
 	if(m_pActiveItem)
 		m_pHotItem = m_pActiveItem;
 	m_pBecomingHotItem = nullptr;
-	m_pHoveredSoundItem = m_pBecomingHoveredSoundItem;
-	m_pBecomingHoveredSoundItem = nullptr;
+	m_ButtonSoundHoveredTarget = m_ButtonSoundBecomingHoveredTarget;
+	m_ButtonSoundBecomingHoveredTarget.Reset();
 	m_pHotScrollRegion = m_pBecomingHotScrollRegion;
 	m_pBecomingHotScrollRegion = nullptr;
 
@@ -531,6 +555,48 @@ const CUIRect *CUi::ClipArea() const
 	return &m_vClips.back();
 }
 
+void CUi::EmitSoundEvent(EUiSoundEvent Event, EButtonSoundType SoundType, bool Enabled, int Checked, float Pitch)
+{
+	if(m_pfnButtonSoundEvent == nullptr || SoundType == EButtonSoundType::SILENT)
+		return;
+	m_pfnButtonSoundEvent(Event, SoundType, Enabled, Checked, Pitch);
+}
+
+void CUi::EmitHoverSound(const void *pId, const CUIRect *pRect, EButtonSoundType SoundType, bool Enabled, int Checked)
+{
+	if(m_pfnButtonSoundEvent == nullptr || SoundType == EButtonSoundType::SILENT || !Enabled)
+		return;
+
+	SButtonSoundTarget SoundTarget;
+	SoundTarget.m_Valid = true;
+	SoundTarget.m_pId = pId;
+	SoundTarget.m_Rect = *pRect;
+	SoundTarget.m_SoundType = SoundType;
+
+	const bool PreviousTargetStillHovered =
+		m_ButtonSoundHoveredTarget.m_Valid &&
+		MouseHovered(&m_ButtonSoundHoveredTarget.m_Rect);
+	if(PreviousTargetStillHovered &&
+		!SoundTarget.SameVisibleTarget(m_ButtonSoundHoveredTarget) &&
+		UiRectContains(SoundTarget.m_Rect, m_ButtonSoundHoveredTarget.m_Rect))
+	{
+		return;
+	}
+
+	const bool AnyMouseButtonPressed = MouseButton(0) || MouseButton(1) || MouseButton(2);
+	const bool CanClaimSoundTarget = !m_ButtonSoundBecomingHoveredTarget.m_Valid ||
+		m_ButtonSoundBecomingHoveredTarget.SameVisibleTarget(m_ButtonSoundHoveredTarget);
+	if(!CanClaimSoundTarget)
+		return;
+
+	const bool CanPlayHoverSound = !AnyMouseButtonPressed &&
+		HotItem() != pId &&
+		!SoundTarget.SameVisibleTarget(m_ButtonSoundHoveredTarget);
+	m_ButtonSoundBecomingHoveredTarget = SoundTarget;
+	if(CanPlayHoverSound)
+		EmitSoundEvent(EUiSoundEvent::HOVER, SoundType, true, Checked);
+}
+
 void CUi::UpdateClipping()
 {
 	if(IsClipped())
@@ -546,27 +612,30 @@ void CUi::UpdateClipping()
 	}
 }
 
-int CUi::DoButtonLogic(const void *pId, int Checked, const CUIRect *pRect, const unsigned Flags)
+int CUi::DoButtonLogic(const void *pId, int Checked, const CUIRect *pRect, const unsigned Flags, EButtonSoundType SoundType)
 {
 	int ReturnValue = 0;
 	const bool Inside = MouseHovered(pRect);
+	const bool SoundEnabled = SoundType != EButtonSoundType::SILENT && Flags != BUTTONFLAG_NONE;
 
 	if(CheckActiveItem(pId))
 	{
 		dbg_assert(m_ActiveButtonLogicButton >= 0, "m_ActiveButtonLogicButton invalid");
 		if(!MouseButton(m_ActiveButtonLogicButton))
 		{
-			if(Inside && Checked >= 0)
+			if(Inside)
 			{
-				ReturnValue = 1 + m_ActiveButtonLogicButton;
-				if(m_pfnButtonSoundEvent != nullptr)
+				const bool Enabled = Checked >= 0;
+				if(Enabled)
+					ReturnValue = 1 + m_ActiveButtonLogicButton;
+				if(SoundEnabled)
 				{
-					if(m_ActiveButtonLogicButton == 0)
-						m_pfnButtonSoundEvent(EButtonSoundEvent::LEFT_CLICK);
-					else if(m_ActiveButtonLogicButton == 1)
-						m_pfnButtonSoundEvent(EButtonSoundEvent::RIGHT_CLICK);
-					else if(m_ActiveButtonLogicButton == 2)
-						m_pfnButtonSoundEvent(EButtonSoundEvent::MIDDLE_CLICK);
+					if(!Enabled)
+						EmitSoundEvent(EUiSoundEvent::DISABLED_CLICK, SoundType, false, Checked);
+					else if(SoundType == EButtonSoundType::CHECKBOX)
+						EmitSoundEvent(Checked ? EUiSoundEvent::CHECK_OFF : EUiSoundEvent::CHECK_ON, SoundType, true, Checked);
+					else
+						EmitSoundEvent(EUiSoundEvent::CLICK, SoundType, true, Checked);
 				}
 			}
 			SetActiveItem(nullptr);
@@ -590,15 +659,8 @@ int CUi::DoButtonLogic(const void *pId, int Checked, const CUIRect *pRect, const
 
 	if(Inside && NoRelevantButtonsPressed)
 	{
-		const bool CanPlayHoverSound = m_pfnButtonSoundEvent != nullptr &&
-			HotItem() != pId &&
-			m_pHoveredSoundItem != pId &&
-			(m_pBecomingHoveredSoundItem == nullptr || m_pBecomingHoveredSoundItem == m_pHoveredSoundItem);
-		m_pBecomingHoveredSoundItem = pId;
-		if(CanPlayHoverSound)
-		{
-			m_pfnButtonSoundEvent(EButtonSoundEvent::HOVER_ENTER);
-		}
+		if(SoundEnabled)
+			EmitHoverSound(pId, pRect, SoundType, Checked >= 0, Checked);
 		SetHotItem(pId);
 	}
 
@@ -654,6 +716,8 @@ int CUi::DoDraggableButtonLogic(const void *pId, int Checked, const CUIRect *pRe
 		{
 			if(MouseButton(i))
 			{
+				if(MouseButtonClicked(i))
+					EmitSoundEvent(EUiSoundEvent::CLICK);
 				SetActiveItem(pId);
 				m_ActiveDraggableButtonLogicButton = i;
 			}
@@ -661,7 +725,10 @@ int CUi::DoDraggableButtonLogic(const void *pId, int Checked, const CUIRect *pRe
 	}
 
 	if(Inside && !MouseButton(0) && !MouseButton(1) && !MouseButton(2))
+	{
+		EmitHoverSound(pId, pRect);
 		SetHotItem(pId);
+	}
 
 	return ReturnValue;
 }
@@ -684,12 +751,16 @@ bool CUi::DoDoubleClickLogic(const void *pId)
 EEditState CUi::DoPickerLogic(const void *pId, const CUIRect *pRect, float *pX, float *pY)
 {
 	if(MouseHovered(pRect))
+	{
+		EmitHoverSound(pId, pRect, EButtonSoundType::TOOLBAR);
 		SetHotItem(pId);
+	}
 
 	EEditState Res = EEditState::EDITING;
 
 	if(HotItem() == pId && MouseButtonClicked(0))
 	{
+		EmitSoundEvent(EUiSoundEvent::CLICK, EButtonSoundType::TOOLBAR);
 		SetActiveItem(pId);
 		if(!m_pLastEditingItem)
 		{
@@ -718,6 +789,8 @@ EEditState CUi::DoPickerLogic(const void *pId, const CUIRect *pRect, float *pX, 
 		*pX = std::clamp(MouseX() - pRect->x, 0.0f, pRect->w);
 	if(pY)
 		*pY = std::clamp(MouseY() - pRect->y, 0.0f, pRect->h);
+	if(Res == EEditState::EDITING && (absolute(MouseDeltaX()) > 0.0f || absolute(MouseDeltaY()) > 0.0f))
+		EmitSoundEvent(EUiSoundEvent::SLIDER_TICK);
 
 	return Res;
 }
@@ -994,6 +1067,8 @@ bool CUi::DoEditBox(CLineInput *pLineInput, const CUIRect *pRect, float FontSize
 	{
 		if(MouseButton(0))
 		{
+			if(MouseButtonClicked(0))
+				EmitSoundEvent(EUiSoundEvent::CLICK);
 			if(!Active)
 				JustGotActive = true;
 			SetActiveItem(pLineInput);
@@ -1001,7 +1076,10 @@ bool CUi::DoEditBox(CLineInput *pLineInput, const CUIRect *pRect, float FontSize
 	}
 
 	if(Inside && !MouseButton(0))
+	{
+		EmitHoverSound(pLineInput, pRect);
 		SetHotItem(pLineInput);
+	}
 
 	if(Enabled() && Active && !JustGotActive)
 		pLineInput->Activate(EInputPriority::UI);
@@ -1080,7 +1158,7 @@ bool CUi::DoClearableEditBox(CLineInput *pLineInput, const CUIRect *pRect, float
 	TextRender()->SetRenderFlags(ETextRenderFlags::TEXT_RENDER_FLAG_ONLY_ADVANCE_WIDTH | ETextRenderFlags::TEXT_RENDER_FLAG_NO_X_BEARING | ETextRenderFlags::TEXT_RENDER_FLAG_NO_Y_BEARING | ETextRenderFlags::TEXT_RENDER_FLAG_NO_OVERSIZE);
 	DoLabel(&ClearButton, "×", ClearButton.h * CUi::ms_FontmodHeight * 0.8f, TEXTALIGN_MC);
 	TextRender()->SetRenderFlags(0);
-	if(DoButtonLogic(pLineInput->GetClearButtonId(), 0, &ClearButton, BUTTONFLAG_LEFT))
+	if(DoButtonLogic(pLineInput->GetClearButtonId(), 0, &ClearButton, BUTTONFLAG_LEFT, EButtonSoundType::TOOLBAR))
 	{
 		pLineInput->Clear();
 		SetActiveItem(pLineInput);
@@ -1109,7 +1187,7 @@ bool CUi::DoEditBox_Search(CLineInput *pLineInput, const CUIRect *pRect, float F
 	return DoClearableEditBox(pLineInput, &QuickSearch, FontSize);
 }
 
-int CUi::DoButton_Menu(CUIElement &UIElement, const CButtonContainer *pId, const std::function<const char *()> &GetTextLambda, const CUIRect *pRect, const SMenuButtonProperties &Props)
+int CUi::DoButton_Menu(CUIElement &UIElement, const CButtonContainer *pId, const std::function<const char *()> &GetTextLambda, const CUIRect *pRect, const SMenuButtonProperties &Props, EButtonSoundType SoundType)
 {
 	if(!UIElement.AreRectsInit())
 	{
@@ -1226,7 +1304,7 @@ int CUi::DoButton_Menu(CUIElement &UIElement, const CButtonContainer *pId, const
 	ColorRGBA ColorTextOutline(TextRender()->DefaultTextOutlineColor());
 	if(UIElement.Rect(0)->m_UITextContainer.Valid())
 		TextRender()->RenderTextContainer(UIElement.Rect(0)->m_UITextContainer, ColorText, ColorTextOutline);
-	return DoButtonLogic(pId, Props.m_Checked, pRect, Props.m_Flags);
+	return DoButtonLogic(pId, Props.m_Checked, pRect, Props.m_Flags, SoundType);
 }
 
 int CUi::DoButton_FontIcon(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, const unsigned Flags, int Corners, bool Enabled, const std::optional<ColorRGBA> ButtonColor)
@@ -1254,10 +1332,10 @@ int CUi::DoButton_FontIcon(CButtonContainer *pButtonContainer, const char *pText
 	TextRender()->SetRenderFlags(0);
 	TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
 
-	return DoButtonLogic(pButtonContainer, Checked, pRect, Flags);
+	return DoButtonLogic(pButtonContainer, Checked, pRect, Flags, EButtonSoundType::TOOLBAR);
 }
 
-int CUi::DoButton_PopupMenu(CButtonContainer *pButtonContainer, const char *pText, const CUIRect *pRect, float Size, int Align, float Padding, bool TransparentInactive, bool Enabled, const std::optional<ColorRGBA> ButtonColor)
+int CUi::DoButton_PopupMenu(CButtonContainer *pButtonContainer, const char *pText, const CUIRect *pRect, float Size, int Align, float Padding, bool TransparentInactive, bool Enabled, const std::optional<ColorRGBA> ButtonColor, EButtonSoundType SoundType)
 {
 	if(!TransparentInactive || CheckActiveItem(pButtonContainer) || HotItem() == pButtonContainer)
 		pRect->Draw(ButtonColor.value_or(Enabled ? ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f * ButtonColorMul(pButtonContainer)) : ColorRGBA(0.0f, 0.0f, 0.0f, 0.4f)), IGraphics::CORNER_ALL, 3.0f);
@@ -1266,7 +1344,8 @@ int CUi::DoButton_PopupMenu(CButtonContainer *pButtonContainer, const char *pTex
 	pRect->Margin(Padding, &Label);
 	DoLabel(&Label, pText, Size, Align);
 
-	return Enabled ? DoButtonLogic(pButtonContainer, 0, pRect, BUTTONFLAG_LEFT) : 0;
+	const int Result = DoButtonLogic(pButtonContainer, Enabled ? 0 : -1, pRect, BUTTONFLAG_LEFT, SoundType);
+	return Enabled ? Result : 0;
 }
 
 int64_t CUi::DoValueSelector(const void *pId, const CUIRect *pRect, const char *pLabel, int64_t Current, int64_t Min, int64_t Max, const SValueSelectorProperties &Props)
@@ -1277,6 +1356,7 @@ int64_t CUi::DoValueSelector(const void *pId, const CUIRect *pRect, const char *
 SEditResult<int64_t> CUi::DoValueSelectorWithState(const void *pId, const CUIRect *pRect, const char *pLabel, int64_t Current, int64_t Min, int64_t Max, const SValueSelectorProperties &Props)
 {
 	// logic
+	const int64_t OriginalCurrent = Current;
 	const bool Inside = MouseInside(pRect);
 	const int Base = Props.m_IsHex ? 16 : 10;
 
@@ -1345,6 +1425,8 @@ SEditResult<int64_t> CUi::DoValueSelectorWithState(const void *pId, const CUIRec
 		{
 			if(MouseButton(0))
 			{
+				if(MouseButtonClicked(0))
+					EmitSoundEvent(EUiSoundEvent::CLICK);
 				m_ActiveValueSelectorState.m_Button = 0;
 				m_ActiveValueSelectorState.m_DidScroll = false;
 				m_ActiveValueSelectorState.m_ScrollValue = 0.0f;
@@ -1354,6 +1436,8 @@ SEditResult<int64_t> CUi::DoValueSelectorWithState(const void *pId, const CUIRec
 			}
 			else if(MouseButton(1))
 			{
+				if(MouseButtonClicked(1))
+					EmitSoundEvent(EUiSoundEvent::CLICK);
 				m_ActiveValueSelectorState.m_Button = 1;
 				SetActiveItem(pId);
 			}
@@ -1380,7 +1464,10 @@ SEditResult<int64_t> CUi::DoValueSelectorWithState(const void *pId, const CUIRec
 	}
 
 	if(Inside && !MouseButton(0) && !MouseButton(1))
+	{
+		EmitHoverSound(pId, pRect);
 		SetHotItem(pId);
+	}
 
 	EEditState State = EEditState::NONE;
 	if(m_pLastEditingItem == pId)
@@ -1397,6 +1484,9 @@ SEditResult<int64_t> CUi::DoValueSelectorWithState(const void *pId, const CUIRec
 		State = EEditState::END;
 		m_pLastEditingItem = nullptr;
 	}
+
+	if(Current != OriginalCurrent)
+		EmitSoundEvent(EUiSoundEvent::SLIDER_TICK, EButtonSoundType::DEFAULT);
 
 	return SEditResult<int64_t>{State, Current};
 }
@@ -1437,6 +1527,8 @@ float CUi::DoScrollbarV(const void *pId, const CUIRect *pRect, float Current)
 		{
 			if(MouseButton(0))
 			{
+				if(MouseButtonClicked(0))
+					EmitSoundEvent(EUiSoundEvent::CLICK);
 				SetActiveItem(pId);
 				m_ActiveScrollbarOffset = MouseY() - Handle.y;
 				Grabbed = true;
@@ -1444,6 +1536,7 @@ float CUi::DoScrollbarV(const void *pId, const CUIRect *pRect, float Current)
 		}
 		else if(MouseButtonClicked(0))
 		{
+			EmitSoundEvent(EUiSoundEvent::CLICK);
 			SetActiveItem(pId);
 			m_ActiveScrollbarOffset = Handle.h / 2.0f;
 			Grabbed = true;
@@ -1452,6 +1545,7 @@ float CUi::DoScrollbarV(const void *pId, const CUIRect *pRect, float Current)
 
 	if(InsideRail && !MouseButton(0))
 	{
+		EmitHoverSound(pId, &Rail);
 		SetHotItem(pId);
 	}
 
@@ -1519,6 +1613,8 @@ float CUi::DoScrollbarH(const void *pId, const CUIRect *pRect, float Current, co
 		{
 			if(MouseButton(0))
 			{
+				if(MouseButtonClicked(0))
+					EmitSoundEvent(EUiSoundEvent::CLICK);
 				SetActiveItem(pId);
 				m_pLastActiveScrollbar = pId;
 				m_ActiveScrollbarOffset = MouseX() - Handle.x;
@@ -1527,6 +1623,7 @@ float CUi::DoScrollbarH(const void *pId, const CUIRect *pRect, float Current, co
 		}
 		else if(MouseButtonClicked(0))
 		{
+			EmitSoundEvent(EUiSoundEvent::CLICK);
 			SetActiveItem(pId);
 			m_pLastActiveScrollbar = pId;
 			m_ActiveScrollbarOffset = Handle.w / 2.0f;
@@ -1542,6 +1639,7 @@ float CUi::DoScrollbarH(const void *pId, const CUIRect *pRect, float Current, co
 
 	if(InsideRail && !MouseButton(0))
 	{
+		EmitHoverSound(pId, &Rail);
 		SetHotItem(pId);
 	}
 
@@ -1643,6 +1741,11 @@ bool CUi::DoScrollbarOption(const void *pId, int *pOption, const CUIRect *pRect,
 
 	if(*pOption != Value)
 	{
+		const int PitchValue = Infinite && Value == 0 ? Max : Value;
+		const float RelativeValue = Max > Min ? std::clamp((PitchValue - Min) / (float)(Max - Min), 0.0f, 1.0f) : 0.5f;
+		const float RawPitch = 0.45f + RelativeValue * 0.73f;
+		const float Pitch = 1.0f + (RawPitch - 1.0f) / 3.0f;
+		EmitSoundEvent(EUiSoundEvent::SLIDER_TICK, EButtonSoundType::DEFAULT, true, 0, Pitch);
 		*pOption = Value;
 		return true;
 	}
@@ -1752,8 +1855,9 @@ void CUi::RenderProgressSpinner(vec2 Center, float OuterRadius, const SProgressS
 	Graphics()->QuadsEnd();
 }
 
-void CUi::DoPopupMenu(const SPopupMenuId *pId, float X, float Y, float Width, float Height, void *pContext, FPopupMenuFunction pfnFunc, const SPopupMenuProperties &Props)
+void CUi::DoPopupMenu(const SPopupMenuId *pId, float X, float Y, float Width, float Height, void *pContext, FPopupMenuFunction pfnFunc, const SPopupMenuProperties &Props, EButtonSoundType SoundType)
 {
+	const bool WasOpen = IsPopupOpen(pId);
 	constexpr float Margin = SPopupMenu::POPUP_BORDER + SPopupMenu::POPUP_MARGIN;
 	if(X + Width > Screen()->w - Margin)
 		X = maximum<float>(X - Width, Margin);
@@ -1764,12 +1868,15 @@ void CUi::DoPopupMenu(const SPopupMenuId *pId, float X, float Y, float Width, fl
 	SPopupMenu *pNewMenu = &m_vPopupMenus.back();
 	pNewMenu->m_pId = pId;
 	pNewMenu->m_Props = Props;
+	pNewMenu->m_SoundType = SoundType;
 	pNewMenu->m_Rect.x = X;
 	pNewMenu->m_Rect.y = Y;
 	pNewMenu->m_Rect.w = Width;
 	pNewMenu->m_Rect.h = Height;
 	pNewMenu->m_pContext = pContext;
 	pNewMenu->m_pfnFunc = pfnFunc;
+	if(!WasOpen)
+		EmitSoundEvent(EUiSoundEvent::POPUP_OPEN, SoundType);
 }
 
 void CUi::RenderPopupMenus()
@@ -1831,10 +1938,12 @@ void CUi::ClosePopupMenu(const SPopupMenuId *pId, bool IncludeDescendants)
 	auto PopupMenuToClose = std::find_if(m_vPopupMenus.begin(), m_vPopupMenus.end(), [pId](const SPopupMenu PopupMenu) { return PopupMenu.m_pId == pId; });
 	if(PopupMenuToClose != m_vPopupMenus.end())
 	{
+		const EButtonSoundType SoundType = PopupMenuToClose->m_SoundType;
 		if(IncludeDescendants)
 			m_vPopupMenus.erase(PopupMenuToClose, m_vPopupMenus.end());
 		else
 			m_vPopupMenus.erase(PopupMenuToClose);
+		EmitSoundEvent(EUiSoundEvent::POPUP_CLOSE, SoundType);
 		SetActiveItem(nullptr);
 		if(m_pfnPopupMenuClosedCallback)
 			m_pfnPopupMenuClosedCallback();
@@ -1846,7 +1955,9 @@ void CUi::ClosePopupMenus()
 	if(m_vPopupMenus.empty())
 		return;
 
+	const EButtonSoundType SoundType = m_vPopupMenus.back().m_SoundType;
 	m_vPopupMenus.clear();
+	EmitSoundEvent(EUiSoundEvent::POPUP_CLOSE, SoundType);
 	SetActiveItem(nullptr);
 	if(m_pfnPopupMenuClosedCallback)
 		m_pfnPopupMenuClosedCallback();
@@ -1902,7 +2013,7 @@ void CUi::ShowPopupMessage(float X, float Y, SMessagePopupContext *pContext)
 	TextSizeProps.m_pHeight = &TextHeight;
 	TextRender()->TextWidth(SMessagePopupContext::POPUP_FONT_SIZE, pContext->m_aMessage, -1, TextWidth, 0, TextSizeProps);
 	pContext->m_pUI = this;
-	DoPopupMenu(pContext, X, Y, TextWidth + 10.0f, TextHeight + 10.0f, pContext, PopupMessage);
+	DoPopupMenu(pContext, X, Y, TextWidth + 10.0f, TextHeight + 10.0f, pContext, PopupMessage, {}, EButtonSoundType::DIALOG_OK);
 }
 
 CUi::SConfirmPopupContext::SConfirmPopupContext()
@@ -1931,7 +2042,7 @@ void CUi::ShowPopupConfirm(float X, float Y, SConfirmPopupContext *pContext)
 	const float PopupHeight = TextHeight + SConfirmPopupContext::POPUP_BUTTON_HEIGHT + SConfirmPopupContext::POPUP_BUTTON_SPACING + 10.0f;
 	pContext->m_pUI = this;
 	pContext->m_Result = SConfirmPopupContext::UNSET;
-	DoPopupMenu(pContext, X, Y, TextWidth + 10.0f, PopupHeight, pContext, PopupConfirm);
+	DoPopupMenu(pContext, X, Y, TextWidth + 10.0f, PopupHeight, pContext, PopupConfirm, {}, EButtonSoundType::DIALOG_OK);
 }
 
 CUi::EPopupMenuFunctionResult CUi::PopupConfirm(void *pContext, CUIRect View, bool Active)
@@ -1945,14 +2056,18 @@ CUi::EPopupMenuFunctionResult CUi::PopupConfirm(void *pContext, CUIRect View, bo
 
 	pUI->TextRender()->Text(Label.x, Label.y, SConfirmPopupContext::POPUP_FONT_SIZE, pConfirmPopup->m_aMessage, Label.w);
 
-	if(pUI->DoButton_PopupMenu(&pConfirmPopup->m_CancelButton, pConfirmPopup->m_aNegativeButtonLabel, &CancelButton, SConfirmPopupContext::POPUP_FONT_SIZE, TEXTALIGN_MC))
+	if(pUI->DoButton_PopupMenu(&pConfirmPopup->m_CancelButton, pConfirmPopup->m_aNegativeButtonLabel, &CancelButton, SConfirmPopupContext::POPUP_FONT_SIZE, TEXTALIGN_MC, 0.0f, false, true, std::nullopt, EButtonSoundType::DIALOG_CANCEL))
 	{
 		pConfirmPopup->m_Result = SConfirmPopupContext::CANCELED;
 		return CUi::POPUP_CLOSE_CURRENT;
 	}
 
-	if(pUI->DoButton_PopupMenu(&pConfirmPopup->m_ConfirmButton, pConfirmPopup->m_aPositiveButtonLabel, &ConfirmButton, SConfirmPopupContext::POPUP_FONT_SIZE, TEXTALIGN_MC) || (Active && pUI->ConsumeHotkey(HOTKEY_ENTER)))
+	const bool ConfirmClicked = pUI->DoButton_PopupMenu(&pConfirmPopup->m_ConfirmButton, pConfirmPopup->m_aPositiveButtonLabel, &ConfirmButton, SConfirmPopupContext::POPUP_FONT_SIZE, TEXTALIGN_MC, 0.0f, false, true, std::nullopt, EButtonSoundType::DIALOG_OK);
+	const bool ConfirmSubmitted = Active && pUI->ConsumeHotkey(HOTKEY_ENTER);
+	if(ConfirmClicked || ConfirmSubmitted)
 	{
+		if(ConfirmSubmitted)
+			pUI->EmitSoundEvent(EUiSoundEvent::SUBMIT, EButtonSoundType::DIALOG_OK);
 		pConfirmPopup->m_Result = SConfirmPopupContext::CONFIRMED;
 		return CUi::POPUP_CLOSE_CURRENT;
 	}
@@ -1980,6 +2095,7 @@ void CUi::SSelectionPopupContext::Reset()
 	m_Width = 300.0f + (SPopupMenu::POPUP_BORDER + SPopupMenu::POPUP_MARGIN) * 2;
 	m_AlignmentHeight = -1.0f;
 	m_TransparentButtons = false;
+	m_IsDropDown = false;
 }
 
 CUi::EPopupMenuFunctionResult CUi::PopupSelection(void *pContext, CUIRect View, bool Active)
@@ -2065,7 +2181,7 @@ void CUi::ShowPopupSelection(float X, float Y, SSelectionPopupContext *pContext)
 			pContext->m_Props.m_Corners = IGraphics::CORNER_B;
 		}
 	}
-	DoPopupMenu(pContext, X, Y, pContext->m_Width, PopupHeight, pContext, PopupSelection, pContext->m_Props);
+	DoPopupMenu(pContext, X, Y, pContext->m_Width, PopupHeight, pContext, PopupSelection, pContext->m_Props, pContext->m_IsDropDown ? EButtonSoundType::SILENT : EButtonSoundType::DEFAULT);
 }
 
 int CUi::DoDropDown(CUIRect *pRect, int CurSelection, const char **pStrs, int Num, SDropDownState &State)
@@ -2075,6 +2191,7 @@ int CUi::DoDropDown(CUIRect *pRect, int CurSelection, const char **pStrs, int Nu
 		State.m_UiElement.Init(this, -1);
 		State.m_Init = true;
 	}
+	const bool WasOpen = IsPopupOpen(&State.m_SelectionPopupContext);
 
 	const auto LabelFunc = [CurSelection, pStrs]() {
 		return CurSelection > -1 ? pStrs[CurSelection] : "";
@@ -2086,9 +2203,10 @@ int CUi::DoDropDown(CUIRect *pRect, int CurSelection, const char **pStrs, int Nu
 	Props.m_ShowDropDownIcon = true;
 	if(IsPopupOpen(&State.m_SelectionPopupContext))
 		Props.m_Corners = IGraphics::CORNER_ALL & (~State.m_SelectionPopupContext.m_Props.m_Corners);
-	if(DoButton_Menu(State.m_UiElement, &State.m_ButtonContainer, LabelFunc, pRect, Props))
+	if(DoButton_Menu(State.m_UiElement, &State.m_ButtonContainer, LabelFunc, pRect, Props, EButtonSoundType::DROPDOWN))
 	{
 		State.m_SelectionPopupContext.Reset();
+		State.m_CloseSoundSuppressed = false;
 		State.m_SelectionPopupContext.m_Props.m_BorderColor = ColorRGBA(0.7f, 0.7f, 0.7f, 0.9f);
 		State.m_SelectionPopupContext.m_Props.m_BackgroundColor = ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f);
 		for(int i = 0; i < Num; ++i)
@@ -2099,15 +2217,27 @@ int CUi::DoDropDown(CUIRect *pRect, int CurSelection, const char **pStrs, int Nu
 		State.m_SelectionPopupContext.m_Width = pRect->w;
 		State.m_SelectionPopupContext.m_AlignmentHeight = pRect->h;
 		State.m_SelectionPopupContext.m_TransparentButtons = true;
+		State.m_SelectionPopupContext.m_IsDropDown = true;
 		ShowPopupSelection(pRect->x, pRect->y, &State.m_SelectionPopupContext);
 	}
 
 	if(State.m_SelectionPopupContext.m_SelectionIndex >= 0)
 	{
 		const int NewSelection = State.m_SelectionPopupContext.m_SelectionIndex;
+		State.m_CloseSoundSuppressed = true;
+		State.m_PopupWasOpen = false;
 		State.m_SelectionPopupContext.Reset();
 		return NewSelection;
 	}
+
+	const bool IsOpen = IsPopupOpen(&State.m_SelectionPopupContext);
+	if((WasOpen || State.m_PopupWasOpen) && !IsOpen)
+	{
+		if(!State.m_CloseSoundSuppressed)
+			EmitSoundEvent(EUiSoundEvent::DROPDOWN_CLOSE, EButtonSoundType::DROPDOWN);
+		State.m_CloseSoundSuppressed = false;
+	}
+	State.m_PopupWasOpen = IsOpen;
 
 	return CurSelection;
 }

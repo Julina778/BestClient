@@ -162,30 +162,14 @@ static void BestClientShopAbortTask(std::shared_ptr<CHttpRequest> &pTask)
 	}
 }
 
-static void BestClientShopRestoreButtonSounds(CMenus *pMenus)
+static int BestClientShopDoButtonLogic(CMenus *pMenus, const void *pId, int Checked, const CUIRect *pRect, unsigned Flags)
 {
-	if(!pMenus->MenuUi()->IsPopupHovered())
-	{
-		pMenus->MenuUi()->SetButtonSoundEventCallback([pMenus](CUi::EButtonSoundEvent Event) {
-			pMenus->MenuButtonSoundEvent(Event);
-		});
-	}
+	return pMenus->MenuUi()->DoButtonLogic(pId, Checked, pRect, Flags, CUi::EButtonSoundType::BUTTON);
 }
 
-static int BestClientShopDoSilentButtonLogic(CMenus *pMenus, const void *pId, int Checked, const CUIRect *pRect, unsigned Flags)
+static int BestClientShopDoMenuButton(CMenus *pMenus, CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, unsigned Flags, const char *pImageName, int Corners, float Rounding, float FontFactor, ColorRGBA Color)
 {
-	pMenus->MenuUi()->ClearButtonSoundEventCallback();
-	const int Result = pMenus->MenuUi()->DoButtonLogic(pId, Checked, pRect, Flags);
-	BestClientShopRestoreButtonSounds(pMenus);
-	return Result;
-}
-
-static int BestClientShopDoSilentMenuButton(CMenus *pMenus, CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, unsigned Flags, const char *pImageName, int Corners, float Rounding, float FontFactor, ColorRGBA Color)
-{
-	pMenus->MenuUi()->ClearButtonSoundEventCallback();
-	const int Result = pMenus->DoButton_Menu(pButtonContainer, pText, Checked, pRect, Flags, pImageName, Corners, Rounding, FontFactor, Color);
-	BestClientShopRestoreButtonSounds(pMenus);
-	return Result;
+	return pMenus->DoButton_Menu(pButtonContainer, pText, Checked, pRect, Flags, pImageName, Corners, Rounding, FontFactor, Color);
 }
 
 static void BestClientShopResetInstallState()
@@ -1789,7 +1773,7 @@ void CMenus::RenderSettingsBestClientShop(CUIRect MainView)
 	CreditLabel.VSplitRight(CreditLinkWidth, &CreditPrefixLabel, &CreditLinkLabel);
 	Ui()->DoLabel(&CreditPrefixLabel, s_pCreditPrefix, BESTCLIENT_SHOP_SMALL_FONT_SIZE, TEXTALIGN_MR);
 	static CButtonContainer s_CreditLinkButton;
-	if(BestClientShopDoSilentButtonLogic(this, &s_CreditLinkButton, 0, &CreditLinkLabel, BUTTONFLAG_LEFT))
+	if(BestClientShopDoButtonLogic(this, &s_CreditLinkButton, 0, &CreditLinkLabel, BUTTONFLAG_LEFT))
 	{
 		MenuClient()->ViewLink(BESTCLIENT_SHOP_HOST);
 	}
@@ -1815,7 +1799,6 @@ void CMenus::RenderSettingsBestClientShop(CUIRect MainView)
 	{
 		SBestClientShopItem &Item = gs_BestClientShopState.m_vItems[Index];
 		const CListboxItem ListItem = s_ListBox.DoNextItem(&Item, Index == gs_BestClientShopState.m_SelectedIndex);
-		BestClientShopRestoreButtonSounds(this);
 		if(!ListItem.m_Visible)
 		{
 			continue;
@@ -1833,7 +1816,7 @@ void CMenus::RenderSettingsBestClientShop(CUIRect MainView)
 		}
 
 		const bool CanOpenPreview = Item.m_PreviewTexture.IsValid() && !Item.m_PreviewTexture.IsNullTexture();
-		if(BestClientShopDoSilentButtonLogic(this, &Item.m_PreviewButton, 0, &PreviewButtonRect, BUTTONFLAG_LEFT))
+		if(BestClientShopDoButtonLogic(this, &Item.m_PreviewButton, 0, &PreviewButtonRect, BUTTONFLAG_LEFT))
 		{
 			if(CanOpenPreview)
 			{
@@ -1912,7 +1895,7 @@ void CMenus::RenderSettingsBestClientShop(CUIRect MainView)
 		DeleteButton = ButtonsRect;
 		DeleteButton.h = 22.0f;
 
-		if(BestClientShopDoSilentMenuButton(this, &Item.m_ActionButton, pActionLabel, ActionState, &ActionButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f)))
+		if(BestClientShopDoMenuButton(this, &Item.m_ActionButton, pActionLabel, ActionState, &ActionButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f)))
 		{
 			if(InstallingThisItem)
 			{
@@ -1936,7 +1919,7 @@ void CMenus::RenderSettingsBestClientShop(CUIRect MainView)
 
 		if(Installed)
 		{
-			if(BestClientShopDoSilentMenuButton(this, &Item.m_DeleteButton, TCLocalize("Delete"), 0, &DeleteButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.25f, 0.05f, 0.05f, 0.35f)))
+			if(BestClientShopDoMenuButton(this, &Item.m_DeleteButton, TCLocalize("Delete"), 0, &DeleteButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.25f, 0.05f, 0.05f, 0.35f)))
 			{
 				if(BestClientShopDeleteAsset(this, gs_BestClientShopState.m_Tab, aAssetName))
 				{

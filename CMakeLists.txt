@@ -1183,6 +1183,71 @@ set(EXPECTED_DATA
   audio/hook_noattach-02.wv
   audio/hook_noattach-03.wv
   audio/music_menu.wv
+  audio/osu/ui/bss-complete.wv
+  audio/osu/ui/bss-progress.wv
+  audio/osu/ui/bss-stage-0.wv
+  audio/osu/ui/bss-stage-1.wv
+  audio/osu/ui/bss-stage-2.wv
+  audio/osu/ui/bss-stage-3.wv
+  audio/osu/ui/button-hover.wv
+  audio/osu/ui/button-select.wv
+  audio/osu/ui/button-sidebar-hover.wv
+  audio/osu/ui/button-sidebar-select.wv
+  audio/osu/ui/check-off.wv
+  audio/osu/ui/check-on.wv
+  audio/osu/ui/cursor-tap.wv
+  audio/osu/ui/default-hover.wv
+  audio/osu/ui/default-select-disabled.wv
+  audio/osu/ui/default-select.wv
+  audio/osu/ui/dialog-cancel-select.wv
+  audio/osu/ui/dialog-dangerous-select.wv
+  audio/osu/ui/dialog-dangerous-tick.wv
+  audio/osu/ui/dialog-ok-select.wv
+  audio/osu/ui/dialog-pop-in.wv
+  audio/osu/ui/dialog-pop-out.wv
+  audio/osu/ui/dropdown-close.wv
+  audio/osu/ui/dropdown-open.wv
+  audio/osu/ui/generic-error.wv
+  audio/osu/ui/item-swap.wv
+  audio/osu/ui/menu-close.wv
+  audio/osu/ui/menu-open-select.wv
+  audio/osu/ui/menu-open.wv
+  audio/osu/ui/menu-sub-open.wv
+  audio/osu/ui/metronome-latch.wv
+  audio/osu/ui/metronome-tick-downbeat.wv
+  audio/osu/ui/metronome-tick.wv
+  audio/osu/ui/noclick-hover.wv
+  audio/osu/ui/noclick-select.wv
+  audio/osu/ui/notch-tick.wv
+  audio/osu/ui/notification-cancel.wv
+  audio/osu/ui/notification-default.wv
+  audio/osu/ui/notification-done.wv
+  audio/osu/ui/notification-error.wv
+  audio/osu/ui/notification-friend-offline.wv
+  audio/osu/ui/notification-friend-online.wv
+  audio/osu/ui/notification-mention.wv
+  audio/osu/ui/osd-change.wv
+  audio/osu/ui/osd-off.wv
+  audio/osu/ui/osd-on.wv
+  audio/osu/ui/overlay-big-pop-in.wv
+  audio/osu/ui/overlay-big-pop-out.wv
+  audio/osu/ui/overlay-pop-in.wv
+  audio/osu/ui/overlay-pop-out.wv
+  audio/osu/ui/ruleset-select-fruits.wv
+  audio/osu/ui/ruleset-select-mania.wv
+  audio/osu/ui/ruleset-select-osu.wv
+  audio/osu/ui/ruleset-select-taiko.wv
+  audio/osu/ui/screen-back.wv
+  audio/osu/ui/scroll-to-previous.wv
+  audio/osu/ui/scroll-to-top.wv
+  audio/osu/ui/settings-pop-in.wv
+  audio/osu/ui/shutter.wv
+  audio/osu/ui/submit-select.wv
+  audio/osu/ui/tabselect-select.wv
+  audio/osu/ui/toolbar-hover.wv
+  audio/osu/ui/toolbar-select.wv
+  audio/osu/ui/wave-pop-in.wv
+  audio/osu/ui/wave-pop-out.wv
   audio/sfx_ctf_cap_pl.wv
   audio/sfx_ctf_drop.wv
   audio/sfx_ctf_grab_en.wv
@@ -1305,10 +1370,6 @@ set(EXPECTED_DATA
   BestClient/fonts/Nunito-Black.ttf
   BestClient/fonts/Rubik-Regular.ttf
   BestClient/gui_logo.png
-  BestClient/sfx/check-off.wv
-  BestClient/sfx/click.wv
-  BestClient/sfx/exit-client.wv
-  BestClient/sfx/open-client.wv
   BestClient/languages/arabic.txt
   BestClient/languages/azerbaijani.txt
   BestClient/languages/belarusian.txt

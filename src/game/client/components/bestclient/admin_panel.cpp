@@ -81,7 +81,7 @@ ColorHSLA AdminPanelDoColorPicker(CUi *pUI, CUi::SColorPickerPopupContext &Conte
 	pRect->Draw(Outline, IGraphics::CORNER_ALL, 4.0f);
 	Rect.Draw(color_cast<ColorRGBA>(HslaColor), IGraphics::CORNER_ALL, 4.0f);
 
-	if(pUI->DoButtonLogic(pHslaColor, 0, pRect, BUTTONFLAG_LEFT))
+	if(pUI->DoButtonLogic(pHslaColor, 0, pRect, BUTTONFLAG_LEFT, CUi::EButtonSoundType::TOOLBAR))
 	{
 		Context.m_pHslaColor = pHslaColor;
 		Context.m_HslaColor = HslaColor;
