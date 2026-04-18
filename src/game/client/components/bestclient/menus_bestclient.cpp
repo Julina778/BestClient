@@ -1741,7 +1741,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			const bool FastInputExpanded = g_Config.m_TcFastInput != 0;
 			UpdateRevealPhase(s_FastInputPhase, FastInputExpanded);
 
-			const float FastInputExtraTargetHeight = MarginSmall * 3.0f + LineSize * 3.0f;
+			const bool BestInputMode = g_Config.m_BcFastInputMode == 1;
+			const float FastInputExtraTargetHeight = BestInputMode ? (MarginSmall * 5.0f + LineSize * 5.0f) : (MarginSmall * 2.0f + LineSize * 2.0f);
 			const float ContentHeight = LineSize + MarginSmall + LineSize * 3.0f +
 				FastInputExtraTargetHeight * s_FastInputPhase;
 
