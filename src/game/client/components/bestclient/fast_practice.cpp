@@ -65,25 +65,36 @@ float EffectiveFastInputOffsetTicks(const CGameClient *pGameClient)
 		return g_Config.m_TcFastInputAmount / 20.0f;
 	}
 
-	// Best mode
+	if(g_Config.m_BcFastInputMode == 1)
+	{
+		if(g_Config.m_BcFastInputDeltaInput <= 0)
+			return 0.0f;
+		return g_Config.m_BcFastInputDeltaInput / 100.0f;
+	}
+
+	if(g_Config.m_BcFastInputMode == 2)
+	{
+		const int GammaInputAmount = BcFastInputGammaUiToEffectiveAmount(g_Config.m_BcFastInputGammaInput);
+		if(GammaInputAmount <= 0)
+			return 0.0f;
+		return GammaInputAmount / 100.0f;
+	}
+
 	const CGameClient::SBestInputSettings Settings = pGameClient->BestInputSettings();
 	if(Settings.m_Offset <= 0)
 		return 0.0f;
 
 	float Offset = Settings.m_Offset / 100.0f;
-
 	if(Settings.m_Smoothing > 0)
 	{
 		float SmoothFactor = 1.0f - (Settings.m_Smoothing / 200.0f);
 		Offset *= SmoothFactor;
 	}
-
 	if(Settings.m_LatencyComp > 0)
 	{
 		float CompFactor = 1.0f + (Settings.m_LatencyComp / 100.0f);
 		Offset *= CompFactor;
 	}
-
 	return Offset;
 }
 
@@ -98,6 +109,10 @@ bool EffectiveFastInputOthers()
 {
 	if(g_Config.m_BcFastInputMode == 0)
 		return g_Config.m_TcFastInputOthers != 0;
+	if(g_Config.m_BcFastInputMode == 1)
+		return g_Config.m_BcDeltaInputOthers != 0;
+	if(g_Config.m_BcFastInputMode == 2)
+		return g_Config.m_BcGammaInputOthers != 0;
 	return g_Config.m_BcBestInputOthers != 0;
 }
 

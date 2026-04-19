@@ -119,9 +119,9 @@ float EffectiveFastInputOffsetTicksFastMode()
 
 float EffectiveFastInputOffsetTicksBestMode(const CGameClient *pGameClient)
 {
-	// Mode 1: best input (tick based, stored in 0.01 ticks, with smoothing and latency compensation)
+	// Mode 3: best input (tick based, stored in 0.01 ticks, with smoothing and latency compensation)
 	if(!g_Config.m_TcFastInput ||
-		g_Config.m_BcFastInputMode != 1 ||
+		g_Config.m_BcFastInputMode != 3 ||
 		IsGameplayInputComponentDisabled())
 		return 0.0f;
 
@@ -150,10 +150,39 @@ float EffectiveFastInputOffsetTicksBestMode(const CGameClient *pGameClient)
 	return Offset;
 }
 
+float EffectiveFastInputOffsetTicksDeltaInputMode()
+{
+	if(!g_Config.m_TcFastInput ||
+		g_Config.m_BcFastInputMode != 1 ||
+		IsGameplayInputComponentDisabled())
+		return 0.0f;
+	if(g_Config.m_BcFastInputDeltaInput <= 0)
+		return 0.0f;
+	return g_Config.m_BcFastInputDeltaInput / 100.0f;
+}
+
+float EffectiveFastInputOffsetTicksGammaInputMode(const CGameClient *pGameClient)
+{
+	(void)pGameClient;
+
+	if(!g_Config.m_TcFastInput ||
+		g_Config.m_BcFastInputMode != 2 ||
+		IsGameplayInputComponentDisabled())
+		return 0.0f;
+	const int GammaInputAmount = BcFastInputGammaUiToEffectiveAmount(g_Config.m_BcFastInputGammaInput);
+	if(GammaInputAmount <= 0)
+		return 0.0f;
+	return GammaInputAmount / 100.0f;
+}
+
 float EffectiveFastInputOffsetTicks(const CGameClient *pGameClient)
 {
 	if(g_Config.m_BcFastInputMode == 0)
 		return EffectiveFastInputOffsetTicksFastMode();
+	if(g_Config.m_BcFastInputMode == 1)
+		return EffectiveFastInputOffsetTicksDeltaInputMode();
+	if(g_Config.m_BcFastInputMode == 2)
+		return EffectiveFastInputOffsetTicksGammaInputMode(pGameClient);
 	return EffectiveFastInputOffsetTicksBestMode(pGameClient);
 }
 
@@ -217,19 +246,33 @@ bool EffectiveFastInputOthers()
 
 bool EffectiveBestInputOthers()
 {
-	return g_Config.m_BcFastInputMode == 1 &&
+	return g_Config.m_BcFastInputMode == 3 &&
 		g_Config.m_BcBestInputOthers != 0 &&
+		!IsGameplayInputComponentDisabled();
+}
+
+bool EffectiveDeltaInputOthers()
+{
+	return g_Config.m_BcFastInputMode == 1 &&
+		g_Config.m_BcDeltaInputOthers != 0 &&
+		!IsGameplayInputComponentDisabled();
+}
+
+bool EffectiveGammaInputOthers()
+{
+	return g_Config.m_BcFastInputMode == 2 &&
+		g_Config.m_BcGammaInputOthers != 0 &&
 		!IsGameplayInputComponentDisabled();
 }
 
 bool EffectiveAnyFastInputOthers()
 {
-	return EffectiveFastInputOthers() || EffectiveBestInputOthers();
+	return EffectiveFastInputOthers() || EffectiveDeltaInputOthers() || EffectiveGammaInputOthers() || EffectiveBestInputOthers();
 }
 
 bool EffectiveImmediateFastInputOthers()
 {
-	return EffectiveBestInputOthers();
+	return EffectiveDeltaInputOthers() || EffectiveGammaInputOthers();
 }
 } // namespace
 
@@ -4961,7 +5004,7 @@ vec2 CGameClient::GetSmoothPos(int ClientId)
 	const float FastInputOffsetTicks = EffectiveFastInputOffsetTicks(this);
 	const int FastInputTicks = FastInputPredictionTicks(FastInputOffsetTicks);
 	const bool FastInputOthers = EffectiveAnyFastInputOthers();
-	const bool BestInputInterpolationEnabled = g_Config.m_BcFastInputMode == 1 && FastInputTicks > 0 && (ClientId == m_Snap.m_LocalClientId || FastInputOthers);
+	const bool BestInputInterpolationEnabled = g_Config.m_BcFastInputMode == 3 && FastInputTicks > 0 && (ClientId == m_Snap.m_LocalClientId || FastInputOthers);
 	if(ClientId != m_Snap.m_LocalClientId && FastInputTicks > 0 && EffectiveImmediateFastInputOthers())
 		return GetFastInputPos(ClientId);
 	vec2 Pos = mix(m_aClients[ClientId].m_PrevPredicted.m_Pos, m_aClients[ClientId].m_Predicted.m_Pos, Client()->PredIntraGameTick(g_Config.m_ClDummy));
@@ -4999,7 +5042,7 @@ vec2 CGameClient::GetFastInputPos(int ClientId)
 
 	const float FastInputOffsetTicks = EffectiveFastInputOffsetTicks(this);
 	const int FastInputTicks = FastInputPredictionTicks(FastInputOffsetTicks);
-	const bool BestInputInterpolationEnabled = g_Config.m_BcFastInputMode == 1 && FastInputTicks > 0;
+	const bool BestInputInterpolationEnabled = g_Config.m_BcFastInputMode == 3 && FastInputTicks > 0;
 	ApplyFastInputOffset(FastInputOffsetTicks, PredTick, PredIntraTick);
 
 	if(PredTick > 0 &&
@@ -5058,7 +5101,7 @@ vec2 CGameClient::GetFreezePos(int ClientId)
 	const bool IsLocal = ClientId == m_Snap.m_LocalClientId || (PredictDummy() && ClientId == m_aLocalIds[!g_Config.m_ClDummy]);
 	const bool ApplyFastInputLocal = IsLocal && FastInputTicks > 0;
 	const bool ApplyFastInputOthers = !IsLocal && FastInputOthers && FastInputTicks > 0;
-	const bool BestInputInterpolationEnabled = g_Config.m_BcFastInputMode == 1 && (ApplyFastInputLocal || ApplyFastInputOthers);
+	const bool BestInputInterpolationEnabled = g_Config.m_BcFastInputMode == 3 && (ApplyFastInputLocal || ApplyFastInputOthers);
 	if(ApplyFastInputLocal || ApplyFastInputOthers)
 	{
 		ApplyFastInputOffset(FastInputOffsetTicks, SmoothTick, SmoothIntra);
