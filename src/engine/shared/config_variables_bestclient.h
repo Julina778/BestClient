@@ -307,3 +307,13 @@ MACRO_CONFIG_COL(Bc3dParticlesColor, bc_3d_particles_color, 4294967295, CFGFLAG_
 MACRO_CONFIG_INT(Bc3dParticlesGlow, bc_3d_particles_glow, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable 3D particles glow")
 MACRO_CONFIG_INT(Bc3dParticlesGlowAlpha, bc_3d_particles_glow_alpha, 35, 1, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Glow alpha of 3D particles (1-100)")
 MACRO_CONFIG_INT(Bc3dParticlesGlowOffset, bc_3d_particles_glow_offset, 2, 1, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Glow offset for 3D particles")
+
+// Show Flag and jump
+MACRO_CONFIG_INT(ClShowFlags, al_show_flags, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Tee stats (Deep/Jetpack/etc)")
+MACRO_CONFIG_INT(ClShowFlagsSize, al_show_flags_size, 30, -50, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Size of tee stat indicators")
+MACRO_CONFIG_INT(ClGrenadePath, al_grenade_path, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Grenade path prediction")
+MACRO_CONFIG_INT(ClGrenadePathOthers, al_grenade_path_others, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Grenade path prediction others")
+MACRO_CONFIG_INT(ClLaserPath, al_laser_path, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Laser path prediction")
+MACRO_CONFIG_INT(ClLaserPathOthers, al_laser_path_others, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Laser path prediction others")
+MACRO_CONFIG_INT(ClShowDJ, al_show_jumps, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show remaining double jumps of a tee")
+MACRO_CONFIG_INT(ClShowJumpsSize, al_show_jumps_size, 30, -50, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Size of double jump indicators")

@@ -17,6 +17,15 @@
 #include <memory>
 #include <vector>
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#define popcount64 _mm_popcnt_u64
+#elif defined(__GNUC__) || defined(__clang__)
+#define popcount64 __builtin_popcountll
+#else
+#error "Unsupported compiler"
+#endif
+
 enum class EHookStrongWeakState
 {
 	WEAK,
@@ -54,6 +63,14 @@ public:
 	bool m_ShowBClientIndicator;
 	float m_FontSizeBClientIndicator;
 	bool m_IsUserBClientIndicator;
+
+	bool m_ShowFlags;
+	int m_TrackedFlags;
+	float m_FontSizeFlags;
+	bool m_ShowJumps;
+	int m_JumpsLeft;
+	int m_JumpsUsed;
+	float m_FontSizeJumps;
 };
 
 // Part Types
@@ -492,6 +509,139 @@ public:
 		CNamePlatePartText(This) {}
 };
 
+class CNamePlatePartFlags : public CNamePlatePart
+{
+private:
+	int m_Flags = 0;
+	ColorRGBA m_Color = ColorRGBA(1.0, 1.0, 1.0);
+
+protected:
+	void Update(CGameClient &This, const CNamePlateData &Data) override
+	{
+		int ActiveFlagsCount = popcount64(Data.m_TrackedFlags);
+
+		if(!Data.m_ShowFlags || ActiveFlagsCount == 0)
+		{
+			m_Size = vec2();
+			m_Visible = false;
+			return;
+		}
+
+		m_Size = vec2(
+			(Data.m_FontSizeFlags + m_Padding.x) * ActiveFlagsCount - m_Padding.x,
+			Data.m_FontSizeFlags);
+
+		m_Flags = Data.m_TrackedFlags;
+		m_Color.a = Data.m_Color.a;
+		m_Visible = true;
+	}
+
+	void Render(CGameClient &This, vec2 Pos) const override
+	{
+		{
+			Pos.x -= (m_Size.x - m_Size.y) * 0.5f;
+			const std::pair<int, IGraphics::CTextureHandle> FlagData[] = {
+				std::make_pair(CHARACTERFLAG_MOVEMENTS_DISABLED, This.m_HudSkin.m_SpriteHudLiveFrozen),
+				std::make_pair(CHARACTERFLAG_IN_FREEZE, This.m_HudSkin.m_SpriteHudDeepFrozen),
+				std::make_pair(CHARACTERFLAG_ENDLESS_HOOK, This.m_HudSkin.m_SpriteHudEndlessHook),
+				std::make_pair(CHARACTERFLAG_ENDLESS_JUMP, This.m_HudSkin.m_SpriteHudEndlessJump),
+				std::make_pair(CHARACTERFLAG_JETPACK, This.m_HudSkin.m_SpriteHudJetpack),
+				std::make_pair(CHARACTERFLAG_HOOK_HIT_DISABLED, This.m_HudSkin.m_SpriteHudHookHitDisabled),
+				std::make_pair(CHARACTERFLAG_HAMMER_HIT_DISABLED, This.m_HudSkin.m_SpriteHudHammerHitDisabled),
+				std::make_pair(CHARACTERFLAG_COLLISION_DISABLED, This.m_HudSkin.m_SpriteHudCollisionDisabled),
+				std::make_pair(CHARACTERFLAG_TELEGUN_GUN, This.m_HudSkin.m_SpriteHudTeleportGun),
+				std::make_pair(CHARACTERFLAG_TELEGUN_LASER, This.m_HudSkin.m_SpriteHudTeleportLaser),
+				std::make_pair(CHARACTERFLAG_TELEGUN_GRENADE, This.m_HudSkin.m_SpriteHudTeleportGrenade),
+			};
+			for(const auto &Flag : FlagData)
+			{
+				if((m_Flags & Flag.first) == 0)
+					continue;
+
+				This.Graphics()->TextureSet(Flag.second);
+				This.Graphics()->QuadsBegin();
+				This.Graphics()->SetColor(m_Color);
+
+				This.Graphics()->DrawSprite(Pos.x, Pos.y, m_Size.y, m_Size.y);
+				This.Graphics()->QuadsEnd();
+				Pos.x += m_Size.y + m_Padding.x;
+			}
+		}
+	}
+
+public:
+	CNamePlatePartFlags(CGameClient &This) :
+		CNamePlatePart(This)
+	{
+		m_Padding = vec2();
+	}
+};
+
+class CNamePlatePartJumps : public CNamePlatePart
+{
+private:
+	int m_JumpsLeft = 0;
+	int m_JumpsUsed = 0;
+	ColorRGBA m_Color = ColorRGBA(1.0f, 1.0f, 1.0f);
+
+protected:
+	void Update(CGameClient &This, const CNamePlateData &Data) override
+	{
+		if(!Data.m_ShowJumps || (Data.m_JumpsLeft == 0 && Data.m_JumpsUsed == 0))
+		{
+			m_Size = vec2();
+			m_Visible = false;
+			return;
+		}
+
+		int TotalJumps = Data.m_JumpsLeft + Data.m_JumpsUsed;
+		m_Size = vec2(
+			(Data.m_FontSizeJumps + m_Padding.x) * TotalJumps - m_Padding.x,
+			Data.m_FontSizeJumps);
+
+		m_JumpsLeft = Data.m_JumpsLeft;
+		m_JumpsUsed = Data.m_JumpsUsed;
+		m_Color.a = Data.m_Color.a;
+		m_Visible = true;
+	}
+
+	void Render(CGameClient &This, vec2 Pos) const override
+	{
+		Pos.x -= (m_Size.x - m_Size.y) * 0.5f;
+		if(m_JumpsLeft > 0)
+		{
+			This.Graphics()->TextureSet(This.m_HudSkin.m_SpriteHudAirjump);
+			This.Graphics()->QuadsBegin();
+			This.Graphics()->SetColor(m_Color);
+			for(int i = 0; i < m_JumpsLeft; i++)
+			{
+				This.Graphics()->DrawSprite(Pos.x, Pos.y, m_Size.y, m_Size.y);
+				Pos.x += m_Size.y + m_Padding.x;
+			}
+			This.Graphics()->QuadsEnd();
+		}
+		if(m_JumpsUsed > 0)
+		{
+			This.Graphics()->TextureSet(This.m_HudSkin.m_SpriteHudAirjumpEmpty);
+			This.Graphics()->QuadsBegin();
+			This.Graphics()->SetColor(m_Color);
+			for(int i = 0; i < m_JumpsUsed; i++)
+			{
+				This.Graphics()->DrawSprite(Pos.x, Pos.y, m_Size.y, m_Size.y);
+				Pos.x += m_Size.y + m_Padding.x;
+			}
+			This.Graphics()->QuadsEnd();
+		}
+	}
+
+public:
+	CNamePlatePartJumps(CGameClient &This) :
+		CNamePlatePart(This)
+	{
+		m_Padding = vec2();
+	}
+};
+
 // ***** TClient Parts *****
 
 class CNamePlatePartCountry : public CNamePlatePart
@@ -776,6 +926,12 @@ private:
 		AddPart<CNamePlatePartSkin>(This); // TClient
 		AddPart<CNamePlatePartNewLine>(This); // TClient
 
+		AddPart<CNamePlatePartJumps>(This);
+		AddPart<CNamePlatePartNewLine>(This);
+
+		AddPart<CNamePlatePartFlags>(This);
+		AddPart<CNamePlatePartNewLine>(This);
+
 		AddPart<CNamePlatePartClientId>(This, true);
 		AddPart<CNamePlatePartNewLine>(This);
 
@@ -920,6 +1076,9 @@ void CNamePlates::RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *p
 	Data.m_FontSizeDirection = 18.0f + 20.0f * g_Config.m_ClDirectionSize / 100.0f;
 	Data.m_FontSizeBClientIndicator = 18.0f + 20.0f * g_Config.m_BcClientIndicatorInNamePlateSize / 100.0f;
 
+	Data.m_FontSizeFlags = 18.0f + 20.0f * g_Config.m_ClShowFlagsSize / 100.0f;
+	Data.m_FontSizeJumps = 18.0f + 20.0f * g_Config.m_ClShowJumpsSize / 100.0f;
+
 	if(g_Config.m_ClNamePlatesAlways == 0)
 		Alpha *= std::clamp(1.0f - std::pow(distance(GameClient()->m_Controls.m_aTargetPos[g_Config.m_ClDummy], Position) / 200.0f, 16.0f), 0.0f, 1.0f);
 	if(OtherTeam)
@@ -1002,13 +1161,18 @@ void CNamePlates::RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *p
 	Data.m_ShowBClientIndicator = g_Config.m_BcClientIndicator && g_Config.m_BcClientIndicatorInNamePlate &&
 		(!pPlayerInfo->m_Local || g_Config.m_BcClientIndicatorInNamePlateAboveSelf);
 	Data.m_IsUserBClientIndicator = Data.m_ShowBClientIndicator && GameClient()->m_ClientIndicator.IsPlayerBClient(pPlayerInfo->m_ClientId);
+	Data.m_ShowFlags = g_Config.m_ClShowFlags && Data.m_ShowName;
+	Data.m_ShowJumps = g_Config.m_ClShowDJ && Data.m_ShowName;
+	Data.m_TrackedFlags = 0;
+	Data.m_JumpsUsed = 0;
+	Data.m_JumpsLeft = 0;
 
 	const bool Following = (GameClient()->m_Snap.m_SpecInfo.m_Active && !GameClient()->m_MultiViewActivated && GameClient()->m_Snap.m_SpecInfo.m_SpectatorId != SPEC_FREEVIEW);
+	const CGameClient::CSnapState::CCharacterInfo &Other = GameClient()->m_Snap.m_aCharacters[pPlayerInfo->m_ClientId];
 	if(GameClient()->m_Snap.m_LocalClientId != -1 || Following)
 	{
 		const int SelectedId = Following ? GameClient()->m_Snap.m_SpecInfo.m_SpectatorId : GameClient()->m_Snap.m_LocalClientId;
 		const CGameClient::CSnapState::CCharacterInfo &Selected = GameClient()->m_Snap.m_aCharacters[SelectedId];
-		const CGameClient::CSnapState::CCharacterInfo &Other = GameClient()->m_Snap.m_aCharacters[pPlayerInfo->m_ClientId];
 
 		if((Selected.m_HasExtendedData || GameClient()->m_aClients[SelectedId].m_SpecCharPresent) && Other.m_HasExtendedData)
 		{
@@ -1022,6 +1186,41 @@ void CNamePlates::RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *p
 				Data.m_HookStrongWeakState = SelectedStrongWeakId > Other.m_ExtendedData.m_StrongWeakId ? EHookStrongWeakState::STRONG : EHookStrongWeakState::WEAK;
 				Data.m_ShowHookStrongWeak = g_Config.m_Debug || g_Config.m_ClNamePlatesStrong > 0;
 			}
+		}
+	}
+	if(Data.m_ShowJumps || Data.m_ShowFlags)
+	{
+		if(Data.m_ShowFlags && Other.m_HasExtendedData)
+		{
+			Data.m_TrackedFlags = Other.m_ExtendedData.m_Flags &
+					      (CHARACTERFLAG_MOVEMENTS_DISABLED |
+						      CHARACTERFLAG_ENDLESS_HOOK |
+						      CHARACTERFLAG_ENDLESS_JUMP |
+						      CHARACTERFLAG_JETPACK |
+						      CHARACTERFLAG_HOOK_HIT_DISABLED |
+						      CHARACTERFLAG_HAMMER_HIT_DISABLED |
+						      CHARACTERFLAG_COLLISION_DISABLED |
+						      CHARACTERFLAG_TELEGUN_GUN |
+						      CHARACTERFLAG_TELEGUN_LASER |
+						      CHARACTERFLAG_TELEGUN_GRENADE);
+			if(Other.m_ExtendedData.m_FreezeEnd == -1)
+			{
+				Data.m_TrackedFlags |= CHARACTERFLAG_IN_FREEZE;
+			}
+		}
+		else
+		{
+			Data.m_ShowFlags = false;
+		}
+		if(Data.m_ShowJumps && Other.m_HasExtendedData && (Other.m_ExtendedData.m_Flags & CHARACTERFLAG_ENDLESS_JUMP) == 0)
+		{
+			const int JumpsTotal = std::clamp(Other.m_ExtendedData.m_Jumps - 1, 0, 5);
+			Data.m_JumpsUsed = std::clamp(Other.m_ExtendedData.m_JumpedTotal, 0, JumpsTotal);
+			Data.m_JumpsLeft = JumpsTotal - Data.m_JumpsUsed;
+		}
+		else
+		{
+			Data.m_ShowJumps = false;
 		}
 	}
 
@@ -1044,6 +1243,9 @@ void CNamePlates::RenderNamePlatePreview(vec2 Position, int Dummy)
 	const float FontSizeDirection = 18.0f + 20.0f * g_Config.m_ClDirectionSize / 100.0f;
 	const float FontSizeHookStrongWeak = 18.0f + 20.0f * g_Config.m_ClNamePlatesStrongSize / 100.0f;
 	const float FontSizeBClientIndicator = 18.0f + 20.0f * g_Config.m_BcClientIndicatorInNamePlateSize / 100.0f;
+
+	const float FontSizeFlags = 18.0f + 20.0f * g_Config.m_ClShowFlagsSize / 100.0f;
+	const float FontSizeJumps = 18.0f + 20.0f * g_Config.m_ClShowJumpsSize / 100.0f;
 
 	CNamePlateData Data;
 
@@ -1112,6 +1314,14 @@ void CNamePlates::RenderNamePlatePreview(vec2 Position, int Dummy)
 		TeeRenderInfo.ApplyColors(g_Config.m_ClDummyUseCustomColor, g_Config.m_ClDummyColorBody, g_Config.m_ClDummyColorFeet);
 	}
 	TeeRenderInfo.m_Size = 64.0f;
+
+	Data.m_ShowFlags = true;
+	Data.m_TrackedFlags = CHARACTERFLAG_JETPACK | CHARACTERFLAG_ENDLESS_JUMP;
+	Data.m_FontSizeFlags = FontSizeFlags;
+	Data.m_ShowJumps = true;
+	Data.m_JumpsLeft = 3;
+	Data.m_JumpsUsed = 2;
+	Data.m_FontSizeJumps = FontSizeJumps;
 
 	CNamePlate NamePlate(*GameClient(), Data);
 	Position.y += NamePlate.Size().y / 2.0f;
