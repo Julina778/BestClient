@@ -569,13 +569,6 @@ void CMenus::RenderMenubar(CUIRect Box, IClient::EClientState ClientState)
 		GameClient()->m_Tooltips.DoToolTip(&s_DemoButton, &Button, Localize("Demos"));
 		Box.VSplitRight(10.0f, &Box, nullptr);
 
-		Box.VSplitRight(33.0f, &Box, &Button);
-		static CButtonContainer s_IrcButton;
-		if(DoButton_MenuTab(&s_IrcButton, FontIcon::HASHTAG, ActivePage == PAGE_IRC, &Button, IGraphics::CORNER_T, &m_aAnimatorsSmallPage[SMALL_TAB_IRC]))
-		{
-			NewPage = PAGE_IRC;
-		}
-		GameClient()->m_Tooltips.DoToolTip(&s_IrcButton, &Button, "IRC");
 		Box.VSplitRight(10.0f, &Box, nullptr);
 
 		Box.VSplitLeft(33.0f, &Button, &Box);
@@ -743,13 +736,6 @@ void CMenus::RenderMenubar(CUIRect Box, IClient::EClientState ClientState)
 			GameClient()->m_Tooltips.DoToolTip(&s_DemoButton, &Button, Localize("Demos"));
 			Box.VSplitRight(10.0f, &Box, nullptr);
 
-			Box.VSplitRight(33.0f, &Box, &Button);
-			static CButtonContainer s_IrcButton;
-			if(DoButton_MenuTab(&s_IrcButton, FontIcon::HASHTAG, ActivePage == PAGE_IRC, &Button, IGraphics::CORNER_T, &m_aAnimatorsSmallPage[SMALL_TAB_IRC]))
-			{
-				NewPage = PAGE_IRC;
-			}
-			GameClient()->m_Tooltips.DoToolTip(&s_IrcButton, &Button, "IRC");
 			Box.VSplitRight(10.0f, &Box, nullptr);
 
 			TextRender()->SetRenderFlags(0);

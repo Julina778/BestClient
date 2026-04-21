@@ -93,6 +93,33 @@ const json_value *Obj(const json_value *pObject, const char *pName)
 	return pObject && pObject->type == json_object ? json_object_get(pObject, pName) : nullptr;
 }
 
+bool ParseTeeRenderInfoFromSkinJson(const char *pSkinJson, CGameClient *pGameClient, CTeeRenderInfo &TeeInfo)
+{
+	if(!pSkinJson || !pSkinJson[0])
+		return false;
+
+	json_settings Settings{};
+	char aError[json_error_max];
+	json_value *pJson = json_parse_ex(&Settings, (json_char *)pSkinJson, str_length(pSkinJson), aError);
+	if(!pJson || pJson->type != json_object)
+	{
+		json_value_free(pJson);
+		return false;
+	}
+
+	const char *pSkinName = JsonString(Obj(pJson, "skin"));
+	if(!pSkinName[0])
+		pSkinName = "default";
+
+	TeeInfo.Reset();
+	TeeInfo.Apply(pGameClient->m_Skins.Find(pSkinName));
+	const bool CustomColors = JsonBoolValue(Obj(pJson, "custom")) || JsonInt64(Obj(pJson, "custom")) != 0;
+	TeeInfo.ApplyColors(CustomColors, JsonInt64(Obj(pJson, "body")), JsonInt64(Obj(pJson, "feet")));
+
+	json_value_free(pJson);
+	return TeeInfo.Valid();
+}
+
 std::string MakeRequestId(const char *pPrefix)
 {
 	static std::atomic<int> s_Counter{0};
@@ -1764,7 +1791,7 @@ void CIrcChat::RenderAvatar(const CUIRect &Rect, const SUser *pUser)
 	CTeeRenderInfo TeeInfo;
 	if(ClientId >= 0 && GameClient()->m_aClients[ClientId].m_RenderInfo.Valid())
 		TeeInfo = GameClient()->m_aClients[ClientId].m_RenderInfo;
-	else
+	else if(!pUser || !ParseTeeRenderInfoFromSkinJson(pUser->m_Skin.c_str(), GameClient(), TeeInfo))
 	{
 		TeeInfo.Apply(GameClient()->m_Skins.Find("default"));
 		TeeInfo.m_Size = Rect.h * 1.2f;
