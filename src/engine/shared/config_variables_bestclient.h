@@ -317,3 +317,6 @@ MACRO_CONFIG_INT(ClLaserPath, al_laser_path, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_S
 MACRO_CONFIG_INT(ClLaserPathOthers, al_laser_path_others, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Laser path prediction others")
 MACRO_CONFIG_INT(ClShowDJ, al_show_jumps, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show remaining double jumps of a tee")
 MACRO_CONFIG_INT(ClShowJumpsSize, al_show_jumps_size, 30, -50, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Size of double jump indicators")
+
+// Scoreboard
+MACRO_CONFIG_INT(ClScoreboardPoints, al_scoreboard_points, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show points on the scoreboard")

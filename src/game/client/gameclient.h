@@ -71,6 +71,7 @@
 #include "components/nameplates.h"
 #include "components/particles.h"
 #include "components/players.h"
+#include "components/player_points.h"
 #include "components/race_demo.h"
 #include "components/scoreboard.h"
 #include "components/skins.h"
@@ -260,6 +261,7 @@ public:
 	CScripting m_Scripting;
 	CMod m_Mod;
 	CCustomCommunities m_CustomCommunities;
+	CPlayerPoints m_PlayerPoints;
 	CMovingTiles m_MovingTilesBackground = CMovingTiles{ false };
 	CMovingTiles m_MovingTilesForeground = CMovingTiles{ true };
 
