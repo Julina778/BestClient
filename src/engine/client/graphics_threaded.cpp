@@ -2792,11 +2792,6 @@ int CGraphics_Threaded::WindowOpen()
 	return m_pBackend->WindowOpen();
 }
 
-void *CGraphics_Threaded::NativeWindowHandle()
-{
-	return m_pBackend->GetNativeWindowHandle();
-}
-
 void CGraphics_Threaded::SetWindowGrab(bool Grab)
 {
 	m_pBackend->SetWindowGrab(Grab);

@@ -347,7 +347,6 @@ public:
 	virtual const char *GetVendorString() = 0;
 	virtual const char *GetVersionString() = 0;
 	virtual const char *GetRendererString() = 0;
-	virtual void *NativeWindowHandle() = 0;
 
 	class CLineItem
 	{
@@ -631,7 +630,6 @@ public:
 
 	virtual int WindowActive() = 0;
 	virtual int WindowOpen() = 0;
-	virtual void *NativeWindowHandle() = 0;
 };
 
 extern IEngineGraphics *CreateEngineGraphicsThreaded();
