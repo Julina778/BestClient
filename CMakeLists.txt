@@ -856,6 +856,7 @@ if(TARGET_OS STREQUAL "windows")
   list(APPEND PLATFORM_LIBS version.lib) # GetFileVersionInfoSizeW
   list(APPEND PLATFORM_LIBS ws2_32.lib) # Windows sockets
   list(APPEND PLATFORM_LIBS advapi32.lib) # Reg* and Crypt* functions
+  list(APPEND PLATFORM_LIBS secur32.lib crypt32.lib) # SChannel TLS and certificate APIs
   list(APPEND PLATFORM_LIBS bcrypt.lib userenv.lib) # for Rust (https://github.com/rust-lang/rust/issues/91974)
   list(APPEND PLATFORM_LIBS ole32.lib) # CoInitialize(Ex)
   list(APPEND PLATFORM_LIBS runtimeobject.lib) # RoGetActivationFactory / WinRT
@@ -1016,8 +1017,25 @@ set_glob(RUST_MASTERSRV GLOB "rs;toml" src/mastersrv/src
   main.rs
 )
 
+set_glob(RUST_CLIENTINDICATORSRV GLOB_RECURSE "rs;toml;lock;example;md;sh;service" src/clientindicatorsrv
+  .env.example
+  Cargo.lock
+  Cargo.toml
+  README.md
+  bestclient-indicator-server.service
+  run.sh
+  src/main.rs
+)
+
 add_library(rust-bridge-shared EXCLUDE_FROM_ALL OBJECT ${RUST_BRIDGE_SHARED})
 list(APPEND TARGETS_OWN rust-bridge-shared)
+
+add_custom_target(bestclient-indicator-server
+  COMMAND ${CMAKE_COMMAND} -E env CARGO_BUILD_JOBS=2 CARGO_TARGET_DIR=${PROJECT_BINARY_DIR}/clientindicatorsrv ${RUST_CARGO} build --release --locked --manifest-path "${PROJECT_SOURCE_DIR}/src/clientindicatorsrv/Cargo.toml"
+  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+  USES_TERMINAL
+  DEPENDS ${RUST_CLIENTINDICATORSRV}
+)
 
 if(TARGET_OS STREQUAL "android")
   set(CARGO_BUILD_DIR "${CARGO_NDK_TARGET}/")
@@ -1351,6 +1369,7 @@ set(EXPECTED_DATA
   autoexec_server.cfg
   background_noise.png
   blob.png
+  BestClient/bc_dev_icon.png
   BestClient/bc_icon.png
   BestClient/builtinscripts/sayemoticon.chai
   BestClient/combo/combo1.wv
@@ -2776,6 +2795,8 @@ if(CLIENT)
     components/bestclient/magic_particles.h
     components/bestclient/hud_editor.cpp
     components/bestclient/hud_editor.h
+    components/bestclient/irc/irc.cpp
+    components/bestclient/irc/irc.h
     components/bestclient/music_player.cpp
     components/bestclient/music_player.h
     components/bestclient/visualizer/analyzer.cpp
@@ -3284,6 +3305,18 @@ if(CLIENT)
 
   list(APPEND TARGETS_OWN bestclient-voice-server)
   list(APPEND TARGETS_LINK bestclient-voice-server)
+
+  find_program(GO_EXECUTABLE go)
+  if(GO_EXECUTABLE)
+    add_custom_target(bestgram-server
+      COMMAND ${GO_EXECUTABLE} build -o "${PROJECT_BINARY_DIR}/bestgram-server" .
+      COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_BINARY_DIR}/bestgram-server" "${PROJECT_BINARY_DIR}/bestclient-irc-server"
+      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/src/irc"
+      COMMENT "Building BestGram server"
+      VERBATIM
+    )
+    add_custom_target(bestclient-irc-server DEPENDS bestgram-server)
+  endif()
 
   list(APPEND TARGETS_OWN game-client)
   list(APPEND TARGETS_LINK game-client)

@@ -71,6 +71,8 @@ public:
 	int m_JumpsLeft;
 	int m_JumpsUsed;
 	float m_FontSizeJumps;
+	
+	bool m_IsUserDeveloperIndicator;
 };
 
 // Part Types
@@ -853,6 +855,7 @@ protected:
 		m_ShiftOnInvis = !g_Config.m_BcClientIndicatorInNamePlateDynamic;
 		m_Size = vec2(Data.m_FontSizeBClientIndicator + DEFAULT_PADDING, Data.m_FontSizeBClientIndicator + DEFAULT_PADDING);
 		m_Visible = Data.m_IsUserBClientIndicator;
+		m_Texture = g_pData->m_aImages[Data.m_IsUserDeveloperIndicator ? IMAGE_BCDEVICON : IMAGE_BCICON].m_Id;
 		m_Color = ColorRGBA(1.0f, 1.0f, 1.0f, Data.m_Color.a);
 	}
 
@@ -1166,6 +1169,7 @@ void CNamePlates::RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *p
 	Data.m_TrackedFlags = 0;
 	Data.m_JumpsUsed = 0;
 	Data.m_JumpsLeft = 0;
+	Data.m_IsUserDeveloperIndicator = Data.m_ShowBClientIndicator && GameClient()->m_ClientIndicator.IsPlayerDeveloper(pPlayerInfo->m_ClientId);
 
 	const bool Following = (GameClient()->m_Snap.m_SpecInfo.m_Active && !GameClient()->m_MultiViewActivated && GameClient()->m_Snap.m_SpecInfo.m_SpectatorId != SPEC_FREEVIEW);
 	const CGameClient::CSnapState::CCharacterInfo &Other = GameClient()->m_Snap.m_aCharacters[pPlayerInfo->m_ClientId];
@@ -1284,6 +1288,8 @@ void CNamePlates::RenderNamePlatePreview(vec2 Position, int Dummy)
 	Data.m_FontSizeBClientIndicator = FontSizeBClientIndicator;
 	Data.m_IsUserBClientIndicator = Data.m_ShowBClientIndicator &&
 		(HasPreviewClient ? GameClient()->m_ClientIndicator.IsPlayerBClient(PreviewDisplayClientId) : true);
+	Data.m_IsUserDeveloperIndicator = Data.m_ShowBClientIndicator &&
+		HasPreviewClient && GameClient()->m_ClientIndicator.IsPlayerDeveloper(PreviewDisplayClientId);
 
 	Data.m_FontSizeHookStrongWeak = FontSizeHookStrongWeak;
 	Data.m_HookStrongWeakId = Data.m_ClientId;

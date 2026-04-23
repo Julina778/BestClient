@@ -78,11 +78,16 @@ MACRO_CONFIG_INT(BcUseShortKogServerName, bc_use_short_kog_server_name, 0, 0, 1,
 MACRO_CONFIG_INT(BcStreamerFlags, bc_streamer_flags, 64, 0, 127, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Bitmask of BestClient streamer mode options")
 
 // Fast input
-MACRO_CONFIG_INT(BcFastInputMode, bc_fast_input_mode, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fast input mode (0 = fast input, 1 = best input)")
+MACRO_CONFIG_INT(BcFastInputMode, bc_fast_input_mode, 0, 0, 3, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Fast input mode (0 = fast input, 1 = delta input, 2 = gamma input, 3 = best input)")
+MACRO_CONFIG_INT(BcFastInputDeltaInput, bc_fast_input_delta_input, 0, 0, 500, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Delta input amount in 0.01 ticks")
+MACRO_CONFIG_INT(BcFastInputGammaInput, bc_fast_input_gamma_input, 0, 0, 600, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Gamma input amount in 0.01 ticks (UI shows 0-6.00M)")
 MACRO_CONFIG_INT(BcBestInputPreset, bc_best_input_preset, 0, 0, 3, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Best input preset (0 = custom, 1 = delta+, 2 = gamma+, 3 = auto)")
 MACRO_CONFIG_INT(BcBestInputOffset, bc_best_input_offset, 0, 0, 1000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Best input prediction offset in 0.01 ticks (0-10.00 ticks)")
 MACRO_CONFIG_INT(BcBestInputSmoothing, bc_best_input_smoothing, 0, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Best input smoothing amount (0-100%)")
 MACRO_CONFIG_INT(BcBestInputLatencyComp, bc_best_input_latency_comp, 0, 0, 50, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Best input latency compensation (0-50%)")
+MACRO_CONFIG_INT(BcBestInputInterpolation, bc_best_input_interpolation, 1, 1, 3, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Best input interpolation mode (1 = linear, 2 = cubic, 3 = smooth)")
+MACRO_CONFIG_INT(BcDeltaInputOthers, bc_delta_input_others, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Apply delta input to other tees")
+MACRO_CONFIG_INT(BcGammaInputOthers, bc_gamma_input_others, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Apply gamma input to other tees")
 MACRO_CONFIG_INT(BcBestInputOthers, bc_best_input_others, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Apply best input to other tees")
 MACRO_CONFIG_INT(BcFastInputAutoMargin, bc_fast_input_auto_margin, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Automatically adjusts prediction margin in real time for fast input, latency and connection stability")
 MACRO_CONFIG_INT(BcSnapTap, bc_snap_tap, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable Snap Tap for opposite left/right inputs")
@@ -239,7 +244,17 @@ MACRO_CONFIG_STR(BcClientIndicatorServerAddress, bc_client_indicator_server_addr
 MACRO_CONFIG_STR(BcClientIndicatorBrowserUrl, bc_client_indicator_browser_url, 256, "https://150.241.70.188:8779/users.json", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Client indicator browser JSON URL")
 MACRO_CONFIG_STR(BcClientIndicatorTokenUrl, bc_client_indicator_token_url, 256, "https://150.241.70.188:8779/token.json", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Client indicator token bootstrap URL")
 MACRO_CONFIG_STR(BcClientIndicatorSharedToken, bc_client_indicator_shared_token, 256, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Client indicator shared token for signed UDP packets")
+MACRO_CONFIG_STR(BcClientIndicatorSecretKey, bc_client_indicator_secret_key, 256, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Client indicator developer secret key")
 MACRO_CONFIG_INT(BrFilterBestclient, br_filter_bestclient, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Filter out servers with no BestClient users")
+
+// BestGram
+MACRO_CONFIG_STR(BcIrcHost, bc_irc_host, 256, "150.241.70.188", CFGFLAG_CLIENT | CFGFLAG_SAVE, "BestGram server host")
+MACRO_CONFIG_INT(BcIrcPort, bc_irc_port, 6667, 1, 65535, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BestGram server port")
+MACRO_CONFIG_INT(BcIrcAutoconnect, bc_irc_autoconnect, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Automatically connect to BestGram")
+MACRO_CONFIG_INT(BcIrcAutologin, bc_irc_autologin, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Automatically login to BestGram with saved session token")
+MACRO_CONFIG_STR(BcIrcSessionToken, bc_irc_session_token, 256, "", CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_NONTEEHISTORIC, "BestGram session token")
+MACRO_CONFIG_STR(BcIrcTlsFingerprint, bc_irc_tls_fingerprint, 128, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Pinned BestGram TLS SHA256 fingerprint")
+MACRO_CONFIG_INT(BcIrcMediaPreview, bc_irc_media_preview, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show media previews in BestGram")
 
 // Magic particles
 MACRO_CONFIG_INT(BcMagicParticles, bc_magic_particles, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Toggle magic particles")

@@ -37,6 +37,7 @@
 #include "components/bestclient/fast_practice.h"
 #include "components/bestclient/chat_bubbles.h"
 #include "components/bestclient/hud_editor.h"
+#include "components/bestclient/irc/irc.h"
 #include "components/bestclient/magic_particles.h"
 #include "components/bestclient/music_player.h"
 #include "components/bestclient/orbit_aura.h"
@@ -238,6 +239,7 @@ public:
 	CFastPractice m_FastPractice;
 	CBestClient m_BestClient;
 	CVoiceChat m_VoiceChat;
+	CIrcChat m_IrcChat;
 
 	CTooltips m_Tooltips;
 

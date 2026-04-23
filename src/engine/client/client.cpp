@@ -2937,7 +2937,9 @@ void CClient::Update()
 				const bool HasFastInput =
 					g_Config.m_TcFastInput &&
 					((g_Config.m_BcFastInputMode == 0 && g_Config.m_TcFastInputAmount > 0) ||
-						(g_Config.m_BcFastInputMode == 1 && g_Config.m_BcBestInputOffset > 0));
+						(g_Config.m_BcFastInputMode == 1 && g_Config.m_BcFastInputDeltaInput > 0) ||
+						(g_Config.m_BcFastInputMode == 2 && BcFastInputGammaUiToEffectiveAmount(g_Config.m_BcFastInputGammaInput) > 0) ||
+						(g_Config.m_BcFastInputMode == 3 && g_Config.m_BcBestInputOffset > 0));
 				if(HasFastInput && GameClient()->CheckNewInput())
 				{
 					Repredict = true;
@@ -5672,10 +5674,20 @@ int CClient::PredictionMargin() const
 		{
 			FastInputMargin = std::max(0, g_Config.m_TcFastInputAmount);
 		}
+		else if(g_Config.m_BcFastInputMode == 1)
+		{
+			const int DeltaInputAmount = std::max(0, g_Config.m_BcFastInputDeltaInput);
+			FastInputMargin = (DeltaInputAmount + 2) / 5;
+		}
+		else if(g_Config.m_BcFastInputMode == 2)
+		{
+			const int GammaInputAmount = BcFastInputGammaUiToEffectiveAmount(g_Config.m_BcFastInputGammaInput);
+			FastInputMargin = (GammaInputAmount + 2) / 5;
+		}
 		else
 		{
 			const int BestInputAmount = std::max(0, g_Config.m_BcBestInputOffset);
-			// best input is measured in 0.01 ticks, convert it to milliseconds.
+			// Best input is measured in 0.01 ticks, convert it to milliseconds.
 			FastInputMargin = (BestInputAmount + 2) / 5;
 		}
 	}
