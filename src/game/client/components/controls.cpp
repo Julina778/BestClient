@@ -337,6 +337,10 @@ int CControls::SnapInput(int *pData)
 		for(auto &InputData : m_aInputData)
 			InputData.m_PlayerFlags &= ~PLAYERFLAG_CHATTING;
 
+	if(g_Config.m_ClHideChatBubbles)
+		for(auto &InputData : m_aInputData)
+			InputData.m_PlayerFlags &= ~PLAYERFLAG_CHATTING;
+
 	if(g_Config.m_TcNameplatePingCircle)
 		for(auto &InputData : m_aInputData)
 			InputData.m_PlayerFlags |= PLAYERFLAG_SCOREBOARD;

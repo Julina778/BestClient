@@ -320,3 +320,6 @@ MACRO_CONFIG_INT(ClShowJumpsSize, al_show_jumps_size, 30, -50, 100, CFGFLAG_CLIE
 
 // Scoreboard
 MACRO_CONFIG_INT(ClScoreboardPoints, al_scoreboard_points, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show points on the scoreboard")
+
+// Chat
+MACRO_CONFIG_INT(ClHideChatBubbles, al_hide_chat_bubbles, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Hide chat bubbles while typing")
