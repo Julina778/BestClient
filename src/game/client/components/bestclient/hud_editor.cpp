@@ -443,6 +443,8 @@ void CHudEditor::CollectModuleVisuals(SModuleVisual *pOut, int &Count) const
 		pOut[Count++] = GetModuleVisual(Module);
 	};
 
+	// Keep chat at the very bottom so overlapping HUD modules remain easy to select and drag.
+	AddModule(HudLayout::MODULE_CHAT);
 	AddModule(HudLayout::MODULE_MUSIC_PLAYER);
 	AddModule(HudLayout::MODULE_SCORE);
 	AddModule(HudLayout::MODULE_FINISH_PREDICTION);
@@ -450,7 +452,6 @@ void CHudEditor::CollectModuleVisuals(SModuleVisual *pOut, int &Count) const
 	AddModule(HudLayout::MODULE_KEYSTROKES_MOUSE);
 	AddModule(HudLayout::MODULE_SPECTATOR_COUNT);
 	AddModule(HudLayout::MODULE_MOVEMENT_INFO);
-	AddModule(HudLayout::MODULE_CHAT);
 	AddModule(HudLayout::MODULE_VOTES);
 	AddModule(HudLayout::MODULE_LOCAL_TIME);
 	AddModule(HudLayout::MODULE_FROZEN_HUD);
@@ -899,13 +900,13 @@ void CHudEditor::RenderOverlay(vec2 MousePos)
 
 	// Draw true HUD previews first, then add interactive editor overlays on top.
 	const bool MusicPlayerHasLiveRect = IsMusicPlayerEnabled(GameClient()) && GameClient()->m_MusicPlayer.HudReservation().m_Visible;
+	GameClient()->m_Chat.RenderHud(true);
 	GameClient()->m_MusicPlayer.RenderHudEditor(!MusicPlayerHasLiveRect);
 	GameClient()->m_Hud.RenderScoreHudPreview();
 	GameClient()->m_Hud.RenderKeystrokesKeyboardPreview();
 	GameClient()->m_Hud.RenderKeystrokesMousePreview();
 	GameClient()->m_Hud.RenderSpectatorCountPreview();
 	GameClient()->m_Hud.RenderMovementInformationPreview();
-	GameClient()->m_Chat.RenderHud(true);
 	GameClient()->m_Voting.RenderHud(true);
 	GameClient()->m_Hud.RenderLocalTimePreview();
 	GameClient()->m_Hud.RenderFrozenHudPreview();
