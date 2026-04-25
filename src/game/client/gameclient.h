@@ -27,6 +27,7 @@
 #include <game/teamscore.h>
 
 // components
+#include "components/alesstya/alesstya.h"
 #include "components/background.h"
 #include "components/bestclient/3d_particles.h"
 #include "components/bestclient/admin_panel.h"
@@ -245,6 +246,8 @@ public:
 
 	CLocalServer m_LocalServer;
 
+	CAlesstya m_Alesstya;
+
 	// TClient Components
 	CSkinProfiles m_SkinProfiles;
 	CStatusBar m_StatusBar;
@@ -309,8 +312,12 @@ private:
 	int m_EditorMovementDelay = 5;
 	void UpdateEditorIngameMoved();
 
+	void SkinStealTick(CCharacter *pChar);
+
 	int m_PredictedTick;
 	int m_aLastNewPredictedTick[NUM_DUMMIES];
+	int m_aLastSkinStealTick[NUM_DUMMIES];
+	int64_t m_NextSkinSteal;
 
 	int m_LastRoundStartTick;
 	int m_LastRaceTick;

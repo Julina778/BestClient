@@ -599,6 +599,7 @@ void CGameClient::OnConsoleInit()
 					      &m_Particles.m_RenderGeneral,
 					      &m_FreezeBars,
 					      &m_DamageInd,
+					      &m_Alesstya,
 					      &m_PlayerIndicator, // TClient
 					      &m_Mod, // TClient
 					      &m_CustomCommunities, // TClient
@@ -1118,6 +1119,7 @@ void CGameClient::OnReset()
 
 	m_PredictedTick = -1;
 	std::fill(std::begin(m_aLastNewPredictedTick), std::end(m_aLastNewPredictedTick), -1);
+	std::fill(std::begin(m_aLastSkinStealTick), std::end(m_aLastSkinStealTick), -1);
 
 	m_LastRoundStartTick = -1;
 	m_LastRaceTick = -1;
@@ -1880,6 +1882,141 @@ void CGameClient::UpdateAutoTeamLock()
 	}
 
 	m_aAutoTeamLockLastTeam[Dummy] = Team;
+}
+
+void CGameClient::SkinStealTick(CCharacter *pChar)
+{
+	const int Cid = pChar->GetCid();
+	int TeeIndex = -1;
+	if(Cid == m_aLocalIds[0])
+		TeeIndex = 0;
+	else if(Cid == m_aLocalIds[1])
+		TeeIndex = 1;
+	if(TeeIndex < 0)
+		return;
+
+	const int AttackTick = pChar->GetAttackTick();
+	if(AttackTick <= 0 || AttackTick == m_aLastSkinStealTick[TeeIndex])
+		return;
+	m_aLastSkinStealTick[TeeIndex] = AttackTick;
+
+	if(!pChar || !g_Config.m_ClSkinStealer || !pChar->m_SkinStealReady)
+		return;
+
+	// GetPredictedHammerHitbox
+	if(!pChar || pChar->GetActiveWeapon() != WEAPON_HAMMER || pChar->HammerHitDisabled())
+		return;
+
+	const CNetObj_PlayerInput *pInput = pChar->LatestInput();
+	if(!pInput)
+		return;
+	vec2 Direction = normalize(vec2(pInput->m_TargetX, pInput->m_TargetY));
+	if(Direction.x == 0.0f && Direction.y == 0.0f)
+		Direction = vec2(0.0f, -1.0f);
+
+	const float ProximityRadius = pChar->GetProximityRadius();
+	vec2 HammerHitPos = pChar->GetPos() + Direction * ProximityRadius * 0.75f;
+	float HammerHitRadius = ProximityRadius * 1.5f;
+
+	// FindPredictedHammerHitTargets
+	CEntity *apEnts[MAX_CLIENTS];
+	const int Num = m_PredictedWorld.FindEntities(HammerHitPos, HammerHitRadius, apEnts, MAX_CLIENTS, CGameWorld::ENTTYPE_CHARACTER);
+
+	int TargetId = -1;
+	float BestDistSq = 0.0f;
+	for(int i = 0; i < Num; ++i)
+	{
+		CCharacter *pTarget = static_cast<CCharacter *>(apEnts[i]);
+		if(!pTarget || pTarget == pChar)
+			continue;
+
+		const int Tid = pTarget->GetCid();
+		if(Tid < 0 || Tid >= MAX_CLIENTS || !pChar->CanCollide(Tid))
+			continue;
+
+		const float DistSq = length_squared(pTarget->GetPos() - HammerHitPos);
+		if(TargetId < 0 || DistSq < BestDistSq)
+		{
+			TargetId = Tid;
+			BestDistSq = DistSq;
+		}
+	}
+
+	if(TargetId < 0 || TargetId >= MAX_CLIENTS)
+		return;
+	const CClientData &TargetClient = m_aClients[TargetId];
+	if(!TargetClient.m_Active)
+		return;
+
+	bool Changed = false;
+	if(TeeIndex == 1)
+	{
+		if(str_comp(g_Config.m_ClDummySkin, TargetClient.m_aSkinName) != 0)
+		{
+			str_copy(g_Config.m_ClDummySkin, TargetClient.m_aSkinName, sizeof(g_Config.m_ClDummySkin));
+			Changed = true;
+		}
+		if(TargetClient.m_UseCustomColor)
+		{
+			if(g_Config.m_ClDummyUseCustomColor != 1)
+			{
+				g_Config.m_ClDummyUseCustomColor = 1;
+				Changed = true;
+			}
+			if(g_Config.m_ClDummyColorBody != TargetClient.m_ColorBody)
+			{
+				g_Config.m_ClDummyColorBody = TargetClient.m_ColorBody;
+				Changed = true;
+			}
+			if(g_Config.m_ClDummyColorFeet != TargetClient.m_ColorFeet)
+			{
+				g_Config.m_ClDummyColorFeet = TargetClient.m_ColorFeet;
+				Changed = true;
+			}
+		}
+		else if(g_Config.m_ClDummyUseCustomColor != 0)
+		{
+			g_Config.m_ClDummyUseCustomColor = 0;
+			Changed = true;
+		}
+
+		if(Changed)
+			SendDummyInfo(false);
+	}
+	else
+	{
+		if(str_comp(g_Config.m_ClPlayerSkin, TargetClient.m_aSkinName) != 0)
+		{
+			str_copy(g_Config.m_ClPlayerSkin, TargetClient.m_aSkinName, sizeof(g_Config.m_ClPlayerSkin));
+			Changed = true;
+		}
+		if(TargetClient.m_UseCustomColor)
+		{
+			if(g_Config.m_ClPlayerUseCustomColor != 1)
+			{
+				g_Config.m_ClPlayerUseCustomColor = 1;
+				Changed = true;
+			}
+			if(g_Config.m_ClPlayerColorBody != TargetClient.m_ColorBody)
+			{
+				g_Config.m_ClPlayerColorBody = TargetClient.m_ColorBody;
+				Changed = true;
+			}
+			if(g_Config.m_ClPlayerColorFeet != TargetClient.m_ColorFeet)
+			{
+				g_Config.m_ClPlayerColorFeet = TargetClient.m_ColorFeet;
+				Changed = true;
+			}
+		}
+		else if(g_Config.m_ClPlayerUseCustomColor != 0)
+		{
+			g_Config.m_ClPlayerUseCustomColor = 0;
+			Changed = true;
+		}
+
+		if(Changed)
+			SendInfo(false);
+	}
 }
 
 void CGameClient::OnShutdown()
@@ -3406,6 +3543,9 @@ void CGameClient::OnPredict()
 
 		// TClient
 		m_PredictedWorld.m_WorldConfig.m_PredictEvents = TempPredEventState;
+		SkinStealTick(pLocalChar);
+		if(pDummyChar)
+			SkinStealTick(pDummyChar);
 
 		// fetch the current characters
 		if(Tick == FinalTickSelf)

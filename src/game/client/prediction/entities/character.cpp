@@ -272,6 +272,8 @@ void CCharacter::HandleWeaponSwitch()
 
 void CCharacter::FireWeapon()
 {
+	m_SkinStealReady = false;
+
 	if(m_NumInputs < 2)
 		return;
 
@@ -397,6 +399,7 @@ void CCharacter::FireWeapon()
 		{
 			float FireDelay = GetTuning(GetOverriddenTuneZone())->m_HammerHitFireDelay;
 			m_ReloadTimer = FireDelay * GameWorld()->GameTickSpeed() / 1000;
+			m_SkinStealReady = true;
 		}
 	}
 	break;

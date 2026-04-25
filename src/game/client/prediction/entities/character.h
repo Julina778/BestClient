@@ -140,6 +140,8 @@ public:
 	// TClient
 	CNetObj_PlayerInput *LatestInput() { return &m_LatestInput; }
 
+	bool m_SkinStealReady;
+
 private:
 	// weapon info
 	int m_aHitObjects[MAX_CLIENTS];

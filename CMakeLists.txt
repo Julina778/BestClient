@@ -2766,6 +2766,8 @@ if(CLIENT)
     animstate.h
     component.cpp
     component.h
+    components/alesstya/alesstya.cpp
+    components/alesstya/alesstya.h
     components/background.cpp
     components/background.h
     components/bestclient/3d_particles.cpp
