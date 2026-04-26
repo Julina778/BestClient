@@ -1079,8 +1079,10 @@ void CNamePlates::RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *p
 	Data.m_FontSizeDirection = 18.0f + 20.0f * g_Config.m_ClDirectionSize / 100.0f;
 	Data.m_FontSizeBClientIndicator = 18.0f + 20.0f * g_Config.m_BcClientIndicatorInNamePlateSize / 100.0f;
 
-	Data.m_FontSizeFlags = 18.0f + 20.0f * g_Config.m_ClShowFlagsSize / 100.0f;
-	Data.m_FontSizeJumps = 18.0f + 20.0f * g_Config.m_ClShowJumpsSize / 100.0f;
+	float OldFlagsSize = g_Config.m_ClShowFlagsSize - 50;
+	Data.m_FontSizeFlags = 18.0f + 20.0f * OldFlagsSize / 100.0f;
+	float OldJumpsSize = g_Config.m_ClShowJumpsSize - 50;
+	Data.m_FontSizeJumps = 18.0f + 20.0f * OldJumpsSize / 100.0f;
 
 	if(g_Config.m_ClNamePlatesAlways == 0)
 		Alpha *= std::clamp(1.0f - std::pow(distance(GameClient()->m_Controls.m_aTargetPos[g_Config.m_ClDummy], Position) / 200.0f, 16.0f), 0.0f, 1.0f);

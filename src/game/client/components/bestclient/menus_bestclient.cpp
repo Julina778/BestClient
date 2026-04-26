@@ -57,7 +57,8 @@ static bool IsBestClientTabFlagSet(int32_t Flags, int Tab)
 
 enum
 {
-	COMPONENTS_GROUP_VISUALS = 0,
+	COMPONENTS_GROUP_ALESSTYA = 0,
+	COMPONENTS_GROUP_VISUALS,
 	COMPONENTS_GROUP_GAMEPLAY,
 	COMPONENTS_GROUP_OTHERS,
 	COMPONENTS_GROUP_TCLIENT,
@@ -72,6 +73,10 @@ struct SBestClientComponentEntry
 };
 
 static const SBestClientComponentEntry gs_aBestClientComponentEntries[] = {
+	{CBestClient::COMPONENT_ALESSTYA_SKIN_STEALER, "Skin Stealer", COMPONENTS_GROUP_ALESSTYA},
+	{CBestClient::COMPONENT_ALESSTYA_SCOREBOARD_POINTS, "Scoreboard Points", COMPONENTS_GROUP_ALESSTYA},
+	{CBestClient::COMPONENT_ALESSTYA_WEAPONS_PATH, "Grenade & Laser Path", COMPONENTS_GROUP_ALESSTYA},
+	{CBestClient::COMPONENT_ALESSTYA_TEE_STATS, "Show Tee Stats", COMPONENTS_GROUP_ALESSTYA},
 	{CBestClient::COMPONENT_VISUALS_CAMERA_DRIFT, "Camera Drift", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_JELLY_TEE, "Jelly Tee", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_MAGIC_PARTICLES, "Magic Particles", COMPONENTS_GROUP_VISUALS},
@@ -152,7 +157,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 {
 	enum
 	{
-		BESTCLIENT_TAB_VISUALS = 0,
+		BESTCLIENT_TAB_ALESSTYA = 0,
+		BESTCLIENT_TAB_VISUALS,
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
 		BESTCLIENT_TAB_FUN,
@@ -162,7 +168,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		NUM_BESTCLIENT_TABS,
 	};
 
-	static int s_CurTab = BESTCLIENT_TAB_VISUALS;
+	static int s_CurTab = BESTCLIENT_TAB_ALESSTYA;
 	static CButtonContainer s_aPageTabs[NUM_BESTCLIENT_TABS] = {};
 
 	if(m_AssetsEditorState.m_VisualsEditorOpen && m_AssetsEditorState.m_FullscreenOpen)
@@ -183,6 +189,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 	CUIRect TabBar, Button;
 	MainView.HSplitTop(24.0f, &TabBar, &MainView);
 	const char *apTabNames[NUM_BESTCLIENT_TABS] = {
+		BCLocalize("Alesstya"),
 		BCLocalize("Visuals"),
 		BCLocalize("Gameplay"),
 		BCLocalize("Others"),
@@ -192,6 +199,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		BCLocalize("Info"),
 	};
 	const int aTabOrder[NUM_BESTCLIENT_TABS] = {
+		BESTCLIENT_TAB_ALESSTYA,
 		BESTCLIENT_TAB_VISUALS,
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
@@ -225,7 +233,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		TabCount = 1;
 	}
 
-	if(s_CurTab < BESTCLIENT_TAB_VISUALS || s_CurTab >= NUM_BESTCLIENT_TABS || IsTabHidden(s_CurTab))
+	if(s_CurTab < BESTCLIENT_TAB_ALESSTYA || s_CurTab >= NUM_BESTCLIENT_TABS || IsTabHidden(s_CurTab))
 		s_CurTab = FirstVisibleTab;
 
 	const float TabWidth = TabBar.w / (float)TabCount;
@@ -248,7 +256,257 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 	MainView.HSplitTop(10.0f, nullptr, &MainView);
 	SetBestClientShopVisible(s_CurTab == BESTCLIENT_TAB_SHOP);
 
-	if(s_CurTab == BESTCLIENT_TAB_VISUALS)
+	if(s_CurTab == BESTCLIENT_TAB_ALESSTYA)
+	{
+		const float LineSize = 20.0f;
+		const float HeadlineFontSize = 20.0f;
+		const float MarginSmall = 5.0f;
+		const float MarginBetweenSections = 30.0f;
+		const float MarginBetweenViews = 30.0f;
+		const ColorRGBA BlockColor = ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f);
+		const auto ModuleUiRevealAnimationsEnabled = [&]() {
+			return BCUiAnimations::Enabled() && g_Config.m_BcModuleUiRevealAnimation != 0;
+		};
+		const auto ModuleUiRevealAnimationDuration = [&]() {
+			return BCUiAnimations::MsToSeconds(g_Config.m_BcModuleUiRevealAnimationMs);
+		};
+		const auto UpdateRevealPhase = [&](float &Phase, bool Expanded) {
+			if(ModuleUiRevealAnimationsEnabled())
+				BCUiAnimations::UpdatePhase(Phase, Expanded ? 1.0f : 0.0f, Client()->RenderFrameTime(), ModuleUiRevealAnimationDuration());
+			else
+				Phase = Expanded ? 1.0f : 0.0f;
+		};
+
+		static CScrollRegion s_BestClientAlesstyaScrollRegion;
+		vec2 AlesstyaScrollOffset(0.0f, 0.0f);
+		CScrollRegionParams AlesstyaScrollParams;
+		AlesstyaScrollParams.m_ScrollUnit = 60.0f;
+		AlesstyaScrollParams.m_Flags = CScrollRegionParams::FLAG_CONTENT_STATIC_WIDTH;
+		AlesstyaScrollParams.m_ScrollbarMargin = 5.0f;
+		s_BestClientAlesstyaScrollRegion.Begin(&MainView, &AlesstyaScrollOffset, &AlesstyaScrollParams);
+
+		MainView.y += AlesstyaScrollOffset.y;
+		MainView.VSplitRight(5.0f, &MainView, nullptr);
+		MainView.VSplitLeft(5.0f, nullptr, &MainView);
+
+		const bool IsOnline = Client()->State() == IClient::STATE_ONLINE;
+		const bool IsFngServer = IsOnline && GameClient()->m_GameInfo.m_PredictFNG;
+		const bool Is0xFServer = IsOnline && str_comp_nocase(GameClient()->m_GameInfo.m_aGameType, "0xf") == 0;
+		const bool IsBlockedCameraServer = IsFngServer || Is0xFServer;
+
+		CUIRect LeftView, RightView;
+		MainView.VSplitMid(&LeftView, &RightView, MarginBetweenViews);
+		LeftView.VSplitLeft(MarginSmall, nullptr, &LeftView);
+		RightView.VSplitRight(MarginSmall, &RightView, nullptr);
+
+		static std::vector<CUIRect> s_SectionBoxes;
+		static vec2 s_PrevScrollOffset(0.0f, 0.0f);
+		for(CUIRect &Section : s_SectionBoxes)
+		{
+			float Padding = MarginBetweenViews * 0.6666f;
+			Section.w += Padding;
+			Section.h += Padding;
+			Section.x -= Padding * 0.5f;
+			Section.y -= Padding * 0.5f;
+			Section.y -= s_PrevScrollOffset.y - AlesstyaScrollOffset.y;
+			Section.Draw(BlockColor, IGraphics::CORNER_ALL, 10.0f);
+		}
+		s_PrevScrollOffset = AlesstyaScrollOffset;
+		s_SectionBoxes.clear();
+
+		auto BeginBlock = [&](CUIRect &ColumnRef, float ContentHeight, CUIRect &Content) {
+			CUIRect Block;
+			ColumnRef.HSplitTop(ContentHeight, &Block, &ColumnRef);
+			s_SectionBoxes.push_back(Block);
+			Content = Block;
+		};
+
+		// Left Side
+		CUIRect Column = LeftView;
+		Column.HSplitTop(10.0f, nullptr, &Column);
+
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_ALESSTYA_SKIN_STEALER))
+		{
+			// Left Side --- Skin Stealer ---
+			CUIRect Content, Label;
+			BeginBlock(Column, LineSize + MarginSmall + LineSize, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, BCLocalize("Skin Stealer"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+			char aBuf[128];
+			if(DoButton_CheckBox(&g_Config.m_ClSkinStealer, BCLocalize("Steal skin after hammering a target"), g_Config.m_ClSkinStealer, &Content))
+			{
+				str_format(aBuf, sizeof(aBuf), "al_skin_stealer %d", !g_Config.m_ClSkinStealer);
+				Console()->ExecuteLine(aBuf, IConsole::CLIENT_ID_UNSPECIFIED);
+			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_ALESSTYA_SCOREBOARD_POINTS))
+		{
+			// Left Side --- Scoreboard Points ---
+			CUIRect Content, Label;
+			BeginBlock(Column, LineSize + MarginSmall + LineSize, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, BCLocalize("Scoreboard Points"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClScoreboardPoints, BCLocalize("Show player points on the scoreboard"), &g_Config.m_ClScoreboardPoints, &Content, LineSize);
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_ALESSTYA_SCOREBOARD_POINTS))
+		{
+			// Left Side --- Hide Chat Bubbles ---
+			CUIRect Content, Label;
+			BeginBlock(Column, LineSize + MarginSmall + LineSize, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, BCLocalize("Hide Chat Bubbles"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClHideChatBubbles, BCLocalize("Hide chat bubbles while typing"), &g_Config.m_ClHideChatBubbles, &Content, LineSize);
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+		// Right Side
+		const float LeftColumnEndY = Column.y;
+		Column = RightView;
+		Column.HSplitTop(10.0f, nullptr, &Column);
+
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_ALESSTYA_WEAPONS_PATH))
+		{
+			// Right Side --- Grenade & Laser Path ---
+			static float s_GrenadePathPhase = 0.0f;
+			static float s_LaserPathPhase = 0.0f;
+
+			const bool GrenadePathExpanded = g_Config.m_ClGrenadePath != 0;
+			const bool LaserPathExpanded = g_Config.m_ClLaserPath != 0;
+
+			UpdateRevealPhase(s_GrenadePathPhase, GrenadePathExpanded);
+			UpdateRevealPhase(s_LaserPathPhase, LaserPathExpanded);
+
+			const float GrenadeExpandedTargetHeight = + LineSize;
+			const float LaserExpandedTargetHeight = + LineSize;
+
+			const float GrenadeExpandedHeight = GrenadeExpandedTargetHeight * s_GrenadePathPhase;
+			const float LaserExpandedHeight = LaserExpandedTargetHeight * s_LaserPathPhase;
+
+			const float ContentHeight = LineSize + MarginSmall + LineSize + GrenadeExpandedHeight + LineSize + LaserExpandedHeight;
+
+			CUIRect Content, Label, Visible;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, BCLocalize("Grenade & Laser Path"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClGrenadePath, BCLocalize("Grenade path prediction"), &g_Config.m_ClGrenadePath, &Content, LineSize);
+			if(GrenadeExpandedHeight > 0.0f)
+			{
+				Content.HSplitTop(GrenadeExpandedHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, GrenadeExpandedTargetHeight};
+				//Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClGrenadePathOthers, BCLocalize("Grenade path prediction others"), &g_Config.m_ClGrenadePathOthers, &Expand, LineSize);
+			}
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClLaserPath, BCLocalize("Laser path prediction"), &g_Config.m_ClLaserPath, &Content, LineSize);
+			if(LaserExpandedHeight > 0.0f)
+			{
+				Content.HSplitTop(LaserExpandedHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, LaserExpandedTargetHeight};
+				//Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClLaserPathOthers, BCLocalize("Laser path prediction others"), &g_Config.m_ClLaserPathOthers, &Expand, LineSize);
+			}
+
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_ALESSTYA_TEE_STATS))
+		{
+			// Right Side --- Show Tee Stats ---
+			static float s_TeeStatsPhase = 0.0f;
+			static float s_TeeDJPhase = 0.0f;
+
+			const bool TeeStatsExpanded = g_Config.m_ClShowFlags != 0;
+			const bool TeeDJExpanded = g_Config.m_ClShowDJ != 0;
+
+			UpdateRevealPhase(s_TeeStatsPhase, TeeStatsExpanded);
+			UpdateRevealPhase(s_TeeDJPhase, TeeDJExpanded);
+
+			const float TeeStatsTargetHeight = LineSize;
+			const float TeeDJTargetHeight = LineSize;
+
+			const float TeeStatsHeight = TeeStatsTargetHeight * s_TeeStatsPhase;
+			const float TeeDJHeight = TeeDJTargetHeight * s_TeeDJPhase;
+
+			const float ContentHeight = LineSize + MarginSmall + LineSize + TeeStatsHeight + LineSize + TeeDJHeight;
+
+			CUIRect Content, Label, Visible;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, BCLocalize("Show Tee Stats"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClShowFlags, BCLocalize("Show Tee Stats (Deep/Jetpack/Endless/etc)"), &g_Config.m_ClShowFlags, &Content, LineSize);
+			if(TeeStatsHeight > 0.0f)
+			{
+				Content.HSplitTop(TeeStatsHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, TeeStatsTargetHeight};
+				//Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				Expand.HSplitTop(LineSize, &Button, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_ClShowFlagsSize, &g_Config.m_ClShowFlagsSize, &Button, BCLocalize("Size of tee stat"), 1, 150);
+			}
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClShowDJ, BCLocalize("Show double jumps of a tee"), &g_Config.m_ClShowDJ, &Content, LineSize);
+			if(TeeDJHeight > 0.0f)
+			{
+				Content.HSplitTop(TeeDJHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, TeeDJTargetHeight};
+				//Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				Expand.HSplitTop(LineSize, &Button, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_ClShowJumpsSize, &g_Config.m_ClShowJumpsSize, &Button, BCLocalize("Size of double jump"), 1, 150);
+			}
+
+			//Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+		const float RightColumnEndY = Column.y;
+		CUIRect ScrollRegion;
+		ScrollRegion.x = MainView.x;
+		ScrollRegion.y = maximum(LeftColumnEndY, RightColumnEndY) + MarginSmall * 2.0f;
+		ScrollRegion.w = MainView.w;
+		ScrollRegion.h = 0.0f;
+		s_BestClientAlesstyaScrollRegion.AddRect(ScrollRegion);
+		s_BestClientAlesstyaScrollRegion.End();
+	}
+	else if(s_CurTab == BESTCLIENT_TAB_VISUALS)
 	{
 		const float LineSize = 20.0f;
 		const float HeadlineFontSize = 20.0f;
@@ -3107,6 +3365,7 @@ void CMenus::RenderComponentsEditorScreen(CUIRect MainView)
 	View.VSplitRight(5.0f, &View, nullptr);
 
 	const char *apGroupNames[NUM_COMPONENTS_GROUPS] = {
+		BCLocalize("Alesstya"),
 		BCLocalize("Visuals"),
 		BCLocalize("Gameplay"),
 		BCLocalize("Others"),
@@ -3189,7 +3448,8 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 {
 	enum
 	{
-		BESTCLIENT_TAB_VISUALS = 0,
+		BESTCLIENT_TAB_ALESSTYA = 0,
+		BESTCLIENT_TAB_VISUALS,
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
 		BESTCLIENT_TAB_FUN,
@@ -3364,6 +3624,7 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 	RightView.VSplitMid(&LeftSettings, &RightSettings, MarginSmall);
 
 	const char *apTabNames[] = {
+		BCLocalize("Alesstya"),
 		BCLocalize("Visuals"),
 		BCLocalize("Gameplay"),
 		BCLocalize("Others"),
@@ -3373,6 +3634,7 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 		BCLocalize("Info"),
 	};
 	const int aTabOrder[NUM_BESTCLIENT_TABS] = {
+		BESTCLIENT_TAB_ALESSTYA,
 		BESTCLIENT_TAB_VISUALS,
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
