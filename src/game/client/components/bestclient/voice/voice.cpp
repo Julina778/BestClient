@@ -1756,6 +1756,8 @@ void CVoiceChat::RenderHudTalkingIndicator(float HudWidth, float HudHeight, bool
 {
 	if(!ForcePreview && (!HudLayout::IsEnabled(HudLayout::MODULE_VOICE_TALKERS) || g_Config.m_BcVoiceChatEnable == 0))
 		return;
+	if(!ForcePreview && g_Config.m_BcVoiceChatHeadphonesMuted != 0)
+		return;
 
 	const std::vector<STalkingEntry> &vEntries = m_vTalkingEntries;
 	const int LocalClientId = GameClient()->m_Snap.m_LocalClientId;
@@ -1973,6 +1975,8 @@ void CVoiceChat::RenderHudTalkingIndicator(float HudWidth, float HudHeight, bool
 CUIRect CVoiceChat::GetHudTalkingIndicatorRect(float HudWidth, float HudHeight, bool ForcePreview) const
 {
 	if(!ForcePreview && !HudLayout::IsEnabled(HudLayout::MODULE_VOICE_TALKERS))
+		return CUIRect{0.0f, 0.0f, 0.0f, 0.0f};
+	if(!ForcePreview && g_Config.m_BcVoiceChatHeadphonesMuted != 0)
 		return CUIRect{0.0f, 0.0f, 0.0f, 0.0f};
 
 	const std::vector<STalkingEntry> &vEntries = m_vTalkingEntries;
@@ -3588,11 +3592,9 @@ void CVoiceChat::ProcessPlayback()
 			{
 				if(Peer.m_DecodedPcm.Size() > 0)
 					Peer.m_DecodedPcm.Clear();
-				if(Peer.m_LastVoiceTick > 0)
-				{
-					Peer.m_LastVoiceTick = 0;
-					m_TalkingStateDirty = true;
-				}
+				// Keep the talking timeout driven by incoming voice packets.
+				// Clearing it here makes the HUD speaker indicator flicker when
+				// playback is muted locally (e.g. headphones mute).
 				continue;
 			}
 
