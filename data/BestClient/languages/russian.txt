@@ -1,4 +1,4 @@
-##### authors #####
+﻿##### authors #####
 
 # noxygalaxy
 # shibastik
@@ -467,8 +467,6 @@ RCON log
 No log entries yet
 == Записей в логе пока нет
 
-Fast actions
-== Быстрые действия
 
 No fast actions yet
 == Быстрых действий пока нет
@@ -596,8 +594,6 @@ Current
 New value
 == Новое значение
 
-Reset all
-== Сбросить всё
 
 Changes apply to global tunings (tune).
 == Изменения применяются к глобальным тюнингам (tune).
@@ -639,7 +635,7 @@ Reset All
 == Сбросить всё
 
 Visuals
-== Визуальные эффекты
+== Визуалы
 
 Gameplay
 == Игровой процесс
@@ -863,8 +859,20 @@ Minimal
 Full
 == Полный
 
+Micro
+== Микро
+
 Show mouse HUD
 == Показывать HUD мыши
+
+Dot
+== Точка
+
+Arrow
+== Стрелка
+
+Dot Dot
+== Две точки
 
 Dot No Box
 == Точка без рамки
@@ -908,8 +916,6 @@ Edit HUD positions directly above the live game.
 HUD editor
 == Редактор HUD
 
-Fast Input
-== Быстрый ввод
 
 Fast input
 == Быстрый ввод
@@ -1348,3 +1354,63 @@ PTT
 
 Voice chat
 == Голосовой чат
+
+Disabled.
+== Отключено.
+
+Loaded image.
+== Изображение загружено.
+
+Loaded video.
+== Видео загружено.
+
+No media selected.
+== Медиа не выбрано.
+
+Failed to load PNG.
+== Не удалось загрузить PNG.
+
+Failed to upload PNG.
+== Не удалось загрузить PNG в видеопамять.
+
+Failed to read file.
+== Не удалось прочитать файл.
+
+Failed to upload image.
+== Не удалось загрузить изображение в видеопамять.
+
+Failed to decode image.
+== Не удалось декодировать изображение.
+
+Failed to open video.
+== Не удалось открыть видео.
+
+Failed to read video info.
+== Не удалось прочитать информацию о видео.
+
+No video stream found.
+== Видеопоток не найден.
+
+Unsupported video codec.
+== Неподдерживаемый видеокодек.
+
+Failed to initialize video decoder.
+== Не удалось инициализировать видеодекодер.
+
+Invalid video dimensions.
+== Некорректные размеры видео.
+
+Failed to allocate video frames.
+== Не удалось выделить память для кадров видео.
+
+Failed to allocate RGBA frame.
+== Не удалось выделить память для RGBA-кадра.
+
+Failed to initialize video scaler.
+== Не удалось инициализировать масштабирование видео.
+
+Failed to decode first video frame.
+== Не удалось декодировать первый кадр видео.
+
+Failed while decoding video.
+== Ошибка при декодировании видео.

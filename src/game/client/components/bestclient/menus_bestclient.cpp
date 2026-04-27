@@ -1178,7 +1178,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					g_Config.m_BcKeystrokesKeyboardPreset = 0;
 				if(DoButton_Menu(&s_KeyboardPresetFull, BCLocalize("Full"), g_Config.m_BcKeystrokesKeyboardPreset == 1, &FullButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
 					g_Config.m_BcKeystrokesKeyboardPreset = 1;
-				if(DoButton_Menu(&s_KeyboardPresetMicro, "Micro", g_Config.m_BcKeystrokesKeyboardPreset == 2, &MicroButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
+				if(DoButton_Menu(&s_KeyboardPresetMicro, BCLocalize("Micro"), g_Config.m_BcKeystrokesKeyboardPreset == 2, &MicroButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
 					g_Config.m_BcKeystrokesKeyboardPreset = 2;
 			}
 
@@ -1202,11 +1202,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				DotButton.HMargin(2.0f, &DotButton);
 				ArrowButton.HMargin(2.0f, &ArrowButton);
 				DotDotButton.HMargin(2.0f, &DotDotButton);
-				if(DoButton_Menu(&s_MousePresetDot, "Dot", g_Config.m_BcKeystrokesMousePreset == 0, &DotButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
+				if(DoButton_Menu(&s_MousePresetDot, BCLocalize("Dot"), g_Config.m_BcKeystrokesMousePreset == 0, &DotButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
 					g_Config.m_BcKeystrokesMousePreset = 0;
-				if(DoButton_Menu(&s_MousePresetArrow, "Arrow", g_Config.m_BcKeystrokesMousePreset == 1, &ArrowButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
+				if(DoButton_Menu(&s_MousePresetArrow, BCLocalize("Arrow"), g_Config.m_BcKeystrokesMousePreset == 1, &ArrowButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
 					g_Config.m_BcKeystrokesMousePreset = 1;
-				if(DoButton_Menu(&s_MousePresetDotDot, "Dot Dot", g_Config.m_BcKeystrokesMousePreset == 2, &DotDotButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
+				if(DoButton_Menu(&s_MousePresetDotDot, BCLocalize("Dot Dot"), g_Config.m_BcKeystrokesMousePreset == 2, &DotDotButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
 					g_Config.m_BcKeystrokesMousePreset = 2;
 			}
 

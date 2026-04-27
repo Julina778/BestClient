@@ -1,4 +1,4 @@
-%ds left
+﻿%ds left
 == осталось %d сек
 
 %i minute left
@@ -742,8 +742,6 @@ Fat skins (DDFat)
 Skin prefix
 == Префикс скина
 
-Hook collisions
-== Коллизии крюка
 
 Pause
 == Пауза
@@ -1025,8 +1023,6 @@ Manual
 Race
 == Забег
 
-Auto
-== Авто
 
 Replay
 == Запись
@@ -1118,8 +1114,6 @@ Renderer
 default
 == станд.
 
-custom
-== перс.
 
 auto
 == авто
@@ -2651,3 +2645,4 @@ When a Tee is hookable
 [Hook collision line color]
 Hook collision line tip
 == 
+
