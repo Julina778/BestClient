@@ -18,7 +18,7 @@
 #include <string>
 #include <vector>
 
-static constexpr const char *GITHUB_RELEASES_URL = "https://api.github.com/repos/RoflikBEST/bestdownload/releases?per_page=10";
+static constexpr const char *GITHUB_RELEASES_URL = "https://api.github.com/repos/BestProjectTeam/BestClient/releases?per_page=10";
 static constexpr const char *UPDATE_ARCHIVE_PATH = "update/bestclient-release.zip";
 static constexpr const char *UPDATE_SCRIPT_PATH = "update/apply_bestclient_update.ps1";
 

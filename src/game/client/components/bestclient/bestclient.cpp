@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-static constexpr const char *BestClient_INFO_URL = "https://api.github.com/repos/RoflikBEST/bestdownload/releases?per_page=10";
+static constexpr const char *BestClient_INFO_URL = "https://api.github.com/repos/BestProjectTeam/BestClient/releases?per_page=10";
 static constexpr const char *BestClient_STREAMER_WORDS_FILE = "nwords.txt";
 static const char *const gs_apDefaultStreamerWords[] = {
 	"пидор",
