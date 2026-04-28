@@ -258,6 +258,7 @@ void CClientIndicator::RefreshBrowserCache(bool Force)
 	m_pBrowserTask->IpResolve(IPRESOLVE::V4);
 	// The indicator web endpoint is deployed with a self-signed certificate by default.
 	m_pBrowserTask->VerifyPeer(false);
+	m_pBrowserTask->CloseConnection(true);
 	m_pBrowserTask->LogProgress(HTTPLOG::FAILURE);
 	DebugLogF("starting browser request url=%s", g_Config.m_BcClientIndicatorBrowserUrl);
 	m_LastBrowserRefreshTick = time_get();
@@ -290,6 +291,7 @@ void CClientIndicator::RefreshToken(bool Force)
 	m_pTokenTask->IpResolve(IPRESOLVE::V4);
 	// Keep token bootstrap aligned with the self-signed indicator deployment.
 	m_pTokenTask->VerifyPeer(false);
+	m_pTokenTask->CloseConnection(true);
 	m_pTokenTask->LogProgress(HTTPLOG::FAILURE);
 	DebugLogF("starting token request url=%s", g_Config.m_BcClientIndicatorTokenUrl);
 	m_LastTokenRefreshTick = time_get();
@@ -528,6 +530,7 @@ const char *CClientIndicator::CurrentGameServerAddress()
 {
 	if(Client()->State() != IClient::STATE_ONLINE)
 	{
+		m_aLastBlockedGameServerAddr[0] = '\0';
 		DebugLog("current game server address unavailable: client offline");
 		return "";
 	}
@@ -535,9 +538,14 @@ const char *CClientIndicator::CurrentGameServerAddress()
 	{
 		char aAddr[NETADDR_MAXSTRSIZE];
 		net_addr_str(&Client()->ServerAddress(), aAddr, sizeof(aAddr), true);
-		DebugLogF("current game server address blocked: %s is local", aAddr);
+		if(str_comp(m_aLastBlockedGameServerAddr, aAddr) != 0)
+		{
+			DebugLogF("current game server address blocked: %s is local", aAddr);
+			str_copy(m_aLastBlockedGameServerAddr, aAddr, sizeof(m_aLastBlockedGameServerAddr));
+		}
 		return "";
 	}
+	m_aLastBlockedGameServerAddr[0] = '\0';
 	char aAddr[NETADDR_MAXSTRSIZE];
 	net_addr_str(&Client()->ServerAddress(), aAddr, sizeof(aAddr), true);
 	str_copy(m_aLastGameServerAddr, aAddr, sizeof(m_aLastGameServerAddr));
@@ -971,6 +979,7 @@ void CClientIndicator::ResetPresenceState()
 	m_DeveloperClientIds.clear();
 	m_PresenceCache.Clear();
 	m_aLastGameServerAddr[0] = '\0';
+	m_aLastBlockedGameServerAddr[0] = '\0';
 	m_LastPresenceBlockReason.clear();
 }
 
