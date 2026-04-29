@@ -100,6 +100,14 @@ class CGLSLPrimitiveProgram : public CGLSLTWProgram
 public:
 };
 
+class CGLSLGlowProgram : public CGLSLTWProgram
+{
+public:
+	int m_LocRectSize;
+	int m_LocGlowRadius;
+	int m_LocGlowStrength;
+};
+
 class CGLSLPrimitiveExProgram : public CGLSLTWProgram
 {
 public:

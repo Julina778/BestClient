@@ -13,6 +13,7 @@
 #include "backend_opengl.h"
 
 class CGLSLPrimitiveExProgram;
+class CGLSLGlowProgram;
 class CGLSLQuadProgram;
 class CGLSLSpriteMultipleProgram;
 class CGLSLTextProgram;
@@ -28,6 +29,7 @@ protected:
 
 	CGLSLPrimitiveProgram *m_pPrimitiveProgram;
 	CGLSLPrimitiveProgram *m_pPrimitiveProgramTextured;
+	CGLSLGlowProgram *m_pGlowProgram;
 	CGLSLQuadProgram *m_pQuadProgram;
 	CGLSLQuadProgram *m_pQuadProgramTextured;
 	CGLSLQuadProgram *m_pQuadProgramGrouped;
@@ -92,6 +94,7 @@ protected:
 	void Cmd_Clear(const CCommandBuffer::SCommand_Clear *pCommand) override;
 	void Cmd_Render(const CCommandBuffer::SCommand_Render *pCommand) override;
 	void Cmd_RenderTex3D(const CCommandBuffer::SCommand_RenderTex3D *pCommand) override;
+	void Cmd_RenderGlowRect(const CCommandBuffer::SCommand_RenderGlowRect *pCommand) override;
 
 	void Cmd_CreateBufferObject(const CCommandBuffer::SCommand_CreateBufferObject *pCommand) override;
 	void Cmd_RecreateBufferObject(const CCommandBuffer::SCommand_RecreateBufferObject *pCommand) override;

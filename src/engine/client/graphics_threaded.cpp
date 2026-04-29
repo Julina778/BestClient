@@ -921,6 +921,65 @@ void CGraphics_Threaded::QuadsDrawTL(const CQuadItem *pArray, int Num)
 	QuadsDrawTLImpl(m_aVertices, pArray, Num);
 }
 
+void CGraphics_Threaded::DrawGlowRect(const SGlowRectRenderInfo &Info)
+{
+	dbg_assert(m_Drawing == EDrawing::NONE, "called Graphics()->DrawGlowRect within begin");
+
+	if(Info.m_Width <= 0.0f || Info.m_Height <= 0.0f)
+		return;
+
+	CCommandBuffer::SCommand_RenderGlowRect Cmd;
+	Cmd.m_State = m_State;
+	Cmd.m_State.m_Texture = -1;
+	Cmd.m_RectSize = vec2(Info.m_Width, Info.m_Height);
+	Cmd.m_GlowRadius = maximum(Info.m_GlowRadius, 0.0f);
+	Cmd.m_GlowStrength = maximum(Info.m_GlowStrength, 0.0f);
+	Cmd.m_pVertices = (CCommandBuffer::SVertex *)AllocCommandBufferData(sizeof(CCommandBuffer::SVertex) * 4);
+	CCommandBuffer::SVertex aVertices[4];
+
+	const float Radius = Cmd.m_GlowRadius;
+	const float Left = Info.m_X - Radius;
+	const float Top = Info.m_Y - Radius;
+	const float Right = Info.m_X + Info.m_Width + Radius;
+	const float Bottom = Info.m_Y + Info.m_Height + Radius;
+
+	const vec2 aPositions[] = {
+		vec2(Left, Top),
+		vec2(Right, Top),
+		vec2(Right, Bottom),
+		vec2(Left, Bottom),
+	};
+	const vec2 aLocalCoords[] = {
+		vec2(-Radius, -Radius),
+		vec2(Info.m_Width + Radius, -Radius),
+		vec2(Info.m_Width + Radius, Info.m_Height + Radius),
+		vec2(-Radius, Info.m_Height + Radius),
+	};
+
+	CCommandBuffer::SColor Color;
+	Color.r = NormalizeColorComponent(Info.m_Color.r);
+	Color.g = NormalizeColorComponent(Info.m_Color.g);
+	Color.b = NormalizeColorComponent(Info.m_Color.b);
+	Color.a = NormalizeColorComponent(Info.m_Color.a);
+
+	for(size_t i = 0; i < std::size(aPositions); ++i)
+	{
+		aVertices[i].m_Pos = aPositions[i];
+		aVertices[i].m_Tex = aLocalCoords[i];
+		aVertices[i].m_Color = Color;
+	}
+
+	AddCmd(Cmd, [&] {
+		Cmd.m_pVertices = (CCommandBuffer::SVertex *)m_pCommandBuffer->AllocData(sizeof(CCommandBuffer::SVertex) * 4);
+		return Cmd.m_pVertices != nullptr;
+	});
+	if(Cmd.m_pVertices != nullptr)
+	{
+		mem_copy(Cmd.m_pVertices, aVertices, sizeof(aVertices));
+	}
+	m_pCommandBuffer->AddRenderCalls(1);
+}
+
 void CGraphics_Threaded::QuadsTex3DDrawTL(const CQuadItem *pArray, int Num)
 {
 	const int VertNum = g_Config.m_GfxQuadAsTriangle && !m_GLUseTrianglesAsQuad ? 6 : 4;

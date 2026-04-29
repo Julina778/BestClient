@@ -1898,6 +1898,8 @@ set(EXPECTED_DATA
   menuimages/settings.png
   particles.png
   race_flag.png
+  shader/glow.frag
+  shader/glow.vert
   shader/pipeline.frag
   shader/pipeline.vert
   shader/prim.frag
@@ -1914,6 +1916,8 @@ set(EXPECTED_DATA
   shader/tile.vert
   shader/tile_border.frag
   shader/tile_border.vert
+  shader/vulkan/glow.frag
+  shader/vulkan/glow.vert
   shader/vulkan/prim.frag
   shader/vulkan/prim.vert
   shader/vulkan/prim3d.frag

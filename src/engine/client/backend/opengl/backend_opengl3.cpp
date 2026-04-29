@@ -94,6 +94,7 @@ bool CCommandProcessorFragment_OpenGL3_3::Cmd_Init(const SCommand_Init *pCommand
 	m_LastClipEnable = false;
 	m_pPrimitiveProgram = new CGLSLPrimitiveProgram;
 	m_pPrimitiveProgramTextured = new CGLSLPrimitiveProgram;
+	m_pGlowProgram = new CGLSLGlowProgram;
 	m_pTileProgram = new CGLSLTileProgram;
 	m_pTileProgramTextured = new CGLSLTileProgram;
 	m_pPrimitive3DProgram = new CGLSLPrimitiveProgram;
@@ -152,6 +153,24 @@ bool CCommandProcessorFragment_OpenGL3_3::Cmd_Init(const SCommand_Init *pCommand
 
 		m_pPrimitiveProgramTextured->m_LocPos = m_pPrimitiveProgramTextured->GetUniformLoc("gPos");
 		m_pPrimitiveProgramTextured->m_LocTextureSampler = m_pPrimitiveProgramTextured->GetUniformLoc("gTextureSampler");
+	}
+	{
+		CGLSL GlowVertexShader;
+		CGLSL GlowFragmentShader;
+		GlowVertexShader.LoadShader(&ShaderCompiler, pCommand->m_pStorage, "shader/glow.vert", GL_VERTEX_SHADER);
+		GlowFragmentShader.LoadShader(&ShaderCompiler, pCommand->m_pStorage, "shader/glow.frag", GL_FRAGMENT_SHADER);
+
+		m_pGlowProgram->CreateProgram();
+		m_pGlowProgram->AddShader(&GlowVertexShader);
+		m_pGlowProgram->AddShader(&GlowFragmentShader);
+		m_pGlowProgram->LinkProgram();
+
+		UseProgram(m_pGlowProgram);
+
+		m_pGlowProgram->m_LocPos = m_pGlowProgram->GetUniformLoc("gPos");
+		m_pGlowProgram->m_LocRectSize = m_pGlowProgram->GetUniformLoc("gRectSize");
+		m_pGlowProgram->m_LocGlowRadius = m_pGlowProgram->GetUniformLoc("gGlowRadius");
+		m_pGlowProgram->m_LocGlowStrength = m_pGlowProgram->GetUniformLoc("gGlowStrength");
 	}
 
 	{
@@ -473,6 +492,7 @@ void CCommandProcessorFragment_OpenGL3_3::Cmd_Shutdown(const SCommand_Shutdown *
 
 	m_pPrimitiveProgram->DeleteProgram();
 	m_pPrimitiveProgramTextured->DeleteProgram();
+	m_pGlowProgram->DeleteProgram();
 	m_pBorderTileProgram->DeleteProgram();
 	m_pBorderTileProgramTextured->DeleteProgram();
 	m_pQuadProgram->DeleteProgram();
@@ -493,6 +513,7 @@ void CCommandProcessorFragment_OpenGL3_3::Cmd_Shutdown(const SCommand_Shutdown *
 	// clean up everything
 	delete m_pPrimitiveProgram;
 	delete m_pPrimitiveProgramTextured;
+	delete m_pGlowProgram;
 	delete m_pBorderTileProgram;
 	delete m_pBorderTileProgramTextured;
 	delete m_pQuadProgram;
@@ -801,6 +822,28 @@ void CCommandProcessorFragment_OpenGL3_3::Cmd_Render(const CCommandBuffer::SComm
 	default:
 		dbg_assert_failed("Invalid primitive type: %d", (int)pCommand->m_PrimType);
 	};
+
+	m_LastStreamBuffer = (m_LastStreamBuffer + 1 >= MAX_STREAM_BUFFER_COUNT ? 0 : m_LastStreamBuffer + 1);
+}
+
+void CCommandProcessorFragment_OpenGL3_3::Cmd_RenderGlowRect(const CCommandBuffer::SCommand_RenderGlowRect *pCommand)
+{
+	UseProgram(m_pGlowProgram);
+	SetState(pCommand->m_State, m_pGlowProgram);
+
+	m_pGlowProgram->SetUniformVec2(m_pGlowProgram->m_LocRectSize, 1, (float *)&pCommand->m_RectSize);
+	m_pGlowProgram->SetUniform(m_pGlowProgram->m_LocGlowRadius, pCommand->m_GlowRadius);
+	m_pGlowProgram->SetUniform(m_pGlowProgram->m_LocGlowStrength, pCommand->m_GlowStrength);
+
+	UploadStreamBufferData(EPrimitiveType::QUADS, pCommand->m_pVertices, sizeof(CCommandBuffer::SVertex), 1);
+
+	glBindVertexArray(m_aPrimitiveDrawVertexId[m_LastStreamBuffer]);
+	if(m_aLastIndexBufferBound[m_LastStreamBuffer] != m_QuadDrawIndexBufferId)
+	{
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_QuadDrawIndexBufferId);
+		m_aLastIndexBufferBound[m_LastStreamBuffer] = m_QuadDrawIndexBufferId;
+	}
+	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
 	m_LastStreamBuffer = (m_LastStreamBuffer + 1 >= MAX_STREAM_BUFFER_COUNT ? 0 : m_LastStreamBuffer + 1);
 }

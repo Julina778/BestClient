@@ -131,6 +131,7 @@ public:
 		CMD_CLEAR,
 		CMD_RENDER,
 		CMD_RENDER_TEX3D,
+		CMD_RENDER_GLOW_RECT,
 
 		// opengl 2.0+ commands (some are just emulated and only exist in opengl 3.3+)
 		CMD_CREATE_BUFFER_OBJECT, // create vbo
@@ -237,6 +238,17 @@ public:
 		EPrimitiveType m_PrimType;
 		unsigned m_PrimCount;
 		SVertexTex3DStream *m_pVertices; // you should use the command buffer data to allocate vertices for this command
+	};
+
+	struct SCommand_RenderGlowRect : public SCommand
+	{
+		SCommand_RenderGlowRect() :
+			SCommand(CMD_RENDER_GLOW_RECT) {}
+		SState m_State;
+		SVertex *m_pVertices; // expanded quad, local coords are stored in texcoords
+		vec2 m_RectSize;
+		float m_GlowRadius;
+		float m_GlowStrength;
 	};
 
 	struct SCommand_CreateBufferObject : public SCommand
@@ -1079,6 +1091,7 @@ public:
 	}
 
 	void QuadsDrawTL(const CQuadItem *pArray, int Num) override;
+	void DrawGlowRect(const SGlowRectRenderInfo &Info) override;
 
 	void QuadsTex3DDrawTL(const CQuadItem *pArray, int Num) override;
 
