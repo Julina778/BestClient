@@ -421,6 +421,19 @@ public:
 	};
 	virtual void DrawGlowRect(const SGlowRectRenderInfo &Info) = 0;
 
+	struct SBlurRectRenderInfo
+	{
+		float m_X = 0.0f;
+		float m_Y = 0.0f;
+		float m_Width = 0.0f;
+		float m_Height = 0.0f;
+		float m_Rounding = 0.0f;
+		float m_BlurRadius = 0.0f;
+		float m_BlurStrength = 1.0f;
+		ColorRGBA m_TintColor = ColorRGBA(1.0f, 1.0f, 1.0f, 0.25f);
+	};
+	virtual void DrawBlurRect(const SBlurRectRenderInfo &Info) = 0;
+
 	virtual void QuadsDraw(CQuadItem *pArray, int Num) = 0;
 	virtual void QuadsDrawTL(const CQuadItem *pArray, int Num) = 0;
 

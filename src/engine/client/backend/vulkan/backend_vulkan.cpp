@@ -715,6 +715,15 @@ class CCommandProcessorFragment_Vulkan : public CCommandProcessorFragment_GLBase
 		float m_GlowStrength;
 	};
 
+	struct SUniformBlurFragment
+	{
+		vec2 m_RectSize;
+		float m_Rounding;
+		float m_BlurRadius;
+		float m_BlurStrength;
+		float m_Padding;
+	};
+
 	typedef vec3 SUniformTextGFragmentOffset;
 
 	struct SUniformTextGFragmentConstants
@@ -1013,6 +1022,7 @@ private:
 	SPipelineContainer m_StandardLinePipeline;
 	SPipelineContainer m_Standard3DPipeline;
 	SPipelineContainer m_GlowPipeline;
+	SPipelineContainer m_BlurPipeline;
 	SPipelineContainer m_TextPipeline;
 	SPipelineContainer m_TilePipeline;
 	SPipelineContainer m_TileBorderPipeline;
@@ -1246,6 +1256,7 @@ protected:
 		m_aCommandCallbacks[CommandBufferCMDOff(CCommandBuffer::CMD_RENDER)] = {true, [this](SRenderCommandExecuteBuffer &ExecBuffer, const CCommandBuffer::SCommand *pBaseCommand) { Cmd_Render_FillExecuteBuffer(ExecBuffer, static_cast<const CCommandBuffer::SCommand_Render *>(pBaseCommand)); }, [this](const CCommandBuffer::SCommand *pBaseCommand, SRenderCommandExecuteBuffer &ExecBuffer) { return Cmd_Render(static_cast<const CCommandBuffer::SCommand_Render *>(pBaseCommand), ExecBuffer); }};
 		m_aCommandCallbacks[CommandBufferCMDOff(CCommandBuffer::CMD_RENDER_TEX3D)] = {true, [this](SRenderCommandExecuteBuffer &ExecBuffer, const CCommandBuffer::SCommand *pBaseCommand) { Cmd_RenderTex3D_FillExecuteBuffer(ExecBuffer, static_cast<const CCommandBuffer::SCommand_RenderTex3D *>(pBaseCommand)); }, [this](const CCommandBuffer::SCommand *pBaseCommand, SRenderCommandExecuteBuffer &ExecBuffer) { return Cmd_RenderTex3D(static_cast<const CCommandBuffer::SCommand_RenderTex3D *>(pBaseCommand), ExecBuffer); }};
 		m_aCommandCallbacks[CommandBufferCMDOff(CCommandBuffer::CMD_RENDER_GLOW_RECT)] = {true, [this](SRenderCommandExecuteBuffer &ExecBuffer, const CCommandBuffer::SCommand *pBaseCommand) { Cmd_RenderGlowRect_FillExecuteBuffer(ExecBuffer, static_cast<const CCommandBuffer::SCommand_RenderGlowRect *>(pBaseCommand)); }, [this](const CCommandBuffer::SCommand *pBaseCommand, SRenderCommandExecuteBuffer &ExecBuffer) { return Cmd_RenderGlowRect(static_cast<const CCommandBuffer::SCommand_RenderGlowRect *>(pBaseCommand), ExecBuffer); }};
+		m_aCommandCallbacks[CommandBufferCMDOff(CCommandBuffer::CMD_RENDER_BLUR_RECT)] = {true, [this](SRenderCommandExecuteBuffer &ExecBuffer, const CCommandBuffer::SCommand *pBaseCommand) { Cmd_RenderBlurRect_FillExecuteBuffer(ExecBuffer, static_cast<const CCommandBuffer::SCommand_RenderBlurRect *>(pBaseCommand)); }, [this](const CCommandBuffer::SCommand *pBaseCommand, SRenderCommandExecuteBuffer &ExecBuffer) { return Cmd_RenderBlurRect(static_cast<const CCommandBuffer::SCommand_RenderBlurRect *>(pBaseCommand), ExecBuffer); }};
 
 		m_aCommandCallbacks[CommandBufferCMDOff(CCommandBuffer::CMD_CREATE_BUFFER_OBJECT)] = {false, [](SRenderCommandExecuteBuffer &ExecBuffer, const CCommandBuffer::SCommand *pBaseCommand) {}, [this](const CCommandBuffer::SCommand *pBaseCommand, SRenderCommandExecuteBuffer &ExecBuffer) { return Cmd_CreateBufferObject(static_cast<const CCommandBuffer::SCommand_CreateBufferObject *>(pBaseCommand)); }};
 		m_aCommandCallbacks[CommandBufferCMDOff(CCommandBuffer::CMD_RECREATE_BUFFER_OBJECT)] = {false, [](SRenderCommandExecuteBuffer &ExecBuffer, const CCommandBuffer::SCommand *pBaseCommand) {}, [this](const CCommandBuffer::SCommand *pBaseCommand, SRenderCommandExecuteBuffer &ExecBuffer) { return Cmd_RecreateBufferObject(static_cast<const CCommandBuffer::SCommand_RecreateBufferObject *>(pBaseCommand)); }};
@@ -4825,6 +4836,23 @@ public:
 		return CreateGraphicsPipeline<false>(pVertName, pFragName, PipeContainer, sizeof(float) * (2 + 2) + sizeof(uint8_t) * 4, aAttributeDescriptions, aSetLayouts, aPushConstants, VULKAN_BACKEND_TEXTURE_MODE_NOT_TEXTURED, BlendMode, DynamicMode);
 	}
 
+	[[nodiscard]] bool CreateBlurGraphicsPipelineImpl(const char *pVertName, const char *pFragName, SPipelineContainer &PipeContainer, EVulkanBackendBlendModes BlendMode, EVulkanBackendClipModes DynamicMode)
+	{
+		std::array<VkVertexInputAttributeDescription, 3> aAttributeDescriptions = {};
+
+		aAttributeDescriptions[0] = {0, 0, VK_FORMAT_R32G32_SFLOAT, 0};
+		aAttributeDescriptions[1] = {1, 0, VK_FORMAT_R32G32_SFLOAT, sizeof(float) * 2};
+		aAttributeDescriptions[2] = {2, 0, VK_FORMAT_R8G8B8A8_UNORM, sizeof(float) * (2 + 2)};
+
+		std::array<VkDescriptorSetLayout, 0> aSetLayouts = {};
+
+		std::array<VkPushConstantRange, 2> aPushConstants{};
+		aPushConstants[0] = {VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SUniformGPos)};
+		aPushConstants[1] = {VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(SUniformGPos), sizeof(SUniformBlurFragment)};
+
+		return CreateGraphicsPipeline<false>(pVertName, pFragName, PipeContainer, sizeof(float) * (2 + 2) + sizeof(uint8_t) * 4, aAttributeDescriptions, aSetLayouts, aPushConstants, VULKAN_BACKEND_TEXTURE_MODE_NOT_TEXTURED, BlendMode, DynamicMode);
+	}
+
 	[[nodiscard]] bool CreateGlowGraphicsPipeline(const char *pVertName, const char *pFragName)
 	{
 		bool Ret = true;
@@ -4834,6 +4862,21 @@ public:
 			for(size_t j = 0; j < VULKAN_BACKEND_CLIP_MODE_COUNT; ++j)
 			{
 				Ret &= CreateGlowGraphicsPipelineImpl(pVertName, pFragName, m_GlowPipeline, EVulkanBackendBlendModes(i), EVulkanBackendClipModes(j));
+			}
+		}
+
+		return Ret;
+	}
+
+	[[nodiscard]] bool CreateBlurGraphicsPipeline(const char *pVertName, const char *pFragName)
+	{
+		bool Ret = true;
+
+		for(size_t i = 0; i < VULKAN_BACKEND_BLEND_MODE_COUNT; ++i)
+		{
+			for(size_t j = 0; j < VULKAN_BACKEND_CLIP_MODE_COUNT; ++j)
+			{
+				Ret &= CreateBlurGraphicsPipelineImpl(pVertName, pFragName, m_BlurPipeline, EVulkanBackendBlendModes(i), EVulkanBackendClipModes(j));
 			}
 		}
 
@@ -5452,6 +5495,7 @@ public:
 		m_StandardLinePipeline.Destroy(m_VKDevice);
 		m_Standard3DPipeline.Destroy(m_VKDevice);
 		m_GlowPipeline.Destroy(m_VKDevice);
+		m_BlurPipeline.Destroy(m_VKDevice);
 		m_TextPipeline.Destroy(m_VKDevice);
 		m_TilePipeline.Destroy(m_VKDevice);
 		m_TileBorderPipeline.Destroy(m_VKDevice);
@@ -6100,6 +6144,9 @@ public:
 			return -1;
 
 		if(!CreateGlowGraphicsPipeline("shader/vulkan/glow.vert.spv", "shader/vulkan/glow.frag.spv"))
+			return -1;
+
+		if(!CreateBlurGraphicsPipeline("shader/vulkan/blur.vert.spv", "shader/vulkan/blur.frag.spv"))
 			return -1;
 
 		if(!CreateStandard3DGraphicsPipeline("shader/vulkan/prim3d.vert.spv", "shader/vulkan/prim3d.frag.spv", false))
@@ -6866,6 +6913,59 @@ public:
 		FragmentConstants.m_GlowRadius = pCommand->m_GlowRadius;
 		FragmentConstants.m_GlowStrength = pCommand->m_GlowStrength;
 		vkCmdPushConstants(CommandBuffer, PipeLayout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(SUniformGPos), sizeof(SUniformGlowFragment), &FragmentConstants);
+
+		vkCmdDrawIndexed(CommandBuffer, 6, 1, 0, 0, 0);
+
+		return true;
+	}
+
+	void Cmd_RenderBlurRect_FillExecuteBuffer(SRenderCommandExecuteBuffer &ExecBuffer, const CCommandBuffer::SCommand_RenderBlurRect *pCommand)
+	{
+		ExecBuffer.m_IndexBuffer = m_IndexBuffer;
+		ExecBuffer.m_EstimatedRenderCallCount = 1;
+		ExecBufferFillDynamicStates(pCommand->m_State, ExecBuffer);
+	}
+
+	[[nodiscard]] bool Cmd_RenderBlurRect(const CCommandBuffer::SCommand_RenderBlurRect *pCommand, SRenderCommandExecuteBuffer &ExecBuffer)
+	{
+		std::array<float, (size_t)4 * 2> m;
+		GetStateMatrix(pCommand->m_State, m);
+
+		bool IsTextured;
+		size_t BlendModeIndex;
+		size_t DynamicIndex;
+		size_t AddressModeIndex;
+		GetStateIndices(ExecBuffer, pCommand->m_State, IsTextured, BlendModeIndex, DynamicIndex, AddressModeIndex);
+		auto &PipeLayout = GetPipeLayout(m_BlurPipeline, false, BlendModeIndex, DynamicIndex);
+		auto &PipeLine = GetPipeline(m_BlurPipeline, false, BlendModeIndex, DynamicIndex);
+
+		VkCommandBuffer *pCommandBuffer;
+		if(!GetGraphicCommandBuffer(pCommandBuffer, ExecBuffer.m_ThreadIndex))
+			return false;
+		auto &CommandBuffer = *pCommandBuffer;
+
+		BindPipeline(ExecBuffer.m_ThreadIndex, CommandBuffer, ExecBuffer, PipeLine, pCommand->m_State);
+
+		VkBuffer VKBuffer;
+		SDeviceMemoryBlock VKBufferMem;
+		size_t BufferOff = 0;
+		if(!CreateStreamVertexBuffer(ExecBuffer.m_ThreadIndex, VKBuffer, VKBufferMem, BufferOff, pCommand->m_pVertices, sizeof(CCommandBuffer::SVertex) * 4))
+			return false;
+
+		std::array<VkBuffer, 1> aVertexBuffers = {VKBuffer};
+		std::array<VkDeviceSize, 1> aOffsets = {(VkDeviceSize)BufferOff};
+		vkCmdBindVertexBuffers(CommandBuffer, 0, 1, aVertexBuffers.data(), aOffsets.data());
+		vkCmdBindIndexBuffer(CommandBuffer, ExecBuffer.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+		vkCmdPushConstants(CommandBuffer, PipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SUniformGPos), m.data());
+
+		SUniformBlurFragment FragmentConstants;
+		FragmentConstants.m_RectSize = pCommand->m_RectSize;
+		FragmentConstants.m_Rounding = pCommand->m_Rounding;
+		FragmentConstants.m_BlurRadius = pCommand->m_BlurRadius;
+		FragmentConstants.m_BlurStrength = pCommand->m_BlurStrength;
+		FragmentConstants.m_Padding = 0.0f;
+		vkCmdPushConstants(CommandBuffer, PipeLayout, VK_SHADER_STAGE_FRAGMENT_BIT, sizeof(SUniformGPos), sizeof(SUniformBlurFragment), &FragmentConstants);
 
 		vkCmdDrawIndexed(CommandBuffer, 6, 1, 0, 0, 0);
 

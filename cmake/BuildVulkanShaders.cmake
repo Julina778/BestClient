@@ -108,6 +108,8 @@ if(NOT FOUND_MATCHING_SHA256_FILE)
   generate_shader_file("" "" "${PROJECT_SOURCE_DIR}/data/shader/vulkan/prim.vert" "data/shader/vulkan/prim.vert.spv")
   generate_shader_file("-DTW_TEXTURED" "" "${PROJECT_SOURCE_DIR}/data/shader/vulkan/prim.vert" "data/shader/vulkan/prim_textured.vert.spv")
 
+  generate_shader_file("" "" "${PROJECT_SOURCE_DIR}/data/shader/vulkan/blur.frag" "data/shader/vulkan/blur.frag.spv")
+  generate_shader_file("" "" "${PROJECT_SOURCE_DIR}/data/shader/vulkan/blur.vert" "data/shader/vulkan/blur.vert.spv")
   generate_shader_file("" "" "${PROJECT_SOURCE_DIR}/data/shader/vulkan/glow.frag" "data/shader/vulkan/glow.frag.spv")
   generate_shader_file("" "" "${PROJECT_SOURCE_DIR}/data/shader/vulkan/glow.vert" "data/shader/vulkan/glow.vert.spv")
   
