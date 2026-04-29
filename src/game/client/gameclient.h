@@ -102,6 +102,7 @@
 #include "components/tooltips.h"
 #include "components/touch_controls.h"
 #include "components/voting.h"
+#include "components/pie_menu.h"
 
 #include <cstdint>
 #include <memory>
@@ -267,6 +268,7 @@ public:
 	CMod m_Mod;
 	CCustomCommunities m_CustomCommunities;
 	CPlayerPoints m_PlayerPoints;
+	CPieMenu m_PieMenu;
 	CMovingTiles m_MovingTilesBackground = CMovingTiles{ false };
 	CMovingTiles m_MovingTilesForeground = CMovingTiles{ true };
 

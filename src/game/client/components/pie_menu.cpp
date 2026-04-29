@@ -1,0 +1,935 @@
+/* Q1menG Client - Pie Menu Component */
+
+#include "pie_menu.h"
+
+#include "game/localization.h"
+
+#include <base/math.h>
+#include <base/str.h>
+#include <base/system.h>
+
+#include <engine/graphics.h>
+#include <engine/input.h>
+#include <engine/keys.h>
+#include <engine/shared/config.h>
+#include <engine/textrender.h>
+
+#include <generated/client_data.h>
+#include <generated/protocol.h>
+
+#include <game/client/gameclient.h>
+#include <game/client/render.h>
+
+#include <cmath>
+#include <limits>
+#include <vector>
+
+CPieMenu::CPieMenu()
+{
+	OnReset();
+}
+
+void CPieMenu::OnReset()
+{
+	m_State = EMenuState::INACTIVE;
+	m_Active = false;
+	m_TargetClientId = -1;
+	m_SelectedOption = -1;
+	m_SelectedRenameIndex = -1;
+	m_AnimationProgress = 0.0f;
+	m_MenuCenter = vec2(0, 0);
+	m_OpenTime = 0;
+	m_WasPressed = false;
+	m_SelectorMouse = vec2(0, 0);
+	m_vRenameQueue.clear();
+}
+
+void CPieMenu::OnInit()
+{
+}
+
+void CPieMenu::OnConsoleInit()
+{
+	Console()->Register("+pie_menu", "", CFGFLAG_CLIENT, ConKeyPieMenu, this, "Open pie menu");
+}
+
+void CPieMenu::OnRelease()
+{
+	if(m_Active)
+	{
+		CloseMenu();
+	}
+}
+
+void CPieMenu::ConKeyPieMenu(IConsole::IResult *pResult, void *pUserData)
+{
+	CPieMenu *pSelf = (CPieMenu *)pUserData;
+	
+	if(pResult->GetInteger(0) != 0)
+	{
+		// Key pressed - open menu
+		pSelf->OpenMenu();
+	}
+	else
+	{
+		// Key released - execute and close menu
+		if(pSelf->m_Active)
+		{
+			if(pSelf->m_SelectedRenameIndex >= 0 && pSelf->m_SelectedRenameIndex < (int)pSelf->m_vRenameQueue.size())
+			{
+				pSelf->ExecuteRenameOption(pSelf->m_SelectedRenameIndex);
+			}
+			else if(pSelf->m_SelectedOption >= 0 && pSelf->m_SelectedOption < (int)EMenuOption::NUM_OPTIONS)
+			{
+				pSelf->ExecuteOption((EMenuOption)pSelf->m_SelectedOption);
+			}
+			pSelf->CloseMenu();
+		}
+	}
+}
+
+// ========== Player Detection ==========
+
+int CPieMenu::FindNearestPlayer()
+{
+	if(!g_Config.m_QmPieMenuEnabled)
+		return -1;
+
+	const bool Spectating = GameClient()->m_Snap.m_SpecInfo.m_Active ||
+		(GameClient()->m_Snap.m_pLocalInfo && GameClient()->m_Snap.m_pLocalInfo->m_Team == TEAM_SPECTATORS);
+
+	// Use crosshair target when playing, screen center when spectating.
+	vec2 ReferencePos = Spectating ? GameClient()->m_Camera.m_Center : GameClient()->m_CursorInfo.WorldTarget();
+	
+	int NearestClientId = -1;
+	float NearestDistanceSq = Spectating ? std::numeric_limits<float>::max() :
+		(float)g_Config.m_QmPieMenuMaxDistance * g_Config.m_QmPieMenuMaxDistance;
+	
+	const int LocalClientId = GameClient()->m_aLocalIds[g_Config.m_ClDummy];
+
+	// Iterate through all players
+	for(int i = 0; i < MAX_CLIENTS; i++)
+	{
+		// Skip invalid players
+		if(!GameClient()->m_Snap.m_aCharacters[i].m_Active)
+			continue;
+		
+		// Skip local player
+		if(i == LocalClientId)
+			continue;
+
+		// Skip spectators
+		if(GameClient()->m_Snap.m_apPlayerInfos[i] && 
+		   GameClient()->m_Snap.m_apPlayerInfos[i]->m_Team == TEAM_SPECTATORS)
+			continue;
+
+		// Get player position
+		vec2 PlayerPos = vec2(
+			GameClient()->m_aClients[i].m_RenderPos.x,
+			GameClient()->m_aClients[i].m_RenderPos.y
+		);
+
+		// Calculate squared distance (avoid sqrt for performance)
+		float DistanceSq = length_squared(ReferencePos - PlayerPos);
+
+		// Check if closer than current nearest
+		if(DistanceSq < NearestDistanceSq)
+		{
+			NearestDistanceSq = DistanceSq;
+			NearestClientId = i;
+		}
+	}
+
+	return NearestClientId;
+}
+
+// ========== Menu State Management ==========
+
+void CPieMenu::OpenMenu()
+{
+	if(m_Active)
+		return;
+
+	// Don't open if chat is active
+	if(GameClient()->m_Chat.IsActive())
+		return;
+
+	// Don't open if console is active
+	if(GameClient()->m_GameConsole.IsActive())
+		return;
+
+	// Find nearest player
+	int TargetId = FindNearestPlayer();
+	if(TargetId < 0)
+	{
+		// Show "No player nearby" message
+		GameClient()->Echo(Localize("No player nearby"));
+		return;
+	}
+
+	m_TargetClientId = TargetId;
+	m_Active = true;
+	m_State = EMenuState::OPENING;
+	m_SelectedOption = -1;
+	m_SelectedRenameIndex = -1;
+	m_AnimationProgress = 0.0f;
+	m_OpenTime = time_get();
+	m_WasPressed = true;
+	m_SelectorMouse = vec2(0, 0); // Reset selector mouse position
+	RefreshRenameQueue();
+
+	// Set menu center to screen center
+	m_MenuCenter = vec2(Graphics()->ScreenWidth() / 2.0f, Graphics()->ScreenHeight() / 2.0f);
+}
+
+void CPieMenu::CloseMenu()
+{
+	if(!m_Active)
+		return;
+
+	m_Active = false;
+	m_State = EMenuState::CLOSING;
+	m_TargetClientId = -1;
+	m_SelectedOption = -1;
+	m_SelectedRenameIndex = -1;
+	m_vRenameQueue.clear();
+}
+
+// ========== Input Handling ==========
+
+bool CPieMenu::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
+{
+	if(!m_Active)
+		return false;
+
+	Ui()->ConvertMouseMove(&x, &y, CursorType);
+	m_SelectorMouse += vec2(x, y);
+	return true;
+}
+
+bool CPieMenu::OnInput(const IInput::CEvent &Event)
+{
+	if(!g_Config.m_QmPieMenuEnabled)
+		return false;
+
+	// Handle keyboard shortcuts (1-6) and ESC when menu is active
+	if(m_Active && (Event.m_Flags & IInput::FLAG_PRESS))
+	{
+		if(Event.m_Key >= KEY_1 && Event.m_Key <= KEY_6)
+		{
+			int OptionIndex = Event.m_Key - KEY_1;
+			if(OptionIndex < (int)EMenuOption::NUM_OPTIONS)
+			{
+				ExecuteOption((EMenuOption)OptionIndex);
+				CloseMenu();
+				return true;
+			}
+		}
+		else if(Event.m_Key == KEY_ESCAPE)
+		{
+			CloseMenu();
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void CPieMenu::UpdateSelection()
+{
+	if(!m_Active)
+		return;
+
+	m_SelectedOption = -1;
+	m_SelectedRenameIndex = -1;
+
+	const float Scale = mix(MIN_SCALE, MAX_SCALE, m_AnimationProgress);
+	const float ConfigScale = g_Config.m_QmPieMenuScale / 100.0f;
+	const float InnerRadius = INNER_RADIUS * Scale * ConfigScale;
+	const float OuterRadius = OUTER_RADIUS * Scale * ConfigScale;
+	const float SecondaryInnerRadius = SECONDARY_INNER_RADIUS * Scale * ConfigScale;
+	const float SecondaryOuterRadius = SECONDARY_OUTER_RADIUS * Scale * ConfigScale;
+	const float MouseDistance = length(m_SelectorMouse);
+
+	// Check if mouse is in center (cancel zone)
+	if(MouseDistance < InnerRadius)
+	{
+		return;
+	}
+
+	// Secondary ring for rename queue.
+	if(!m_vRenameQueue.empty() && MouseDistance >= SecondaryInnerRadius && MouseDistance <= SecondaryOuterRadius)
+	{
+		m_SelectedRenameIndex = GetHoveredRenameOption();
+		return;
+	}
+
+	// Primary ring.
+	if(MouseDistance <= OuterRadius)
+	{
+		std::vector<EMenuOption> EnabledOptions;
+		if(g_Config.m_QmPieMenuShowFriend)
+			EnabledOptions.push_back(EMenuOption::FRIEND);
+		if(g_Config.m_QmPieMenuShowWhisper)
+			EnabledOptions.push_back(EMenuOption::WHISPER);
+		if(g_Config.m_QmPieMenuShowMention)
+			EnabledOptions.push_back(EMenuOption::MENTION);
+		if(g_Config.m_QmPieMenuShowCopy)
+			EnabledOptions.push_back(EMenuOption::COPY_SKIN);
+		if(g_Config.m_QmPieMenuShowSwap)
+			EnabledOptions.push_back(EMenuOption::SWAP);
+		if(g_Config.m_QmPieMenuShowSpec)
+			EnabledOptions.push_back(EMenuOption::SPECTATE);
+
+		if(MouseDistance <= OuterRadius && !EnabledOptions.empty())
+		{
+			m_SelectedOption = GetHoveredOptionDynamic(EnabledOptions);
+		}
+	}
+}
+
+void CPieMenu::RefreshRenameQueue()
+{
+	m_vRenameQueue.clear();
+
+	if(g_Config.m_QmPieMenuRenameQueue[0] == '\0')
+		return;
+
+	const char *pCursor = g_Config.m_QmPieMenuRenameQueue;
+	char aBuf[128];
+	while((pCursor = str_next_token(pCursor, "|", aBuf, sizeof(aBuf))))
+	{
+		char *pTrimmed = (char *)str_utf8_skip_whitespaces(aBuf);
+		str_utf8_trim_right(pTrimmed);
+		if(pTrimmed[0] == '\0')
+			continue;
+		m_vRenameQueue.emplace_back(pTrimmed);
+	}
+}
+
+// ========== Rendering ==========
+
+void CPieMenu::OnRender()
+{
+	if(!m_Active || !g_Config.m_QmPieMenuEnabled)
+		return;
+
+	// Update animation
+	float TimeSinceOpen = (time_get() - m_OpenTime) / (float)time_freq();
+	if(m_State == EMenuState::OPENING)
+	{
+		m_AnimationProgress = minimum(maximum(TimeSinceOpen / ANIMATION_DURATION, 0.0f), 1.0f);
+		if(m_AnimationProgress >= 1.0f)
+		{
+			m_State = EMenuState::ACTIVE;
+		}
+	}
+
+	// Update selection based on mouse position
+	UpdateSelection();
+
+	const vec2 ScreenCenter = m_MenuCenter;
+	float Scale = mix(MIN_SCALE, MAX_SCALE, m_AnimationProgress);
+	float ConfigScale = g_Config.m_QmPieMenuScale / 100.0f;  // User scale from config
+	float Alpha = m_AnimationProgress * (g_Config.m_QmPieMenuOpacity / 100.0f);
+	float InnerRadius = INNER_RADIUS * Scale * ConfigScale;
+	float OuterRadius = OUTER_RADIUS * Scale * ConfigScale;
+	float SecondaryInnerRadius = SECONDARY_INNER_RADIUS * Scale * ConfigScale;
+	float SecondaryOuterRadius = SECONDARY_OUTER_RADIUS * Scale * ConfigScale;
+
+	Graphics()->MapScreen(0, 0, Graphics()->ScreenWidth(), Graphics()->ScreenHeight());
+
+	// Render each sector (pie slice)
+	std::vector<EMenuOption> EnabledOptions;
+	if(g_Config.m_QmPieMenuShowFriend)EnabledOptions.push_back(EMenuOption::FRIEND);
+	if(g_Config.m_QmPieMenuShowWhisper)EnabledOptions.push_back(EMenuOption::WHISPER);
+	if(g_Config.m_QmPieMenuShowMention)EnabledOptions.push_back(EMenuOption::MENTION);
+	if(g_Config.m_QmPieMenuShowCopy)EnabledOptions.push_back(EMenuOption::COPY_SKIN);
+	if(g_Config.m_QmPieMenuShowSwap)EnabledOptions.push_back(EMenuOption::SWAP);
+	if(g_Config.m_QmPieMenuShowSpec)EnabledOptions.push_back(EMenuOption::SPECTATE);
+
+	int Count = (int)EnabledOptions.size();
+	if(Count > 0)
+	{
+		for(int i = 0; i < Count; i++)
+		{
+			bool Highlighted = ((int)EnabledOptions[i] == m_SelectedOption);
+			// 动态角度分配
+			float AnglePerSector = 360.0f / Count;
+			float StartAngle = START_ANGLE + AnglePerSector * i + SECTOR_GAP / 2.0f;
+			float EndAngle = StartAngle + AnglePerSector - SECTOR_GAP;
+
+			RenderSectorDynamic(EnabledOptions[i], InnerRadius, OuterRadius, StartAngle, EndAngle, Highlighted, Alpha);
+		}
+	}
+
+	// Render secondary ring for rename queue.
+	if(!m_vRenameQueue.empty())
+	{
+		const int SectorCount = (int)m_vRenameQueue.size();
+		for(int i = 0; i < SectorCount; i++)
+		{
+			bool Highlighted = (i == m_SelectedRenameIndex);
+			RenderRenameSector(i, SectorCount, SecondaryInnerRadius, SecondaryOuterRadius, Highlighted, Alpha);
+		}
+	}
+
+	// Draw center circle for player name
+	Graphics()->TextureClear();
+	Graphics()->QuadsBegin();
+	Graphics()->SetColor(0.15f, 0.15f, 0.2f, 0.9f * Alpha);
+	Graphics()->DrawCircle(ScreenCenter.x, ScreenCenter.y, InnerRadius - 9.0f, 48);  // 5 * 1.8
+	Graphics()->QuadsEnd();
+
+	// Render center info (player name)
+	RenderCenterInfo();
+	
+	// Render cursor
+	RenderTools()->RenderCursor(ScreenCenter + m_SelectorMouse, 43.0f, Alpha);  // 24 * 1.8
+}
+
+void CPieMenu::RenderSectorDynamic(EMenuOption Option, float InnerRadius, float OuterRadius, float StartAngle, float EndAngle, bool Highlighted, float Alpha)
+{
+	float HighlightScale = Highlighted ? 1.12f : 1.0f;
+	float ActualOuterRadius = OuterRadius * HighlightScale;
+
+	ColorRGBA Color = GetOptionColor(Option, Highlighted);
+
+	const int Segments = 24;
+	Graphics()->TextureClear();
+	Graphics()->QuadsBegin();
+	Graphics()->SetColor(Color.r, Color.g, Color.b, Color.a * Alpha);
+
+	for(int i = 0; i < Segments; i++)
+	{
+		float Angle1 = StartAngle + (EndAngle - StartAngle) * (i / (float)Segments);
+		float Angle2 = StartAngle + (EndAngle - StartAngle) * ((i + 1) / (float)Segments);
+
+		float Rad1 = Angle1 * pi / 180.0f;
+		float Rad2 = Angle2 * pi / 180.0f;
+
+		vec2 Inner1 = m_MenuCenter + vec2(cos(Rad1), sin(Rad1)) * InnerRadius;
+		vec2 Outer1 = m_MenuCenter + vec2(cos(Rad1), sin(Rad1)) * ActualOuterRadius;
+		vec2 Inner2 = m_MenuCenter + vec2(cos(Rad2), sin(Rad2)) * InnerRadius;
+		vec2 Outer2 = m_MenuCenter + vec2(cos(Rad2), sin(Rad2)) * ActualOuterRadius;
+
+		IGraphics::CFreeformItem Freeform(
+			Inner1.x, Inner1.y,
+			Outer1.x, Outer1.y,
+			Inner2.x, Inner2.y,
+			Outer2.x, Outer2.y);
+		Graphics()->QuadsDrawFreeform(&Freeform, 1);
+	}
+	Graphics()->QuadsEnd();
+
+	// 绘制图标和文字
+	float MidRadius = (InnerRadius + ActualOuterRadius) / 2.0f;
+	float MidAngle = (StartAngle + EndAngle) / 2.0f * pi / 180.0f;
+	vec2 ItemPos = m_MenuCenter + vec2(cos(MidAngle), sin(MidAngle)) * MidRadius;
+
+	const char *pIcon = GetOptionIcon(Option);
+	float IconSize = Highlighted ? 58.0f : 47.0f;
+	TextRender()->TextColor(1.0f, 1.0f, 1.0f, Alpha);
+	float IconWidth = TextRender()->TextWidth(IconSize, pIcon);
+	TextRender()->Text(ItemPos.x - IconWidth / 2.0f, ItemPos.y - IconSize / 2.0f - 18.0f, IconSize, pIcon);
+
+	const char *pName = GetOptionName(Option);
+	float TextSize = Highlighted ? 29.0f : 23.0f;
+	float TextWidth = TextRender()->TextWidth(TextSize, pName);
+	TextRender()->Text(ItemPos.x - TextWidth / 2.0f, ItemPos.y + 14.0f, TextSize, pName);
+}
+
+void CPieMenu::RenderOverlay()
+{
+	// Not used - sectors provide the background
+}
+
+void CPieMenu::RenderSector(int Index, float InnerRadius, float OuterRadius, bool Highlighted, float Alpha)
+{
+	if(Index < 0 || Index >= (int)EMenuOption::NUM_OPTIONS)
+		return;
+
+	float HighlightScale = Highlighted ? 1.12f : 1.0f;
+	float ActualOuterRadius = OuterRadius * HighlightScale;
+
+	// Calculate sector angles
+	float AnglePerSector = 360.0f / (int)EMenuOption::NUM_OPTIONS;
+	float StartAngle = START_ANGLE + AnglePerSector * Index + SECTOR_GAP / 2.0f;
+	float EndAngle = StartAngle + AnglePerSector - SECTOR_GAP;
+
+	// Get option color
+	ColorRGBA Color = GetOptionColor((EMenuOption)Index, Highlighted);
+
+	// Draw sector using triangle fan
+	const int Segments = 24;
+	Graphics()->TextureClear();
+	Graphics()->QuadsBegin();
+	Graphics()->SetColor(Color.r, Color.g, Color.b, Color.a * Alpha);
+
+	for(int i = 0; i < Segments; i++)
+	{
+		float Angle1 = StartAngle + (EndAngle - StartAngle) * (i / (float)Segments);
+		float Angle2 = StartAngle + (EndAngle - StartAngle) * ((i + 1) / (float)Segments);
+
+		float Rad1 = Angle1 * pi / 180.0f;
+		float Rad2 = Angle2 * pi / 180.0f;
+
+		vec2 Inner1 = m_MenuCenter + vec2(cos(Rad1), sin(Rad1)) * InnerRadius;
+		vec2 Outer1 = m_MenuCenter + vec2(cos(Rad1), sin(Rad1)) * ActualOuterRadius;
+		vec2 Inner2 = m_MenuCenter + vec2(cos(Rad2), sin(Rad2)) * InnerRadius;
+		vec2 Outer2 = m_MenuCenter + vec2(cos(Rad2), sin(Rad2)) * ActualOuterRadius;
+
+		IGraphics::CFreeformItem Freeform(
+			Inner1.x, Inner1.y,
+			Outer1.x, Outer1.y,
+			Inner2.x, Inner2.y,
+			Outer2.x, Outer2.y
+		);
+		Graphics()->QuadsDrawFreeform(&Freeform, 1);
+	}
+	Graphics()->QuadsEnd();
+
+	// Draw icon and text in sector center
+	float MidRadius = (InnerRadius + ActualOuterRadius) / 2.0f;
+	float MidAngle = (StartAngle + EndAngle) / 2.0f * pi / 180.0f;
+	vec2 ItemPos = m_MenuCenter + vec2(cos(MidAngle), sin(MidAngle)) * MidRadius;
+
+	// Draw icon
+	const char *pIcon = GetOptionIcon((EMenuOption)Index);
+	float IconSize = Highlighted ? 58.0f : 47.0f;  // 32/26 * 1.8
+	
+	TextRender()->TextColor(1.0f, 1.0f, 1.0f, Alpha);
+	float IconWidth = TextRender()->TextWidth(IconSize, pIcon);
+	TextRender()->Text(ItemPos.x - IconWidth / 2.0f, ItemPos.y - IconSize / 2.0f - 18.0f, IconSize, pIcon);  // 10 * 1.8
+
+	// Draw label below icon
+	const char *pName = GetOptionName((EMenuOption)Index);
+	float TextSize = Highlighted ? 29.0f : 23.0f;  // 16/13 * 1.8
+	float TextWidth = TextRender()->TextWidth(TextSize, pName);
+	TextRender()->Text(ItemPos.x - TextWidth / 2.0f, ItemPos.y + 14.0f, TextSize, pName);  // 8 * 1.8
+}
+
+void CPieMenu::RenderRenameSector(int Index, int SectorCount, float InnerRadius, float OuterRadius, bool Highlighted, float Alpha)
+{
+	if(Index < 0 || Index >= SectorCount || SectorCount <= 0 || Index >= (int)m_vRenameQueue.size())
+		return;
+
+	float HighlightScale = Highlighted ? 1.06f : 1.0f;
+	float ActualOuterRadius = OuterRadius * HighlightScale;
+
+	float AnglePerSector = 360.0f / SectorCount;
+	float DynamicGap = minimum(SECTOR_GAP, AnglePerSector * 0.35f);
+	float StartAngle = START_ANGLE + AnglePerSector * Index + DynamicGap / 2.0f;
+	float EndAngle = START_ANGLE + AnglePerSector * (Index + 1) - DynamicGap / 2.0f;
+
+	if(EndAngle <= StartAngle)
+		return;
+
+	ColorRGBA Color = Highlighted ? ColorRGBA(0.36f, 0.75f, 0.52f, 0.95f) : ColorRGBA(0.28f, 0.58f, 0.43f, 0.78f);
+
+	const int Segments = maximum(8, (int)((EndAngle - StartAngle) / 6.0f));
+	Graphics()->TextureClear();
+	Graphics()->QuadsBegin();
+	Graphics()->SetColor(Color.r, Color.g, Color.b, Color.a * Alpha);
+
+	for(int i = 0; i < Segments; i++)
+	{
+		float Angle1 = StartAngle + (EndAngle - StartAngle) * (i / (float)Segments);
+		float Angle2 = StartAngle + (EndAngle - StartAngle) * ((i + 1) / (float)Segments);
+
+		float Rad1 = Angle1 * pi / 180.0f;
+		float Rad2 = Angle2 * pi / 180.0f;
+
+		vec2 Inner1 = m_MenuCenter + vec2(cos(Rad1), sin(Rad1)) * InnerRadius;
+		vec2 Outer1 = m_MenuCenter + vec2(cos(Rad1), sin(Rad1)) * ActualOuterRadius;
+		vec2 Inner2 = m_MenuCenter + vec2(cos(Rad2), sin(Rad2)) * InnerRadius;
+		vec2 Outer2 = m_MenuCenter + vec2(cos(Rad2), sin(Rad2)) * ActualOuterRadius;
+
+		IGraphics::CFreeformItem Freeform(
+			Inner1.x, Inner1.y,
+			Outer1.x, Outer1.y,
+			Inner2.x, Inner2.y,
+			Outer2.x, Outer2.y
+		);
+		Graphics()->QuadsDrawFreeform(&Freeform, 1);
+	}
+	Graphics()->QuadsEnd();
+
+	const char *pRenameName = m_vRenameQueue[Index].c_str();
+	float MidRadius = (InnerRadius + ActualOuterRadius) / 2.0f;
+	float MidAngle = (StartAngle + EndAngle) / 2.0f * pi / 180.0f;
+	vec2 ItemPos = m_MenuCenter + vec2(cos(MidAngle), sin(MidAngle)) * MidRadius;
+
+	float TextSize = Highlighted ? 22.0f : 18.0f;
+	if(SectorCount > 8)
+		TextSize *= 0.92f;
+	if(SectorCount > 12)
+		TextSize *= 0.85f;
+
+	TextRender()->TextColor(1.0f, 1.0f, 1.0f, Alpha);
+	float TextWidth = TextRender()->TextWidth(TextSize, pRenameName);
+	TextRender()->Text(ItemPos.x - TextWidth / 2.0f, ItemPos.y - TextSize / 2.0f, TextSize, pRenameName);
+}
+
+void CPieMenu::RenderCenterInfo()
+{
+	if(m_TargetClientId < 0 || m_TargetClientId >= MAX_CLIENTS)
+		return;
+
+	// Draw player name in center - scaled 1.8x
+	char aNameBuf[MAX_NAME_LENGTH];
+	str_copy(aNameBuf, GameClient()->m_aClients[m_TargetClientId].m_aName, sizeof(aNameBuf));
+	const char *pName = aNameBuf;
+	TextRender()->TextColor(1.0f, 1.0f, 1.0f, 1.0f);
+	
+	float FontSize = 32.0f;  // 18 * 1.8
+	float TextWidth = TextRender()->TextWidth(FontSize, pName);
+	TextRender()->Text(m_MenuCenter.x - TextWidth / 2.0f, m_MenuCenter.y - FontSize / 2.0f, FontSize, pName);
+
+	if(m_SelectedRenameIndex >= 0 && m_SelectedRenameIndex < (int)m_vRenameQueue.size())
+	{
+		char aPreview[128];
+		str_format(aPreview, sizeof(aPreview), Localize("Rename: %s"), m_vRenameQueue[m_SelectedRenameIndex].c_str());
+		const float PreviewFontSize = 18.0f;
+		const float PreviewWidth = TextRender()->TextWidth(PreviewFontSize, aPreview);
+		TextRender()->Text(m_MenuCenter.x - PreviewWidth / 2.0f, m_MenuCenter.y + FontSize * 0.40f, PreviewFontSize, aPreview);
+	}
+}
+
+// ========== Helper Methods ==========
+
+vec2 CPieMenu::GetSectorPosition(int Index, float Radius) const
+{
+	float Angle = GetSectorAngle(Index);
+	float Rad = Angle * pi / 180.0f;
+	return m_MenuCenter + vec2(cos(Rad), sin(Rad)) * Radius;
+}
+
+float CPieMenu::GetSectorAngle(int Index) const
+{
+	float AnglePerSector = 360.0f / (int)EMenuOption::NUM_OPTIONS;
+	return START_ANGLE + AnglePerSector * (Index + 0.5f);
+}
+
+const char *CPieMenu::GetOptionName(EMenuOption Option) const
+{
+	switch(Option)
+	{
+	case EMenuOption::FRIEND: return Localize("Friends");
+	case EMenuOption::WHISPER: return Localize("Whisper");
+	case EMenuOption::MENTION: return Localize("Mention");
+	case EMenuOption::COPY_SKIN: return Localize("Copy skin");
+	case EMenuOption::SWAP: return Localize("Swap");
+	case EMenuOption::SPECTATE: return Localize("Spectate");
+	default: return "";
+	}
+}
+
+const char *CPieMenu::GetOptionIcon(EMenuOption Option) const
+{
+	switch(Option)
+	{
+	case EMenuOption::FRIEND: return "♥"; // Heart
+	case EMenuOption::WHISPER: return "✉";
+	case EMenuOption::MENTION: return "➤";
+	case EMenuOption::COPY_SKIN: return "⚡";
+	case EMenuOption::SWAP: return "⇄";
+	case EMenuOption::SPECTATE: return "👁";
+	default: return "";
+	}
+}
+
+ColorRGBA CPieMenu::GetOptionColor(EMenuOption Option, bool Highlighted) const
+{
+	// Get colors from config (HSLA format)
+	unsigned int ConfigColor = 0;
+	
+	switch(Option)
+	{
+	case EMenuOption::FRIEND:
+		ConfigColor = g_Config.m_QmPieMenuColorFriend;
+		break;
+	case EMenuOption::WHISPER:
+		ConfigColor = g_Config.m_QmPieMenuColorWhisper;
+		break;
+	case EMenuOption::MENTION:
+		ConfigColor = g_Config.m_QmPieMenuColorMention;
+		break;
+	case EMenuOption::COPY_SKIN:
+		ConfigColor = g_Config.m_QmPieMenuColorCopySkin;
+		break;
+	case EMenuOption::SWAP:
+		ConfigColor = g_Config.m_QmPieMenuColorSwap;
+		break;
+	case EMenuOption::SPECTATE:
+		ConfigColor = g_Config.m_QmPieMenuColorSpectate;
+		break;
+	default:
+		ConfigColor = 0x4D6680BF;
+	}
+
+	ColorRGBA BaseColor = color_cast<ColorRGBA>(ColorHSLA(ConfigColor));
+
+	if(Highlighted)
+	{
+		// Brighten and increase alpha when highlighted
+		BaseColor.r = minimum(BaseColor.r * 1.3f, 1.0f);
+		BaseColor.g = minimum(BaseColor.g * 1.3f, 1.0f);
+		BaseColor.b = minimum(BaseColor.b * 1.3f, 1.0f);
+		BaseColor.a = minimum(BaseColor.a * 1.2f, 1.0f);
+	}
+
+	return BaseColor;
+}
+
+bool CPieMenu::IsMouseInCenter() const
+{
+	float Scale = mix(MIN_SCALE, MAX_SCALE, m_AnimationProgress);
+	float ConfigScale = g_Config.m_QmPieMenuScale / 100.0f;
+	float InnerRadius = INNER_RADIUS * Scale * ConfigScale;
+
+	return length(m_SelectorMouse) < InnerRadius;
+}
+
+int CPieMenu::GetHoveredOption() const
+{
+	float MouseAngle = atan2(m_SelectorMouse.y, m_SelectorMouse.x) * 180.0f / pi;
+
+	while(MouseAngle < 0)
+		MouseAngle += 360.0f;
+	while(MouseAngle >= 360.0f)
+		MouseAngle -= 360.0f;
+
+	float AdjustedAngle = MouseAngle - START_ANGLE;
+	while(AdjustedAngle < 0)
+		AdjustedAngle += 360.0f;
+	while(AdjustedAngle >= 360.0f)
+		AdjustedAngle -= 360.0f;
+
+	float AnglePerSector = 360.0f / (int)EMenuOption::NUM_OPTIONS;
+	int SectorIndex = (int)(AdjustedAngle / AnglePerSector);
+
+	if(SectorIndex >= 0 && SectorIndex < (int)EMenuOption::NUM_OPTIONS)
+		return SectorIndex;
+
+	return -1;
+}
+
+int CPieMenu::GetHoveredRenameOption() const
+{
+	if(m_vRenameQueue.empty())
+		return -1;
+
+	float MouseAngle = atan2(m_SelectorMouse.y, m_SelectorMouse.x) * 180.0f / pi;
+
+	while(MouseAngle < 0)
+		MouseAngle += 360.0f;
+	while(MouseAngle >= 360.0f)
+		MouseAngle -= 360.0f;
+
+	float AdjustedAngle = MouseAngle - START_ANGLE;
+	while(AdjustedAngle < 0)
+		AdjustedAngle += 360.0f;
+	while(AdjustedAngle >= 360.0f)
+		AdjustedAngle -= 360.0f;
+
+	const int SectorCount = (int)m_vRenameQueue.size();
+	float AnglePerSector = 360.0f / SectorCount;
+	int SectorIndex = (int)(AdjustedAngle / AnglePerSector);
+
+	if(SectorIndex >= 0 && SectorIndex < SectorCount)
+		return SectorIndex;
+
+	return -1;
+}
+
+int CPieMenu::GetHoveredOptionDynamic(const std::vector<EMenuOption> &EnabledOptions) const
+{
+	if(EnabledOptions.empty())
+		return -1;
+
+	float MouseAngle = atan2(m_SelectorMouse.y, m_SelectorMouse.x) * 180.0f / pi;
+
+	// 归一化角度到 0–360
+	while(MouseAngle < 0)
+		MouseAngle += 360.0f;
+	while(MouseAngle >= 360.0f)
+		MouseAngle -= 360.0f;
+
+	float AdjustedAngle = MouseAngle - START_ANGLE;
+	while(AdjustedAngle < 0)
+		AdjustedAngle += 360.0f;
+	while(AdjustedAngle >= 360.0f)
+		AdjustedAngle -= 360.0f;
+
+	int Count = (int)EnabledOptions.size();
+	float AnglePerSector = 360.0f / Count;
+	int SectorIndex = (int)(AdjustedAngle / AnglePerSector);
+
+	if(SectorIndex >= 0 && SectorIndex < Count)
+		return (int)EnabledOptions[SectorIndex]; // 返回枚举对应的 int
+
+	return -1;
+}
+
+// ========== Option Execution ==========
+
+void CPieMenu::ExecuteRenameOption(int RenameIndex)
+{
+	if(RenameIndex < 0 || RenameIndex >= (int)m_vRenameQueue.size())
+		return;
+
+	const char *pNewName = m_vRenameQueue[RenameIndex].c_str();
+	if(!pNewName || pNewName[0] == '\0')
+		return;
+
+	const bool UseDummy = g_Config.m_ClDummy && Client()->DummyConnected();
+	char *pConfigName = UseDummy ? g_Config.m_ClDummyName : g_Config.m_PlayerName;
+	const int ConfigNameSize = UseDummy ? (int)sizeof(g_Config.m_ClDummyName) : (int)sizeof(g_Config.m_PlayerName);
+
+	str_copy(pConfigName, pNewName, ConfigNameSize);
+	if(UseDummy)
+		GameClient()->SendDummyInfo(false);
+	else
+		GameClient()->SendInfo(false);
+
+	char aBuf[128];
+	str_format(aBuf, sizeof(aBuf), "已切换名字: %s%s", pConfigName, UseDummy ? " (分身)" : "");
+	GameClient()->m_Chat.AddLine(-2, 0, aBuf);
+}
+
+void CPieMenu::ExecuteOption(EMenuOption Option)
+{
+	if(m_TargetClientId < 0 || m_TargetClientId >= MAX_CLIENTS)
+		return;
+
+	const char *pPlayerName = GameClient()->m_aClients[m_TargetClientId].m_aName;
+	const char *pPlayerClan = GameClient()->m_aClients[m_TargetClientId].m_aClan;
+
+	switch(Option)
+	{
+	case EMenuOption::FRIEND:
+	{
+		// Toggle friend status using console command (more reliable)
+		char aBuf[256];
+		if(GameClient()->m_aClients[m_TargetClientId].m_Friend)
+		{
+			str_format(aBuf, sizeof(aBuf), "remove_friend \"%s\" \"%s\"", pPlayerName, pPlayerClan);
+			Console()->ExecuteLine(aBuf, -1, true);
+			
+			char aMsg[128];
+			str_format(aMsg, sizeof(aMsg), "已将 %s 移出好友", pPlayerName);
+			GameClient()->m_Chat.AddLine(-2, 0, aMsg);
+		}
+		else
+		{
+			str_format(aBuf, sizeof(aBuf), "add_friend \"%s\" \"%s\"", pPlayerName, pPlayerClan);
+			Console()->ExecuteLine(aBuf, -1, true);
+			
+			char aMsg[128];
+			str_format(aMsg, sizeof(aMsg), "已将 %s 添加为好友", pPlayerName);
+			GameClient()->m_Chat.AddLine(-2, 0, aMsg);
+		}
+		break;
+	}
+	case EMenuOption::WHISPER:
+	{
+		// Open chat with whisper command
+		char aBuf[256];
+		str_format(aBuf, sizeof(aBuf), "/w \"%s\" ", pPlayerName);
+		GameClient()->m_Chat.EnableMode(0);
+		GameClient()->m_Chat.SetInputText(aBuf);
+		break;
+	}
+	case EMenuOption::MENTION:
+	{
+		// Insert player name in chat (for @mention)
+		char aBuf[256];
+		str_format(aBuf, sizeof(aBuf), "%s: ", pPlayerName);
+		GameClient()->m_Chat.EnableMode(0);
+		GameClient()->m_Chat.SetInputText(aBuf);
+		break;
+	}
+	case EMenuOption::COPY_SKIN:
+	{
+		// Copy player skin to local config (supports both main player and dummy)
+		const auto &TargetClient = GameClient()->m_aClients[m_TargetClientId];
+		const bool IsDummy = g_Config.m_ClDummy != 0;
+		
+		// Copy skin name to appropriate config
+		if(IsDummy)
+		{
+			str_copy(g_Config.m_ClDummySkin, TargetClient.m_aSkinName, sizeof(g_Config.m_ClDummySkin));
+			
+			// Copy custom colors if used
+			if(TargetClient.m_UseCustomColor)
+			{
+				g_Config.m_ClDummyUseCustomColor = 1;
+				g_Config.m_ClDummyColorBody = TargetClient.m_ColorBody;
+				g_Config.m_ClDummyColorFeet = TargetClient.m_ColorFeet;
+			}
+			else
+			{
+				g_Config.m_ClDummyUseCustomColor = 0;
+			}
+		}
+		else
+		{
+			str_copy(g_Config.m_ClPlayerSkin, TargetClient.m_aSkinName, sizeof(g_Config.m_ClPlayerSkin));
+			
+			// Copy custom colors if used
+			if(TargetClient.m_UseCustomColor)
+			{
+				g_Config.m_ClPlayerUseCustomColor = 1;
+				g_Config.m_ClPlayerColorBody = TargetClient.m_ColorBody;
+				g_Config.m_ClPlayerColorFeet = TargetClient.m_ColorFeet;
+			}
+			else
+			{
+				g_Config.m_ClPlayerUseCustomColor = 0;
+			}
+		}
+		
+		// Send skin change to server
+		if(IsDummy)
+			GameClient()->SendDummyInfo(false);
+		else
+			GameClient()->SendInfo(false);
+		
+		// Show notification
+		char aBuf[128];
+		str_format(aBuf, sizeof(aBuf), "已复制 %s 的皮肤%s", pPlayerName, IsDummy ? " (分身)" : "");
+		GameClient()->m_Chat.AddLine(-2, 0, aBuf);
+		break;
+	}
+	case EMenuOption::SWAP:
+	{
+		// Check if target is in the same team
+		const int LocalClientId = GameClient()->m_aLocalIds[g_Config.m_ClDummy];
+		int LocalTeam = GameClient()->m_Teams.Team(LocalClientId);
+		int TargetTeam = GameClient()->m_Teams.Team(m_TargetClientId);
+		
+		if(LocalTeam != TargetTeam)
+		{
+			GameClient()->m_Chat.AddLine(-2, 0, "无法交换：对方不在你的队伍");
+			break;
+		}
+		
+		// Execute swap command with player name
+		char aBuf[256];
+		str_format(aBuf, sizeof(aBuf), "/swap \"%s\"", pPlayerName);
+		GameClient()->m_Chat.SendChat(0, aBuf);
+		break;
+	}
+	case EMenuOption::SPECTATE:
+	{
+		// Spectate the player
+		char aBuf[256];
+		str_format(aBuf, sizeof(aBuf), "/spec \"%s\"", pPlayerName);
+		GameClient()->m_Chat.SendChat(0, aBuf);
+		break;
+	}
+	default:
+		break;
+	}
+}

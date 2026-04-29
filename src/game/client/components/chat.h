@@ -350,6 +350,10 @@ class CChat : public CComponent
 public:
 	CChat();
 	int Sizeof() const override { return sizeof(*this); }
+	void SetInputText(const char *pText)
+	{
+		m_Input.Set(pText);
+	}
 
 	static constexpr float MESSAGE_TEE_PADDING_RIGHT = 0.5f;
 

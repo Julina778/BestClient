@@ -1,4 +1,4 @@
-#include <base/log.h>
+﻿#include <base/log.h>
 #include <base/math.h>
 #include <base/system.h>
 
@@ -28,6 +28,7 @@
 #include <game/client/ui_scrollregion.h>
 #include <game/localization.h>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -73,6 +74,7 @@ static const SBestClientComponentEntry gs_aBestClientComponentEntries[] = {
 	{CBestClient::COMPONENT_ALESSTYA_SCOREBOARD_POINTS, "Scoreboard Points", COMPONENTS_GROUP_ALESSTYA},
 	{CBestClient::COMPONENT_ALESSTYA_WEAPONS_PATH, "Grenade & Laser Path", COMPONENTS_GROUP_ALESSTYA},
 	{CBestClient::COMPONENT_ALESSTYA_TEE_STATS, "Show Tee Stats", COMPONENTS_GROUP_ALESSTYA},
+	{CBestClient::COMPONENT_ALESSTYA_PIE_MENU, "Pie Menu", COMPONENTS_GROUP_ALESSTYA},
 	{CBestClient::COMPONENT_VISUALS_CAMERA_DRIFT, "Camera Drift", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_JELLY_TEE, "Jelly Tee", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_MAGIC_PARTICLES, "Magic Particles", COMPONENTS_GROUP_VISUALS},
@@ -361,6 +363,266 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			Ui()->DoLabel(&Label, BCLocalize("Hide Chat Bubbles"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClHideChatBubbles, BCLocalize("Hide chat bubbles while typing"), &g_Config.m_ClHideChatBubbles, &Content, LineSize);
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+		// Left Side --- Pie Menu ---
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_ALESSTYA_PIE_MENU))
+		{
+			static CButtonContainer s_PieMenuPreviewButton;
+			static CButtonContainer s_PieMenuResetButton;
+			static CButtonContainer s_PieMenuBindReader;
+			static CButtonContainer s_PieMenuBindClear;
+
+			const float PreviewSize = 220.0f;
+
+			const float ContentHeight =
+				LineSize + MarginSmall + // title
+				LineSize + MarginSmall + // enable
+				LineSize + MarginSmall + // scale
+				LineSize + MarginSmall + // opacity
+				LineSize + MarginSmall + // distance
+				LineSize + MarginSmall + // rename queue
+				(LineSize + MarginSmall) * 6 + // six checkboxes
+				(LineSize + MarginSmall) + // +pie_menu bind
+				PreviewSize + LineSize + 20.0f;
+
+			CUIRect Content, Label, Row, Button;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.Margin(8.0f, &Content);
+
+			// Title
+			Content.HSplitTop(LineSize, &Label, &Content);
+			Ui()->DoLabel(&Label, BCLocalize("Pie Menu"), HeadlineFontSize, TEXTALIGN_ML);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			// Enable
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuEnabled, BCLocalize("Enable pie menu"), &g_Config.m_QmPieMenuEnabled, &Content, LineSize);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			if(g_Config.m_QmPieMenuEnabled)
+			{
+				// UI Scale
+				Content.HSplitTop(LineSize, &Button, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_QmPieMenuScale, &g_Config.m_QmPieMenuScale, &Button, BCLocalize("UI scale"), 50, 200);
+				Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+				// Opacity
+				Content.HSplitTop(LineSize, &Button, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_QmPieMenuOpacity, &g_Config.m_QmPieMenuOpacity, &Button, BCLocalize("Pie menu opacity"), 0, 100);
+				Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+				// Distance
+				Content.HSplitTop(LineSize, &Button, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_QmPieMenuMaxDistance, &g_Config.m_QmPieMenuMaxDistance, &Button, BCLocalize("Detection distance"), 100, 2000);
+				Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+				// Rename Queue
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoLabel(&Row, BCLocalize("Rename queue"), 14.0f, TEXTALIGN_ML);
+				Content.HSplitTop(LineSize, &Row, &Content);
+
+				static CLineInput s_PieMenuRenameQueue(g_Config.m_QmPieMenuRenameQueue, sizeof(g_Config.m_QmPieMenuRenameQueue));
+
+				s_PieMenuRenameQueue.SetEmptyText("name1|name2|name3");
+				Ui()->DoEditBox(&s_PieMenuRenameQueue, &Row, 14.0f);
+				Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuShowFriend, "Show Friend", &g_Config.m_QmPieMenuShowFriend, &Content, LineSize);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuShowWhisper, "Show Whisper", &g_Config.m_QmPieMenuShowWhisper, &Content, LineSize);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuShowMention, "Show Mention", &g_Config.m_QmPieMenuShowMention, &Content, LineSize);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuShowCopy, "Show Copy", &g_Config.m_QmPieMenuShowCopy, &Content, LineSize);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuShowSwap, "Show Swap", &g_Config.m_QmPieMenuShowSwap, &Content, LineSize);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuShowSpec, "Show Spectate", &g_Config.m_QmPieMenuShowSpec, &Content, LineSize);
+
+				Content.HSplitTop(MarginSmall, nullptr, &Content);
+				DoLine_KeyReader(Content, s_PieMenuBindReader, s_PieMenuBindClear, BCLocalize("Pie Menu bind"), "+pie_menu");
+				Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+				// =========================
+				// Preview
+				// =========================
+
+				CUIRect PreviewRect;
+				Content.HSplitTop(PreviewSize, &PreviewRect, &Content);
+
+				PreviewRect.Margin(8.0f, &PreviewRect);
+
+				PreviewRect.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.2f), IGraphics::CORNER_ALL, 10.0f);
+
+				const vec2 Center = PreviewRect.Center();
+
+				const float OuterRadius = PreviewSize * 0.38f;
+				const float InnerRadius = OuterRadius * 0.36f;
+
+				struct SPieColor
+				{
+					const char *m_pName;
+					const char *m_pIcon;
+					unsigned int *m_pColor;
+					ColorRGBA m_Default;
+				};
+
+				// =========================
+				// Dynamic Pie Menu Items
+				// =========================
+
+				std::vector<SPieColor> aColors;
+
+				if(g_Config.m_QmPieMenuShowFriend)
+				{
+					aColors.push_back({"Friend", "♥", (unsigned int *)&g_Config.m_QmPieMenuColorFriend, ColorRGBA(0.9f, 0.3f, 0.4f)});
+				}
+
+				if(g_Config.m_QmPieMenuShowWhisper)
+				{
+					aColors.push_back({"Whisper", "✉", (unsigned int *)&g_Config.m_QmPieMenuColorWhisper, ColorRGBA(0.5f, 0.35f, 0.7f)});
+				}
+
+				if(g_Config.m_QmPieMenuShowMention)
+				{
+					aColors.push_back({"Mention", "➤", (unsigned int *)&g_Config.m_QmPieMenuColorMention, ColorRGBA(0.85f, 0.5f, 0.2f)});
+				}
+
+				if(g_Config.m_QmPieMenuShowCopy)
+				{
+					aColors.push_back({"Copy", "⚡", (unsigned int *)&g_Config.m_QmPieMenuColorCopySkin, ColorRGBA(0.25f, 0.55f, 0.8f)});
+				}
+
+				if(g_Config.m_QmPieMenuShowSwap)
+				{
+					aColors.push_back({"Swap", "⇄", (unsigned int *)&g_Config.m_QmPieMenuColorSwap, ColorRGBA(0.8f, 0.3f, 0.3f)});
+				}
+
+				if(g_Config.m_QmPieMenuShowSpec)
+				{
+					aColors.push_back({"Spec", "👁", (unsigned int *)&g_Config.m_QmPieMenuColorSpectate, ColorRGBA(0.45f, 0.55f, 0.6f)});
+				}
+
+				if(aColors.empty())
+				{
+					TextRender()->TextColor(1, 1, 1, 1);
+					const char *pMsg = "No pie menu items enabled";
+					float Width = TextRender()->TextWidth(14.0f, pMsg);
+					TextRender()->Text(Center.x - Width * 0.5f, Center.y - 7.0f, 14.0f, pMsg);
+				}
+				else
+				{
+					int Hovered = -1;
+
+					const int Count = (int)aColors.size();
+
+					if(Ui()->MouseInside(&PreviewRect))
+					{
+						vec2 Dir = Ui()->MousePos() - Center;
+						float Dist = length(Dir);
+
+						if(Dist >= InnerRadius && Dist <= OuterRadius * 1.15f)
+						{
+							float Angle = atan2(Dir.y, Dir.x) * 180.0f / pi;
+							while(Angle < 0.0f) Angle += 360.0f;
+							Angle += 90.0f;
+							while(Angle >= 360.0f) Angle -= 360.0f;
+							const float SectorAngle = 360.0f / Count;
+							Hovered = (int)(Angle / SectorAngle);
+						}
+					}
+
+					auto OpenColorPicker = [&](unsigned int *pColor)
+					{
+						ColorHSLA Hsla = ColorHSLA(*pColor, false);
+						m_ColorPickerPopupContext.m_pHslaColor = pColor;
+						m_ColorPickerPopupContext.m_HslaColor = Hsla;
+						m_ColorPickerPopupContext.m_HsvaColor = color_cast<ColorHSVA>(Hsla);
+						m_ColorPickerPopupContext.m_RgbaColor = color_cast<ColorRGBA>(m_ColorPickerPopupContext.m_HsvaColor);
+						m_ColorPickerPopupContext.m_Alpha = false;
+						Ui()->ShowPopupColorPicker(Ui()->MouseX(), Ui()->MouseY(), &m_ColorPickerPopupContext);
+					};
+
+					if(Ui()->DoButtonLogic(&s_PieMenuPreviewButton, 0, &PreviewRect, BUTTONFLAG_LEFT))
+					{
+						if(Hovered >= 0) OpenColorPicker (aColors[Hovered].m_pColor);
+					}
+
+					const float Alpha = std::clamp(g_Config.m_QmPieMenuOpacity / 100.0f, 0.2f, 1.0f);
+
+					for(int i = 0; i < Count; i++)
+					{
+						const float SectorAngle = 360.0f / Count;
+						float Start = -90.0f + i * SectorAngle + 2.0f;
+						float End = Start + SectorAngle - 4.0f;
+						bool Highlight = i == Hovered;
+						float Radius = Highlight ? OuterRadius * 1.1f : OuterRadius;
+						ColorRGBA Color = color_cast<ColorRGBA>(ColorHSLA(*aColors[i].m_pColor));
+
+						if(Highlight)
+						{
+							Color.r = minimum(Color.r * 1.3f, 1.0f);
+							Color.g = minimum(Color.g * 1.3f, 1.0f);
+							Color.b = minimum(Color.b * 1.3f, 1.0f);
+						}
+
+						Graphics()->TextureClear();
+						Graphics()->QuadsBegin();
+
+						Graphics()->SetColor(Color.r, Color.g, Color.b, Alpha);
+
+						for(int s = 0; s < 24; s++)
+						{
+							float A1 = (Start + (End - Start) * (s / 24.0f)) * pi / 180.0f;
+							float A2 = (Start + (End - Start) * ((s + 1) / 24.0f)) * pi / 180.0f;
+
+							vec2 Inner1 = Center + vec2(cos(A1), sin(A1)) * InnerRadius;
+							vec2 Outer1 = Center + vec2(cos(A1), sin(A1)) * Radius;
+							vec2 Inner2 = Center + vec2(cos(A2), sin(A2)) * InnerRadius;
+							vec2 Outer2 = Center + vec2(cos(A2), sin(A2)) * Radius;
+
+							IGraphics::CFreeformItem Freeform(Inner1.x, Inner1.y, Outer1.x, Outer1.y, Inner2.x, Inner2.y, Outer2.x, Outer2.y);
+
+							Graphics()->QuadsDrawFreeform(&Freeform, 1);
+						}
+
+						Graphics()->QuadsEnd();
+
+						float Mid = (Start + End) * 0.5f * pi / 180.0f;
+						vec2 Pos = Center + vec2(cos(Mid), sin(Mid)) * ((InnerRadius + Radius) * 0.5f);
+						float IconSize = 18.0f;
+
+						TextRender()->TextColor(1, 1, 1, Alpha);
+						float Width = TextRender()->TextWidth(IconSize, aColors[i].m_pIcon);
+						TextRender()->Text(Pos.x - Width * 0.5f, Pos.y - IconSize * 0.5f, IconSize, aColors[i].m_pIcon);
+					}
+
+					Graphics()->TextureClear();
+					Graphics()->QuadsBegin();
+
+					Graphics()->SetColor(0.15f, 0.15f, 0.2f, 0.9f * Alpha);
+					Graphics()->DrawCircle(Center.x, Center.y, InnerRadius - 4.0f, 48);
+					Graphics()->QuadsEnd();
+					TextRender()->TextColor(1, 1, 1, 1);
+
+					const char *pText = Hovered >= 0 ? aColors[Hovered].m_pName : "Click";
+					float Width = TextRender()->TextWidth(14.0f, pText);
+					TextRender()->Text(Center.x - Width * 0.5f, Center.y - 7.0f, 14.0f, pText);
+
+					Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+					// =========================
+					// Reset Colors
+					// =========================
+
+					Content.HSplitTop(LineSize, &Button, &Content);
+
+					if(DoButton_Menu(&s_PieMenuResetButton, BCLocalize("Reset colors"), 0, &Button))
+					{
+						for(const auto &Entry : aColors)
+						{
+							*Entry.m_pColor = color_cast<ColorHSLA>(Entry.m_Default).Pack(false);
+						}
+					}
+				}
+			}
+
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
 		// Right Side

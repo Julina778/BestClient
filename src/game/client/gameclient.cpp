@@ -624,6 +624,7 @@ void CGameClient::OnConsoleInit()
 					      &m_Motd,
 					      &m_AdminPanel,
 					      &m_Menus,
+					      &m_PieMenu,
 					      &m_IrcChat,
 						      &m_Tooltips,
 						      &m_Scripting, // TClient
@@ -650,6 +651,7 @@ void CGameClient::OnConsoleInit()
 						  &m_ImportantAlert,
 						  &m_AdminPanel,
 						  &m_Menus,
+						  &m_PieMenu,
 						  &m_Controls,
 						  &m_TouchControls,
 						  &m_Binds});
