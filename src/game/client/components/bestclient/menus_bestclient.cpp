@@ -3489,7 +3489,7 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 		Ui()->DoLabel(&Label, "RoflikBEST", DevNameFontSize, TEXTALIGN_ML);
 		if(Ui()->DoButton_FontIcon(&s_LinkButton1, FontIcon::ARROW_UP_RIGHT_FROM_SQUARE, 0, &Button, IGraphics::CORNER_ALL))
 			Client()->ViewLink("https://github.com/roflikbest");
-		RenderDevSkin(TeeRect.Center(), TeeSize, "mushkitt", "mushkitt", false, 0, 0, 0, false, true);
+		RenderDevSkin(TeeRect.Center(), TeeSize, "10Nanami_glow", "nanami", true, 0, 0, 0, false, true, ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f), ColorRGBA(0.94f, 0.74f, 0.92f, 1.0f));
 	}
 	{
 		RightView.HSplitTop(CardSize, &DevCardRect, &RightView);
