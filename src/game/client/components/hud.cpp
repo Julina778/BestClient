@@ -270,6 +270,56 @@ namespace
 		       (SecondaryKey > 0 && pInput->KeyIsPressed(SecondaryKey));
 	}
 
+	bool IsKeystrokesPressed(const CNetObj_PlayerInput *pInput, int PrimaryKey, int SecondaryKey = 0)
+	{
+		if(pInput == nullptr)
+			return false;
+
+		auto IsPressed = [pInput](int Key) {
+			switch(Key)
+			{
+			case KEY_A:
+				return pInput->m_Direction < 0;
+			case KEY_D:
+				return pInput->m_Direction > 0;
+			case KEY_W:
+			case KEY_SPACE:
+				return pInput->m_Jump != 0;
+			case KEY_Q:
+				return pInput->m_PrevWeapon != 0;
+			case KEY_E:
+				return pInput->m_NextWeapon != 0;
+			default:
+				return false;
+			}
+		};
+
+		return IsPressed(PrimaryKey) || IsPressed(SecondaryKey);
+	}
+
+	bool IsKeystrokesPressed(const CNetObj_Character *pCharacter, int PrimaryKey, int SecondaryKey = 0)
+	{
+		if(pCharacter == nullptr)
+			return false;
+
+		auto IsPressed = [pCharacter](int Key) {
+			switch(Key)
+			{
+			case KEY_A:
+				return pCharacter->m_Direction < 0;
+			case KEY_D:
+				return pCharacter->m_Direction > 0;
+			case KEY_W:
+			case KEY_SPACE:
+				return (pCharacter->m_Jumped & 1) != 0;
+			default:
+				return false;
+			}
+		};
+
+		return IsPressed(PrimaryKey) || IsPressed(SecondaryKey);
+	}
+
 	bool IsKeystrokesMouseButtonPressed(IInput *pInput, int MouseButton)
 	{
 		if(MouseButton <= 0)
@@ -295,6 +345,22 @@ namespace
 			return pInput->KeyIsPressed(KEY_MOUSE_8);
 		case 9:
 			return pInput->KeyIsPressed(KEY_MOUSE_9);
+		default:
+			return false;
+		}
+	}
+
+	bool IsKeystrokesMouseButtonPressed(const CNetObj_PlayerInput *pInput, int MouseButton)
+	{
+		if(pInput == nullptr || MouseButton <= 0)
+			return false;
+
+		switch(MouseButton)
+		{
+		case 1:
+			return (pInput->m_Fire & 1) != 0;
+		case 2:
+			return pInput->m_Hook != 0;
 		default:
 			return false;
 		}
@@ -3274,6 +3340,36 @@ CUIRect CHud::GetKeystrokesKeyboardRect(bool ForcePreview) const
 	return GetKeystrokesKeyboardRectInternal(ForcePreview, false);
 }
 
+int CHud::GetKeystrokesTrackedClientId() const
+{
+	if(Client()->State() == IClient::STATE_DEMOPLAYBACK)
+	{
+		if(GameClient()->m_DemoSpecId > SPEC_FREEVIEW && GameClient()->m_DemoSpecId < MAX_CLIENTS)
+			return GameClient()->m_DemoSpecId;
+	}
+
+	if(!GameClient()->m_Snap.m_SpecInfo.m_Active)
+		return -1;
+
+	const int SpectatorId = GameClient()->m_Snap.m_SpecInfo.m_SpectatorId;
+	if(SpectatorId <= SPEC_FREEVIEW || SpectatorId >= MAX_CLIENTS)
+		return -1;
+
+	return SpectatorId;
+}
+
+const CNetObj_PlayerInput *CHud::GetKeystrokesTrackedInput() const
+{
+	const int SpectatorId = GetKeystrokesTrackedClientId();
+	if(SpectatorId < 0)
+		return nullptr;
+
+	if(CCharacter *pCharacter = GameClient()->m_GameWorld.GetCharacterById(SpectatorId))
+		return pCharacter->LatestInput();
+
+	return nullptr;
+}
+
 void CHud::RenderKeystrokesKeyboardInternal(bool ForcePreview, bool IgnoreModuleEnabled)
 {
 	const CUIRect Rect = GetKeystrokesKeyboardRectInternal(ForcePreview, IgnoreModuleEnabled);
@@ -3283,10 +3379,19 @@ void CHud::RenderKeystrokesKeyboardInternal(bool ForcePreview, bool IgnoreModule
 	const auto Layout = HudLayout::Get(HudLayout::MODULE_KEYSTROKES_KEYBOARD, m_Width, m_Height);
 	const auto &Preset = GetKeystrokesKeyboardPreset(g_Config.m_BcKeystrokesKeyboardPreset);
 	const float Scale = GetKeystrokesScale(Layout);
+	const int TrackedClientId = ForcePreview ? -1 : GetKeystrokesTrackedClientId();
+	const CNetObj_PlayerInput *pTrackedInput = ForcePreview ? nullptr : GetKeystrokesTrackedInput();
+	const CNetObj_Character *pTrackedCharacter = TrackedClientId >= 0 && GameClient()->m_Snap.m_aCharacters[TrackedClientId].m_Active ?
+		&GameClient()->m_Snap.m_aCharacters[TrackedClientId].m_Cur :
+		nullptr;
 	for(int i = 0; i < Preset.m_NumElements; ++i)
 	{
 		const auto &Element = Preset.m_pElements[i];
-		const bool Active = !ForcePreview && IsKeystrokesPressed(Input(), Element.m_KeyPrimary, Element.m_KeySecondary);
+		const bool Active = !ForcePreview && (pTrackedCharacter != nullptr ?
+			(pTrackedInput != nullptr ?
+				IsKeystrokesPressed(pTrackedInput, Element.m_KeyPrimary, Element.m_KeySecondary) :
+				IsKeystrokesPressed(pTrackedCharacter, Element.m_KeyPrimary, Element.m_KeySecondary)) :
+			IsKeystrokesPressed(Input(), Element.m_KeyPrimary, Element.m_KeySecondary));
 		int MapY = Element.m_MapY;
 		bool UsePressedAtlas = Active && Preset.m_PressedOffsetY > 0;
 		if(UsePressedAtlas)
@@ -3361,11 +3466,14 @@ void CHud::RenderKeystrokesMouseInternal(bool ForcePreview, bool IgnoreModuleEna
 	const auto &Preset = GetKeystrokesMousePreset(g_Config.m_BcKeystrokesMousePreset);
 	const float Scale = GetKeystrokesScale(Layout);
 	const int64_t Now = time_get();
+	const int TrackedClientId = ForcePreview ? -1 : GetKeystrokesTrackedClientId();
+	const bool HasTrackedPlayer = TrackedClientId >= 0;
+	const CNetObj_PlayerInput *pTrackedInput = ForcePreview ? nullptr : GetKeystrokesTrackedInput();
 	if(!ForcePreview)
 	{
-		if(Input()->KeyPress(KEY_MOUSE_WHEEL_UP))
+		if(!HasTrackedPlayer && pTrackedInput == nullptr && Input()->KeyPress(KEY_MOUSE_WHEEL_UP))
 			m_KeystrokesWheelUpEndTime = Now + time_freq() * KEYSTROKES_WHEEL_HIGHLIGHT_MS / 1000;
-		if(Input()->KeyPress(KEY_MOUSE_WHEEL_DOWN))
+		if(!HasTrackedPlayer && pTrackedInput == nullptr && Input()->KeyPress(KEY_MOUSE_WHEEL_DOWN))
 			m_KeystrokesWheelDownEndTime = Now + time_freq() * KEYSTROKES_WHEEL_HIGHLIGHT_MS / 1000;
 	}
 
@@ -3374,7 +3482,9 @@ void CHud::RenderKeystrokesMouseInternal(bool ForcePreview, bool IgnoreModuleEna
 	bool MouseMoved = false;
 	if(!ForcePreview)
 	{
-		vec2 Aim = GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy];
+		vec2 Aim = pTrackedInput != nullptr ?
+			vec2((float)pTrackedInput->m_TargetX, (float)pTrackedInput->m_TargetY) :
+			(HasTrackedPlayer ? vec2(0.0f, 0.0f) : GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy]);
 		const float MaxDistance = maximum(GameClient()->m_Controls.GetMaxMouseDistance(), 0.001f);
 		float Length = length(Aim);
 		if(Length > 0.001f)
@@ -3399,10 +3509,18 @@ void CHud::RenderKeystrokesMouseInternal(bool ForcePreview, bool IgnoreModuleEna
 			Active = true;
 			break;
 		case EKeystrokesInputKind::KEY:
-			Active = !ForcePreview && IsKeystrokesPressed(Input(), Element.m_KeyPrimary, Element.m_KeySecondary);
+			Active = !ForcePreview && (HasTrackedPlayer ?
+				(pTrackedInput != nullptr ?
+				IsKeystrokesPressed(pTrackedInput, Element.m_KeyPrimary, Element.m_KeySecondary) :
+				false) :
+				IsKeystrokesPressed(Input(), Element.m_KeyPrimary, Element.m_KeySecondary));
 			break;
 		case EKeystrokesInputKind::MOUSE_BUTTON:
-			Active = !ForcePreview && IsKeystrokesMouseButtonPressed(Input(), Element.m_MouseButton);
+			Active = !ForcePreview && (HasTrackedPlayer ?
+				(pTrackedInput != nullptr ?
+				IsKeystrokesMouseButtonPressed(pTrackedInput, Element.m_MouseButton) :
+				false) :
+				IsKeystrokesMouseButtonPressed(Input(), Element.m_MouseButton));
 			break;
 		case EKeystrokesInputKind::WHEEL:
 			Active = !ForcePreview && IsKeystrokesWheelActive(Element.m_WheelDir, Now, m_KeystrokesWheelUpEndTime, m_KeystrokesWheelDownEndTime);

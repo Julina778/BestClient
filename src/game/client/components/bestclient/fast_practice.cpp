@@ -65,22 +65,7 @@ float EffectiveFastInputOffsetTicks(const CGameClient *pGameClient)
 		return g_Config.m_TcFastInputAmount / 20.0f;
 	}
 
-	if(g_Config.m_BcFastInputMode == 1)
-	{
-		if(g_Config.m_BcFastInputDeltaInput <= 0)
-			return 0.0f;
-		return g_Config.m_BcFastInputDeltaInput / 100.0f;
-	}
-
-	if(g_Config.m_BcFastInputMode == 2)
-	{
-		const int GammaInputAmount = BcFastInputGammaUiToEffectiveAmount(g_Config.m_BcFastInputGammaInput);
-		if(GammaInputAmount <= 0)
-			return 0.0f;
-		return GammaInputAmount / 100.0f;
-	}
-
-	if(g_Config.m_BcFastInputMode == 4)
+	if(BcFastInputNormalizedMode(g_Config.m_BcFastInputMode) == 4)
 	{
 		if(g_Config.m_BcSaikoPlusAmount <= 0)
 			return 0.0f;
@@ -109,20 +94,17 @@ int FastInputPredictionTicks(float OffsetTicks)
 {
 	if(OffsetTicks <= 0.0f)
 		return 0;
-	if(g_Config.m_BcFastInputMode == 4)
+	if(BcFastInputNormalizedMode(g_Config.m_BcFastInputMode) == 4)
 		return (int)std::ceil(OffsetTicks + 1.0f);
 	return (int)std::ceil(OffsetTicks);
 }
 
 bool EffectiveFastInputOthers()
 {
-	if(g_Config.m_BcFastInputMode == 0)
+	const int FastInputMode = BcFastInputNormalizedMode(g_Config.m_BcFastInputMode);
+	if(FastInputMode == 0)
 		return g_Config.m_TcFastInputOthers != 0;
-	if(g_Config.m_BcFastInputMode == 1)
-		return g_Config.m_BcDeltaInputOthers != 0;
-	if(g_Config.m_BcFastInputMode == 2)
-		return g_Config.m_BcGammaInputOthers != 0;
-	if(g_Config.m_BcFastInputMode == 4)
+	if(FastInputMode == 4)
 		return g_Config.m_BcSaikoPlusOthers != 0;
 	return g_Config.m_BcBestInputOthers != 0;
 }

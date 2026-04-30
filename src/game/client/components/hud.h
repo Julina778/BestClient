@@ -218,6 +218,8 @@ private:
 	CUIRect GetKeystrokesKeyboardRectInternal(bool ForcePreview, bool IgnoreModuleEnabled) const;
 	void RenderKeystrokesMouseInternal(bool ForcePreview, bool IgnoreModuleEnabled);
 	CUIRect GetKeystrokesMouseRectInternal(bool ForcePreview, bool IgnoreModuleEnabled) const;
+	int GetKeystrokesTrackedClientId() const;
+	const CNetObj_PlayerInput *GetKeystrokesTrackedInput() const;
 	float m_TimeCpDiff;
 	float m_aPlayerRecord[NUM_DUMMIES];
 	float m_FinishTimeDiff;
