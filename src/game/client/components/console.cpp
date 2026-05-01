@@ -1743,11 +1743,12 @@ bool CGameConsole::OnInput(const IInput::CEvent &Event)
 		return false;
 
 	#if defined(CONF_PLATFORM_ANDROID)
-	if(Event.m_Key == KEY_ESCAPE && (Event.m_Flags & IInput::FLAG_PRESS) && Graphics()->IsScreenKeyboardShown())
+	if(Event.m_Key == KEY_ESCAPE && (Event.m_Flags & IInput::FLAG_PRESS) &&
+		(Graphics()->IsScreenKeyboardShown() || Client()->GlobalTime() < m_IgnoreAndroidEscapeUntil))
 	{
 		// The Android back key is translated to escape globally. Ignore it while
-		// the software keyboard is visible so opening the console cannot
-		// immediately close it again.
+		// the software keyboard is visible or has just been requested, as SDL may
+		// report the keyboard as hidden for a few frames while it is opening.
 		return true;
 	}
 	#endif
@@ -1787,6 +1788,9 @@ void CGameConsole::Toggle(int Type)
 		{
 			Ui()->SetEnabled(false);
 			m_ConsoleState = CONSOLE_OPENING;
+			#if defined(CONF_PLATFORM_ANDROID)
+			m_IgnoreAndroidEscapeUntil = Client()->GlobalTime() + m_StateChangeDuration + 0.25f;
+			#endif
 		}
 		else
 		{

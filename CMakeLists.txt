@@ -1898,6 +1898,12 @@ set(EXPECTED_DATA
   menuimages/settings.png
   particles.png
   race_flag.png
+  shader/blur.frag
+  shader/blur.vert
+  shader/blur_kawase.frag
+  shader/blur_kawase.vert
+  shader/glow.frag
+  shader/glow.vert
   shader/pipeline.frag
   shader/pipeline.vert
   shader/prim.frag
@@ -1914,6 +1920,10 @@ set(EXPECTED_DATA
   shader/tile.vert
   shader/tile_border.frag
   shader/tile_border.vert
+  shader/vulkan/blur.frag
+  shader/vulkan/blur.vert
+  shader/vulkan/glow.frag
+  shader/vulkan/glow.vert
   shader/vulkan/prim.frag
   shader/vulkan/prim.vert
   shader/vulkan/prim3d.frag
@@ -3694,6 +3704,8 @@ if((GTEST_FOUND OR DOWNLOAD_GTEST) AND SERVER)
     src/engine/client/serverbrowser_ping_cache.cpp
     src/engine/client/serverbrowser_ping_cache.h
     src/engine/client/sqlite.cpp
+    src/game/client/components/bestclient/clientindicator/browser_cache.cpp
+    src/game/client/components/bestclient/clientindicator/browser_cache.h
     src/game/client/components/bestclient/visualizer/analyzer.cpp
     src/game/client/components/bestclient/visualizer/analyzer.h
     src/game/client/components/bestclient/visualizer/smoother.cpp
