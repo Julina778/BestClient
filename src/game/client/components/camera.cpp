@@ -305,37 +305,76 @@ void CCamera::UpdateCamera()
 	const bool Is0xFServer = IsOnline && str_comp_nocase(GameClient()->m_GameInfo.m_aGameType, "0xf") == 0;
 	const bool IsBlockedCameraServer = IsFngServer || Is0xFServer;
 
+	const bool IsDemoPlayback = Client()->State() == IClient::STATE_DEMOPLAYBACK;
 	if(g_Config.m_BcCameraDrift &&
 		!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CAMERA_DRIFT) &&
 		!IsBlockedCameraServer &&
-		!GameClient()->m_Snap.m_SpecInfo.m_Active)
+		(!GameClient()->m_Snap.m_SpecInfo.m_Active || IsDemoPlayback))
 	{
-		// Use predicted velocity so camera drift follows local simulation (e.g. fast practice),
-		// not delayed server snapshots.
-		vec2 PlayerVel = vec2(GameClient()->m_PredictedChar.m_Vel.x, 0.0f);
-		vec2 DriftDirection = normalize(PlayerVel);
-		if(g_Config.m_BcCameraDriftReverse)
+		vec2 PlayerVel = vec2(0.0f, 0.0f);
+		bool HasDriftVelocity = false;
+
+		if(IsDemoPlayback)
 		{
-			DriftDirection *= -1.0f;
-		}
+			const CNetObj_Character *pDriftCharacter = nullptr;
+			const CNetObj_Character *pPrevDriftCharacter = nullptr;
+			if(GameClient()->m_Snap.m_SpecInfo.m_Active)
+			{
+				const int SpectatorId = GameClient()->m_Snap.m_SpecInfo.m_SpectatorId;
+				if(SpectatorId >= 0 && SpectatorId < MAX_CLIENTS && GameClient()->m_Snap.m_aCharacters[SpectatorId].m_Active)
+				{
+					pDriftCharacter = &GameClient()->m_Snap.m_aCharacters[SpectatorId].m_Cur;
+					pPrevDriftCharacter = &GameClient()->m_Snap.m_aCharacters[SpectatorId].m_Prev;
+				}
+			}
+			else
+			{
+				pDriftCharacter = GameClient()->m_Snap.m_pLocalCharacter;
+				pPrevDriftCharacter = GameClient()->m_Snap.m_pLocalPrevCharacter;
+			}
 
-		float VelocityFactor = length(PlayerVel);
-		float DriftMultiplier = 1.0f + (VelocityFactor / 10.0f);
-		float DriftAmount = VelocityFactor * (g_Config.m_BcCameraDriftAmount / 50.0f) * DriftMultiplier;
-
-		m_DriftTargetOffset = DriftDirection * DriftAmount;
-
-		if(g_Config.m_BcCameraDriftSmoothness > 0)
-		{
-			float SmoothFactor = (1.0f - (g_Config.m_BcCameraDriftSmoothness / 100.0f)) * 10.0f;
-			m_DriftCurrentOffset += (m_DriftTargetOffset - m_DriftCurrentOffset) * minimum(DeltaTime * SmoothFactor, 1.0f);
+			if(pDriftCharacter)
+			{
+				const vec2 CurVel = vec2(pDriftCharacter->m_VelX / 256.0f, 0.0f);
+				const vec2 PrevVel = pPrevDriftCharacter ? vec2(pPrevDriftCharacter->m_VelX / 256.0f, 0.0f) : CurVel;
+				PlayerVel = mix(PrevVel, CurVel, Client()->IntraGameTick(g_Config.m_ClDummy));
+				HasDriftVelocity = true;
+			}
 		}
 		else
 		{
-			m_DriftCurrentOffset = m_DriftTargetOffset;
+			// Use predicted velocity so camera drift follows local simulation (e.g. fast practice),
+			// not delayed server snapshots.
+			PlayerVel = vec2(GameClient()->m_PredictedChar.m_Vel.x, 0.0f);
+			HasDriftVelocity = true;
 		}
 
-		m_aDyncamCurrentCameraOffset[g_Config.m_ClDummy] += m_DriftCurrentOffset;
+		if(HasDriftVelocity)
+		{
+			vec2 DriftDirection = normalize(PlayerVel);
+			if(g_Config.m_BcCameraDriftReverse)
+			{
+				DriftDirection *= -1.0f;
+			}
+
+			float VelocityFactor = length(PlayerVel);
+			float DriftMultiplier = 1.0f + (VelocityFactor / 10.0f);
+			float DriftAmount = VelocityFactor * (g_Config.m_BcCameraDriftAmount / 50.0f) * DriftMultiplier;
+
+			m_DriftTargetOffset = DriftDirection * DriftAmount;
+
+			if(g_Config.m_BcCameraDriftSmoothness > 0)
+			{
+				float SmoothFactor = (1.0f - (g_Config.m_BcCameraDriftSmoothness / 100.0f)) * 10.0f;
+				m_DriftCurrentOffset += (m_DriftTargetOffset - m_DriftCurrentOffset) * minimum(DeltaTime * SmoothFactor, 1.0f);
+			}
+			else
+			{
+				m_DriftCurrentOffset = m_DriftTargetOffset;
+			}
+
+			m_aDyncamCurrentCameraOffset[g_Config.m_ClDummy] += m_DriftCurrentOffset;
+		}
 	}
 
 	const bool DynamicFovActive = g_Config.m_BcDynamicFov &&
@@ -407,7 +446,7 @@ void CCamera::OnRender()
 			m_aLastPos[g_Config.m_ClDummy] = GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy];
 			GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy] = m_PrevCenter;
 			GameClient()->m_Controls.m_aMouseInputType[g_Config.m_ClDummy] = CControls::EMouseInputType::AUTOMATED;
-			GameClient()->m_Controls.ClampMousePos();
+			// GameClient()->m_Controls.ClampMousePos();
 			m_CamType = CAMTYPE_SPEC;
 		}
 		const vec2 TargetCenter = GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy];
@@ -435,7 +474,7 @@ void CCamera::OnRender()
 		{
 			GameClient()->m_Controls.m_aMousePos[g_Config.m_ClDummy] = m_aLastPos[g_Config.m_ClDummy];
 			GameClient()->m_Controls.m_aMouseInputType[g_Config.m_ClDummy] = CControls::EMouseInputType::AUTOMATED;
-			GameClient()->m_Controls.ClampMousePos();
+			// GameClient()->m_Controls.ClampMousePos();
 			m_CamType = CAMTYPE_PLAYER;
 		}
 
@@ -453,7 +492,35 @@ void CCamera::OnRender()
 	}
 	else
 		m_ForceFreeviewPos = m_Center;
+	if(m_CamType == CAMTYPE_SPEC)
+	{
+		const float SmoothFreeviewSpeed = 180.0f;
+		const float SmoothFreeviewAcceleration = 2.5f;
+		const float FrameTime = Client()->RenderFrameTime();
+		vec2 FreeviewMove = vec2(0.0f, 0.0f);
+		static vec2 SmoothFreeviewVelocity = vec2(0.0f, 0.0f);
 
+		if(Input()->KeyIsPressed(KEY_KP_4))
+			FreeviewMove.x -= 1.0f;
+		if(Input()->KeyIsPressed(KEY_KP_6))
+			FreeviewMove.x += 1.0f;
+		if(Input()->KeyIsPressed(KEY_KP_8))
+			FreeviewMove.y -= 1.0f;
+		if(Input()->KeyIsPressed(KEY_KP_2))
+			FreeviewMove.y += 1.0f;
+
+		const vec2 TargetVelocity = FreeviewMove * SmoothFreeviewSpeed;
+		SmoothFreeviewVelocity += (TargetVelocity - SmoothFreeviewVelocity) * minimum(FrameTime * SmoothFreeviewAcceleration, 1.0f);
+
+		if(absolute(SmoothFreeviewVelocity.x) < 0.1f && absolute(SmoothFreeviewVelocity.y) < 0.1f)
+			SmoothFreeviewVelocity = vec2(0.0f, 0.0f);
+
+		if(SmoothFreeviewVelocity.x != 0.0f || SmoothFreeviewVelocity.y != 0.0f)
+		{
+			m_ForceFreeviewPos = m_Center + SmoothFreeviewVelocity * FrameTime;
+			m_ForceFreeview = true;
+		}
+	}
 	const int SpecId = GameClient()->m_Snap.m_SpecInfo.m_SpectatorId;
 
 	// start smoothing from the current position when the target changes

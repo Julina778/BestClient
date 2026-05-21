@@ -16,10 +16,10 @@
 #include <game/client/animstate.h>
 #include <game/client/bc_ui_animations.h>
 #include <game/client/components/chat.h>
+#include <game/client/components/hud_layout.h>
 #include <game/client/components/media_decoder.h>
 #include <game/client/components/menu_background.h>
 #include <game/client/components/menus.h>
-#include <game/client/components/hud_layout.h>
 #include <game/client/components/sounds.h>
 #include <game/client/gameclient.h>
 #include <game/client/skin.h>
@@ -185,7 +185,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		return;
 	}
 
-	CUIRect TabBar, Button;
+	CUIRect TabBar, TabButton;
 	MainView.HSplitTop(24.0f, &TabBar, &MainView);
 	const char *apTabNames[NUM_BESTCLIENT_TABS] = {
 		BCLocalize("Alesstya"),
@@ -215,9 +215,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 	int TabCount = 0;
 	int FirstVisibleTab = -1;
-	for(int TabIndex = 0; TabIndex < NUM_BESTCLIENT_TABS; ++TabIndex)
+	for(const int Tab : aTabOrder)
 	{
-		const int Tab = aTabOrder[TabIndex];
 		if(IsTabHidden(Tab))
 			continue;
 		if(FirstVisibleTab == -1)
@@ -237,15 +236,14 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 	const float TabWidth = TabBar.w / (float)TabCount;
 	int VisibleIndex = 0;
-	for(int TabIndex = 0; TabIndex < NUM_BESTCLIENT_TABS; ++TabIndex)
+	for(const int Tab : aTabOrder)
 	{
-		const int Tab = aTabOrder[TabIndex];
 		if(IsTabHidden(Tab))
 			continue;
 
-		TabBar.VSplitLeft(TabWidth, &Button, &TabBar);
+		TabBar.VSplitLeft(TabWidth, &TabButton, &TabBar);
 		const int Corners = VisibleIndex == 0 ? IGraphics::CORNER_L : (VisibleIndex == TabCount - 1 ? IGraphics::CORNER_R : IGraphics::CORNER_NONE);
-		if(DoButton_MenuTab(&s_aPageTabs[Tab], apTabNames[Tab], s_CurTab == Tab, &Button, Corners, nullptr, nullptr, nullptr, nullptr, 4.0f))
+		if(DoButton_MenuTab(&s_aPageTabs[Tab], apTabNames[Tab], s_CurTab == Tab, &TabButton, Corners, nullptr, nullptr, nullptr, nullptr, 4.0f))
 		{
 			s_CurTab = Tab;
 		}
@@ -785,6 +783,18 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			else
 				Phase = Expanded ? 1.0f : 0.0f;
 		};
+		const auto DoOpenHudEditorButton = [&](CButtonContainer *pButtonContainer, CUIRect *pButtonRect) {
+			const bool CanOpenHudEditor = Client()->State() == IClient::STATE_ONLINE || Client()->State() == IClient::STATE_DEMOPLAYBACK;
+			const bool Clicked = Ui()->DoButton_FontIcon(pButtonContainer, FontIcon::UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER, CanOpenHudEditor ? 0 : -1, pButtonRect, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(pButtonContainer, pButtonRect, CanOpenHudEditor ? BCLocalize("Open in HUD editor") : BCLocalize("Join a game first"));
+			GameClient()->m_Tooltips.SetFadeTime(pButtonContainer, 0.0f);
+			if(Clicked && CanOpenHudEditor)
+			{
+				SetActive(false);
+				GameClient()->m_HudEditor.Activate();
+			}
+			return Clicked && CanOpenHudEditor;
+		};
 
 		static CScrollRegion s_BestClientVisualsScrollRegion;
 		vec2 VisualsScrollOffset(0.0f, 0.0f);
@@ -1040,12 +1050,12 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				static CUi::SDropDownState s_3DParticlesTypeState;
 				static CScrollRegion s_3DParticlesTypeScrollRegion;
 				s_3DParticlesTypeState.m_SelectionPopupContext.m_pScrollRegion = &s_3DParticlesTypeScrollRegion;
-				const char *ap3DParticleTypes[3] = {
+				const char *Ap3DParticleTypes[3] = {
 					BCLocalize("Cube"),
 					BCLocalize("Heart"),
 					BCLocalize("Mixed"),
 				};
-				g_Config.m_Bc3dParticlesType = Ui()->DoDropDown(&TypeSelect, g_Config.m_Bc3dParticlesType - 1, ap3DParticleTypes, (int)std::size(ap3DParticleTypes), s_3DParticlesTypeState) + 1;
+				g_Config.m_Bc3dParticlesType = Ui()->DoDropDown(&TypeSelect, g_Config.m_Bc3dParticlesType - 1, Ap3DParticleTypes, (int)std::size(Ap3DParticleTypes), s_3DParticlesTypeState) + 1;
 
 				Expand.HSplitTop(LineSize, &Row, &Expand);
 				Ui()->DoScrollbarOption(&g_Config.m_Bc3dParticlesSizeMax, &g_Config.m_Bc3dParticlesSizeMax, &Row, BCLocalize("Size"), 2, 200);
@@ -1065,11 +1075,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				static CUi::SDropDownState s_3DParticlesColorModeState;
 				static CScrollRegion s_3DParticlesColorModeScrollRegion;
 				s_3DParticlesColorModeState.m_SelectionPopupContext.m_pScrollRegion = &s_3DParticlesColorModeScrollRegion;
-				const char *ap3DParticleColorModes[2] = {
+				const char *Ap3DParticleColorModes[2] = {
 					BCLocalize("Custom"),
 					BCLocalize("Random"),
 				};
-				g_Config.m_Bc3dParticlesColorMode = Ui()->DoDropDown(&ColorModeSelect, g_Config.m_Bc3dParticlesColorMode - 1, ap3DParticleColorModes, (int)std::size(ap3DParticleColorModes), s_3DParticlesColorModeState) + 1;
+				g_Config.m_Bc3dParticlesColorMode = Ui()->DoDropDown(&ColorModeSelect, g_Config.m_Bc3dParticlesColorMode - 1, Ap3DParticleColorModes, (int)std::size(Ap3DParticleColorModes), s_3DParticlesColorModeState) + 1;
 
 				if(g_Config.m_Bc3dParticlesColorMode == 1)
 				{
@@ -1537,6 +1547,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			static float s_MusicPlayerPhase = 0.0f;
 			static float s_MusicPlayerStaticColorPhase = 0.0f;
 			static float s_MusicPlayerVisualizerPhase = 0.0f;
+			static CButtonContainer s_MusicPlayerResizeButton;
 			static CButtonContainer s_MusicPlayerResetButton;
 			const bool MusicPlayerEnabled = g_Config.m_BcMusicPlayer != 0;
 			const bool StaticColorOn = MusicPlayerEnabled && g_Config.m_BcMusicPlayerColorMode == 0;
@@ -1562,8 +1573,15 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			CUIRect TitleLabel, ResetButton, ResetHitbox;
-			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
+			const float IconButtonWidth = LineSize + 8.0f;
+			const float IconButtonSpacing = 4.0f;
+			CUIRect TitleLabel, Buttons, ResizeButton, ResizeHitbox, ResetButton, ResetHitbox;
+			Label.VSplitRight(IconButtonWidth * 2.0f + IconButtonSpacing, &TitleLabel, &Buttons);
+			Buttons.VSplitLeft(IconButtonWidth, &ResizeButton, &Buttons);
+			Buttons.VSplitLeft(IconButtonSpacing, nullptr, &Buttons);
+			ResetButton = Buttons;
+			ResizeHitbox = ResizeButton;
+			DoOpenHudEditorButton(&s_MusicPlayerResizeButton, &ResizeHitbox);
 			ResetHitbox = ResetButton;
 			const bool MusicPlayerResetClicked = Ui()->DoButton_FontIcon(&s_MusicPlayerResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
 			GameClient()->m_Tooltips.DoToolTip(&s_MusicPlayerResetButton, &ResetHitbox, BCLocalize("Reset to defaults"));
@@ -1667,12 +1685,17 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		// Keystrokes (right column block)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_KEYSTROKES))
 		{
+			static CButtonContainer s_KeystrokesResizeButton;
 			const float ContentHeight = MarginSmall * 4.0f + LineSize * 6.0f;
 			CUIRect Content, Label, Button;
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, BCLocalize("Keystrokes"), HeadlineFontSize, TEXTALIGN_ML);
+			CUIRect TitleLabel, ResizeButton, ResizeHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResizeButton);
+			ResizeHitbox = ResizeButton;
+			DoOpenHudEditorButton(&s_KeystrokesResizeButton, &ResizeHitbox);
+			Ui()->DoLabel(&TitleLabel, BCLocalize("Keystrokes"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcKeystrokesKeyboard, BCLocalize("Show keyboard HUD"), &g_Config.m_BcKeystrokesKeyboard, &Content, LineSize);
@@ -2268,6 +2291,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			SetActive(false);
 			GameClient()->m_HudEditor.Activate();
 		}
+		GameClient()->m_Tooltips.DoToolTip(&s_OpenHudEditorButton, &Button, CanOpenHudEditor ? BCLocalize("Open in HUD editor") : BCLocalize("Join a game first"));
+		GameClient()->m_Tooltips.SetFadeTime(&s_OpenHudEditorButton, 0.0f);
 	}
 	else if(s_CurTab == BESTCLIENT_TAB_GAMEPLAY)
 	{
@@ -2290,6 +2315,18 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				BCUiAnimations::UpdatePhase(Phase, Expanded ? 1.0f : 0.0f, Client()->RenderFrameTime(), ModuleUiRevealAnimationDuration());
 			else
 				Phase = Expanded ? 1.0f : 0.0f;
+		};
+		const auto DoOpenHudEditorButton = [&](CButtonContainer *pButtonContainer, CUIRect *pButtonRect) {
+			const bool CanOpenHudEditor = Client()->State() == IClient::STATE_ONLINE || Client()->State() == IClient::STATE_DEMOPLAYBACK;
+			const bool Clicked = Ui()->DoButton_FontIcon(pButtonContainer, FontIcon::UP_RIGHT_AND_DOWN_LEFT_FROM_CENTER, CanOpenHudEditor ? 0 : -1, pButtonRect, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(pButtonContainer, pButtonRect, CanOpenHudEditor ? BCLocalize("Open in HUD editor") : BCLocalize("Join a game first"));
+			GameClient()->m_Tooltips.SetFadeTime(pButtonContainer, 0.0f);
+			if(Clicked && CanOpenHudEditor)
+			{
+				SetActive(false);
+				GameClient()->m_HudEditor.Activate();
+			}
+			return Clicked && CanOpenHudEditor;
 		};
 
 		static CScrollRegion s_BestClientGameplayScrollRegion;
@@ -2475,9 +2512,9 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 						char aBuf[256];
 						str_format(aBuf, sizeof(aBuf), "%s: %.2f ticks", BCLocalize("Prediction offset"), Value / 100.0f);
 
-						CUIRect Label, ScrollBar;
-						Button.VSplitMid(&Label, &ScrollBar, minimum(10.0f, Button.w * 0.05f));
-						Ui()->DoLabel(&Label, aBuf, Label.h * CUi::ms_FontmodHeight * 0.8f, TEXTALIGN_ML);
+						CUIRect SliderLabel, ScrollBar;
+						Button.VSplitMid(&SliderLabel, &ScrollBar, minimum(10.0f, Button.w * 0.05f));
+						Ui()->DoLabel(&SliderLabel, aBuf, SliderLabel.h * CUi::ms_FontmodHeight * 0.8f, TEXTALIGN_ML);
 
 						float Rel = (Value - Min) / (float)(Max - Min);
 						float NewRel = Ui()->DoScrollbarH(&g_Config.m_BcBestInputOffset, &ScrollBar, Rel);
@@ -2500,9 +2537,9 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 						char aBuf[256];
 						str_format(aBuf, sizeof(aBuf), "%s: %d%%", BCLocalize("Input smoothing"), Value);
 
-						CUIRect Label, ScrollBar;
-						Button.VSplitMid(&Label, &ScrollBar, minimum(10.0f, Button.w * 0.05f));
-						Ui()->DoLabel(&Label, aBuf, Label.h * CUi::ms_FontmodHeight * 0.8f, TEXTALIGN_ML);
+						CUIRect SliderLabel, ScrollBar;
+						Button.VSplitMid(&SliderLabel, &ScrollBar, minimum(10.0f, Button.w * 0.05f));
+						Ui()->DoLabel(&SliderLabel, aBuf, SliderLabel.h * CUi::ms_FontmodHeight * 0.8f, TEXTALIGN_ML);
 
 						float Rel = (Value - Min) / (float)(Max - Min);
 						float NewRel = Ui()->DoScrollbarH(&g_Config.m_BcBestInputSmoothing, &ScrollBar, Rel);
@@ -2525,9 +2562,9 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 						char aBuf[256];
 						str_format(aBuf, sizeof(aBuf), "%s: %d%%", BCLocalize("Latency compensation"), Value);
 
-						CUIRect Label, ScrollBar;
-						Button.VSplitMid(&Label, &ScrollBar, minimum(10.0f, Button.w * 0.05f));
-						Ui()->DoLabel(&Label, aBuf, Label.h * CUi::ms_FontmodHeight * 0.8f, TEXTALIGN_ML);
+						CUIRect SliderLabel, ScrollBar;
+						Button.VSplitMid(&SliderLabel, &ScrollBar, minimum(10.0f, Button.w * 0.05f));
+						Ui()->DoLabel(&SliderLabel, aBuf, SliderLabel.h * CUi::ms_FontmodHeight * 0.8f, TEXTALIGN_ML);
 
 						float Rel = (Value - Min) / (float)(Max - Min);
 						float NewRel = Ui()->DoScrollbarH(&g_Config.m_BcBestInputLatencyComp, &ScrollBar, Rel);
@@ -2753,7 +2790,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			const float ExpandedTargetHeight = MarginSmall + LineSize;
 			const float ExpandedHeight = ExpandedTargetHeight * s_GoresModePhase;
 			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedHeight;
-			CUIRect Content, Label, Button, Visible;
+			CUIRect Content, Label, Visible;
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 			BeginBlock(Column, ContentHeight, Content);
 
@@ -3008,6 +3045,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			const float ColorPickerSpacing = 5.0f;
 			static float s_FinishPredictionPhase = 0.0f;
 			static float s_FinishPredictionTimePhase = 0.0f;
+			static CButtonContainer s_FinishPredictionResizeButton;
 			const bool FinishPredictionExpanded = g_Config.m_BcFinishPrediction != 0;
 			const bool FinishPredictionBarMode = g_Config.m_BcFinishPredictionMode == 1;
 			UpdateRevealPhase(s_FinishPredictionPhase, FinishPredictionExpanded);
@@ -3015,15 +3053,19 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			UpdateRevealPhase(s_FinishPredictionTimePhase, ShowTimeExpanded);
 			const float BarColorHeight = FinishPredictionBarMode && g_Config.m_BcFinishPredictionBarCustomColor ? ColorPickerLineSize + ColorPickerSpacing : 0.0f;
 			const float ExpandedTargetHeight = FinishPredictionBarMode ?
-								      LineSize * 3.0f + BarColorHeight :
-								      LineSize * 4.0f + (MarginSmall + LineSize * 2.0f) * s_FinishPredictionTimePhase;
+								   LineSize * 3.0f + BarColorHeight :
+								   LineSize * 4.0f + (MarginSmall + LineSize * 2.0f) * s_FinishPredictionTimePhase;
 			const float ExpandedHeight = ExpandedTargetHeight * s_FinishPredictionPhase;
 			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedHeight;
 			CUIRect Content, Label, Button, Row, Visible;
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, BCLocalize("Finish Prediction"), HeadlineFontSize, TEXTALIGN_ML);
+			CUIRect TitleLabel, ResizeButton, ResizeHitbox;
+			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResizeButton);
+			ResizeHitbox = ResizeButton;
+			DoOpenHudEditorButton(&s_FinishPredictionResizeButton, &ResizeHitbox);
+			Ui()->DoLabel(&TitleLabel, BCLocalize("Finish Prediction"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcFinishPrediction, BCLocalize("Show finish prediction HUD"), &g_Config.m_BcFinishPrediction, &Content, LineSize);
 
@@ -3945,9 +3987,8 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 	static CButtonContainer s_aShowTabButtons[NUM_BESTCLIENT_TABS] = {};
 	int HideableTabCount = 0;
 	int HideableVisibleIndex = 0;
-	for(int TabIndex = 0; TabIndex < NUM_BESTCLIENT_TABS; ++TabIndex)
+	for(const int Tab : aTabOrder)
 	{
-		const int Tab = aTabOrder[TabIndex];
 		// Keep Info visible the same way as in legacy BestClient.
 		if(Tab == BESTCLIENT_TAB_INFO)
 			continue;
