@@ -33,15 +33,16 @@
 #include "components/bestclient/admin_panel.h"
 #include "components/bestclient/afterimage.h"
 #include "components/bestclient/bestclient.h"
+#include "components/bestclient/chat_bubbles.h"
 #include "components/bestclient/clientindicator/client_indicator.h"
 #include "components/bestclient/fast_actions.h"
 #include "components/bestclient/fast_practice.h"
-#include "components/bestclient/chat_bubbles.h"
 #include "components/bestclient/hud_editor.h"
 #include "components/bestclient/irc/irc.h"
 #include "components/bestclient/magic_particles.h"
 #include "components/bestclient/music_player.h"
 #include "components/bestclient/orbit_aura.h"
+#include "components/bestclient/translate.h"
 #include "components/bestclient/voice/voice.h"
 #include "components/binds.h"
 #include "components/broadcast.h"
@@ -97,7 +98,6 @@
 #include "components/tclient/statusbar.h"
 #include "components/tclient/tclient.h"
 #include "components/tclient/trails.h"
-#include "components/bestclient/translate.h"
 #include "components/tclient/warlist.h"
 #include "components/tooltips.h"
 #include "components/touch_controls.h"
@@ -269,8 +269,8 @@ public:
 	CCustomCommunities m_CustomCommunities;
 	CPlayerPoints m_PlayerPoints;
 	CPieMenu m_PieMenu;
-	CMovingTiles m_MovingTilesBackground = CMovingTiles{ false };
-	CMovingTiles m_MovingTilesForeground = CMovingTiles{ true };
+	CMovingTiles m_MovingTilesBackground = CMovingTiles{false};
+	CMovingTiles m_MovingTilesForeground = CMovingTiles{true};
 
 private:
 	std::vector<class CComponent *> m_vpAll;
@@ -842,6 +842,7 @@ public:
 
 	void DummyResetInput() override;
 	void Echo(const char *pString) override;
+	void Broadcast(const char *pString) override;
 	bool IsOtherTeam(int ClientId) const;
 	int SwitchStateTeam() const;
 	bool IsLocalCharSuper() const;

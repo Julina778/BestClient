@@ -9,6 +9,7 @@
 
 #include <engine/client.h>
 #include <engine/client/enums.h>
+#include <engine/demo.h>
 #include <engine/shared/config.h>
 #include <engine/shared/json.h>
 #include <engine/storage.h>
@@ -739,6 +740,7 @@ void CBestClient::ResetHookComboState()
 	m_HookComboLastHookTime = -1.0f;
 	m_HookComboTrackedClientId = -1;
 	m_HookComboLastHookedPlayer = -1;
+	m_HookComboLastProcessedGameTick = -1;
 	m_HookComboSoundErrorShown = false;
 	m_vHookComboPopups.clear();
 }
@@ -811,19 +813,50 @@ void CBestClient::UpdateHookCombo()
 		return;
 	}
 
-	if(GameClient()->m_Snap.m_SpecInfo.m_Active)
+	const bool IsDemoPlayback = Client()->State() == IClient::STATE_DEMOPLAYBACK;
+	if(!IsDemoPlayback && GameClient()->m_Snap.m_SpecInfo.m_Active)
 		return;
 
 	const int ComboMode = std::clamp(g_Config.m_BcHookComboMode, s_HookComboModeHook, s_HookComboModeHookAndHammer);
-	const bool HammerEventFrame = GameClient()->m_aPredictedHammerHitEvent[g_Config.m_ClDummy];
-	if(!GameClient()->m_NewPredictedTick && !(HammerEventFrame && ComboMode != s_HookComboModeHook))
-		return;
+	int LocalId = -1;
+	bool NewPlayerHook = false;
+	bool NewHammerAttack = false;
 
-	int LocalId = GameClient()->m_aLocalIds[g_Config.m_ClDummy];
-	if(LocalId < 0 || LocalId >= MAX_CLIENTS)
-		LocalId = GameClient()->m_Snap.m_LocalClientId;
-	if(LocalId < 0 || LocalId >= MAX_CLIENTS || !GameClient()->m_aClients[LocalId].m_Active)
-		return;
+	if(IsDemoPlayback)
+	{
+		if(GameClient()->m_Snap.m_SpecInfo.m_Active)
+		{
+			const int SpectatorId = GameClient()->m_Snap.m_SpecInfo.m_SpectatorId;
+			if(SpectatorId > SPEC_FREEVIEW && SpectatorId < MAX_CLIENTS && GameClient()->m_Snap.m_aCharacters[SpectatorId].m_Active)
+				LocalId = SpectatorId;
+		}
+		else if(in_range(GameClient()->m_Snap.m_LocalClientId, 0, MAX_CLIENTS - 1) && GameClient()->m_Snap.m_aCharacters[GameClient()->m_Snap.m_LocalClientId].m_Active)
+		{
+			LocalId = GameClient()->m_Snap.m_LocalClientId;
+		}
+
+		if(LocalId < 0 || !GameClient()->m_aClients[LocalId].m_Active)
+			return;
+
+		const int CurrentGameTick = Client()->GameTick(0);
+		if(m_HookComboLastProcessedGameTick > CurrentGameTick)
+			ResetHookComboState();
+		if(m_HookComboLastProcessedGameTick == CurrentGameTick)
+			return;
+		m_HookComboLastProcessedGameTick = CurrentGameTick;
+	}
+	else
+	{
+		const bool HammerEventFrame = GameClient()->m_aPredictedHammerHitEvent[g_Config.m_ClDummy];
+		if(!GameClient()->m_NewPredictedTick && !(HammerEventFrame && ComboMode != s_HookComboModeHook))
+			return;
+
+		LocalId = GameClient()->m_aLocalIds[g_Config.m_ClDummy];
+		if(LocalId < 0 || LocalId >= MAX_CLIENTS)
+			LocalId = GameClient()->m_Snap.m_LocalClientId;
+		if(LocalId < 0 || LocalId >= MAX_CLIENTS || !GameClient()->m_aClients[LocalId].m_Active)
+			return;
+	}
 
 	if(LocalId != m_HookComboTrackedClientId)
 	{
@@ -831,11 +864,22 @@ void CBestClient::UpdateHookCombo()
 		m_HookComboLastHookedPlayer = -1;
 	}
 
-	const int HookedPlayer = GameClient()->m_aClients[LocalId].m_Predicted.HookedPlayer();
-	const bool NewPlayerHook = HookedPlayer >= 0 && (m_HookComboLastHookedPlayer < 0 || HookedPlayer != m_HookComboLastHookedPlayer);
-	m_HookComboLastHookedPlayer = HookedPlayer;
-
-	const bool NewHammerAttack = GameClient()->m_aPredictedHammerHitEvent[g_Config.m_ClDummy];
+	if(IsDemoPlayback)
+	{
+		const auto &TrackedCharacter = GameClient()->m_Snap.m_aCharacters[LocalId];
+		const int HookedPlayer = TrackedCharacter.m_Cur.m_HookedPlayer;
+		NewPlayerHook = HookedPlayer >= 0 && (m_HookComboLastHookedPlayer < 0 || HookedPlayer != m_HookComboLastHookedPlayer);
+		m_HookComboLastHookedPlayer = HookedPlayer;
+		NewHammerAttack = TrackedCharacter.m_Cur.m_AttackTick != TrackedCharacter.m_Prev.m_AttackTick &&
+				  (TrackedCharacter.m_Cur.m_Weapon == WEAPON_HAMMER || TrackedCharacter.m_Prev.m_Weapon == WEAPON_HAMMER);
+	}
+	else
+	{
+		const int HookedPlayer = GameClient()->m_aClients[LocalId].m_Predicted.HookedPlayer();
+		NewPlayerHook = HookedPlayer >= 0 && (m_HookComboLastHookedPlayer < 0 || HookedPlayer != m_HookComboLastHookedPlayer);
+		m_HookComboLastHookedPlayer = HookedPlayer;
+		NewHammerAttack = GameClient()->m_aPredictedHammerHitEvent[g_Config.m_ClDummy];
+	}
 
 	bool TriggerCombo = false;
 	if(ComboMode == s_HookComboModeHook)
@@ -861,6 +905,47 @@ bool CBestClient::HasHookComboWork() const
 	if(IsComponentDisabled(COMPONENT_GAMEPLAY_HOOK_COMBO))
 		return false;
 	return g_Config.m_BcHookCombo != 0 || !m_vHookComboPopups.empty();
+}
+
+void CBestClient::SaveRollback()
+{
+	if(Client()->State() != IClient::STATE_ONLINE)
+	{
+		GameClient()->m_Broadcast.DoBroadcast(BCLocalize("Rollback is only available while online"));
+		return;
+	}
+
+	if(!g_Config.m_ClReplays)
+	{
+		GameClient()->m_Broadcast.DoBroadcast(BCLocalize("Enable rollback demo recording first"));
+		return;
+	}
+
+	IDemoRecorder *pReplayRecorder = DemoRecorder(RECORDER_REPLAYS);
+	if(!pReplayRecorder->IsRecording())
+	{
+		GameClient()->m_Broadcast.DoBroadcast(BCLocalize("Rollback recorder is not ready yet"));
+		return;
+	}
+
+	if(pReplayRecorder->Length() < 1)
+	{
+		GameClient()->m_Broadcast.DoBroadcast(BCLocalize("Wait at least 1 second before rollback"));
+		return;
+	}
+
+	Storage()->CreateFolder("demos/rollback", IStorage::TYPE_SAVE);
+
+	const int Length = std::clamp(g_Config.m_ClReplayLength, 10, 60);
+	char aTimestamp[20];
+	str_timestamp(aTimestamp, sizeof(aTimestamp));
+
+	char aFilename[IO_MAX_PATH_LENGTH];
+	str_format(aFilename, sizeof(aFilename), "rollback/%s_%s_(rollback)", GameClient()->Map()->BaseName(), aTimestamp);
+
+	char aCommand[IO_MAX_PATH_LENGTH + 64];
+	str_format(aCommand, sizeof(aCommand), "save_replay %d \"%s\"", Length, aFilename);
+	Console()->ExecuteLine(aCommand, IConsole::CLIENT_ID_UNSPECIFIED);
 }
 
 void CBestClient::RenderHookCombo(bool ForcePreview)
@@ -1092,6 +1177,12 @@ void CBestClient::ConToggleCinematicCamera(IConsole::IResult *pResult, void *pUs
 	pSelf->GameClient()->Echo(g_Config.m_BcCinematicCamera ? "[[green]] Cinematic camera on" : "[[red]] Cinematic camera off");
 }
 
+void CBestClient::ConSaveRollback(IConsole::IResult *pResult, void *pUserData)
+{
+	(void)pResult;
+	static_cast<CBestClient *>(pUserData)->SaveRollback();
+}
+
 bool CBestClient::NeedUpdate()
 {
 	return str_comp(m_aVersionStr, "0") != 0;
@@ -1153,4 +1244,5 @@ void CBestClient::OnConsoleInit()
 	Console()->Register("BC_small_sens", "", CFGFLAG_CLIENT, ConToggleSmallSens, this, "Small sens bind (toggle)");
 	Console()->Register("BC_deepfly_toggle", "", CFGFLAG_CLIENT, ConToggleDeepfly, this, "Deep fly toggle");
 	Console()->Register("BC_cinematic_camera_toggle", "", CFGFLAG_CLIENT, ConToggleCinematicCamera, this, "Toggle cinematic spectator camera");
+	Console()->Register("BC_save_rollback", "", CFGFLAG_CLIENT, ConSaveRollback, this, "Save the last configured seconds as a rollback demo");
 }

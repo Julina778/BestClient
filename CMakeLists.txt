@@ -2825,6 +2825,10 @@ if(CLIENT)
     components/bestclient/r_jelly.h
     components/bestclient/r_trail.cpp
     components/bestclient/r_trail.h
+    components/bestclient/reshade_addon.cpp
+    components/bestclient/reshade_bridge_addon.cpp
+    components/bestclient/reshade_runtime.cpp
+    components/bestclient/reshade_runtime.h
     components/bestclient/subsystem_runtime.h
     components/bestclient/translate.cpp
     components/bestclient/translate.h
@@ -3145,6 +3149,16 @@ if(CLIENT)
     src/generated/client_data7.h
   )
   list(REMOVE_ITEM GAME_CLIENT "${PROJECT_SOURCE_DIR}/src/game/client/components/bestclient/voice/server.cpp")
+  list(REMOVE_ITEM GAME_CLIENT
+    "${PROJECT_SOURCE_DIR}/src/game/client/components/bestclient/reshade_addon.cpp"
+    "${PROJECT_SOURCE_DIR}/src/game/client/components/bestclient/reshade_bridge_addon.cpp"
+  )
+  if(NOT TARGET_OS STREQUAL "windows")
+    list(REMOVE_ITEM GAME_CLIENT
+      "${PROJECT_SOURCE_DIR}/src/game/client/components/bestclient/reshade_runtime.cpp"
+      "${PROJECT_SOURCE_DIR}/src/game/client/components/bestclient/reshade_runtime.h"
+    )
+  endif()
   set(CLIENT_SRC ${ENGINE_CLIENT} ${PLATFORM_CLIENT} ${GAME_CLIENT} ${GAME_EDITOR} ${GAME_MAP} ${GAME_GENERATED_CLIENT})
 
   set(DEPS_CLIENT ${DEPS} ${GLEW_DEP} ${WAVPACK_DEP})
@@ -3249,6 +3263,11 @@ if(CLIENT)
   # Silence warnings from ChaiScript
   target_include_directories(game-client SYSTEM PRIVATE
     ${PROJECT_SOURCE_DIR}/src/engine/external/chaiscript)
+
+  if(TARGET_OS STREQUAL "windows")
+    target_include_directories(game-client PRIVATE
+      ${PROJECT_SOURCE_DIR}/other/reshade/include)
+  endif()
 
   target_include_directories(game-client SYSTEM PRIVATE
     ${FREETYPE_INCLUDE_DIRS}
@@ -3979,10 +3998,27 @@ set(CPACK_FILES
 if(NOT TARGET_OS STREQUAL "emscripten")
   list(APPEND CPACK_FILES storage.cfg)
 endif()
+if(TARGET_OS STREQUAL "windows")
+  if(NOT EXISTS "${CMAKE_SOURCE_DIR}/other/reshade/ReShade64.dll" OR NOT EXISTS "${CMAKE_SOURCE_DIR}/other/reshade/ReShade64.json")
+    message(FATAL_ERROR "Bundled portable ReShade runtime files are missing. Expected 'other/reshade/ReShade64.dll' and 'other/reshade/ReShade64.json' for self-contained Windows builds.")
+  endif()
+  list(APPEND CPACK_FILES
+    other/reshade/ReShade.ini
+    other/reshade/ReShadePreset.ini
+    other/reshade/ReShade64.dll
+    other/reshade/ReShade64.json
+  )
+endif()
 
 set(CPACK_GEN_FILES
   ${VULKAN_SHADER_FILE_LIST}
 )
+if(TARGET_OS STREQUAL "windows" AND NOT MINGW)
+  list(APPEND CPACK_GEN_FILES
+    bestclient_reshade_live.addon
+    bestclient_reshade_bridge.addon
+  )
+endif()
 
 if(TARGET_OS STREQUAL "windows")
   list(APPEND CPACK_FILES other/config_directory.bat)
@@ -4028,11 +4064,21 @@ else()
   set(EXTRA_ARGS DESTINATION ${CPACK_PACKAGE_FILE_NAME} COMPONENT portable EXCLUDE_FROM_ALL)
   install(TARGETS ${CPACK_TARGETS} ${EXTRA_ARGS})
   install(DIRECTORY ${CPACK_DIRS} ${EXTRA_ARGS})
+  if(TARGET_OS STREQUAL "windows")
+    install(DIRECTORY
+      ${PROJECT_SOURCE_DIR}/other/reshade/reshade-shaders/Shaders
+      ${PROJECT_SOURCE_DIR}/other/reshade/reshade-shaders/Textures
+      DESTINATION ${CPACK_PACKAGE_FILE_NAME}/data/reshade
+      COMPONENT portable
+      EXCLUDE_FROM_ALL
+    )
+  endif()
   set(CPACK_FILES_TMP ${CPACK_FILES} ${CPACK_GEN_FILES})
   install(FILES ${CPACK_FILES_TMP} ${EXTRA_ARGS})
 endif()
 
 set(PACKAGE_TARGETS)
+set(PACKAGE_EXTRA_DEPENDS)
 if(CLIENT AND DMGBUILD_FOUND)
   file(MAKE_DIRECTORY bundle/client/)
   file(MAKE_DIRECTORY bundle/server/)
@@ -4151,11 +4197,10 @@ if(CLIENT AND DMGBUILD_FOUND)
 endif()
 
 foreach(ext zip tar.gz tar.xz)
-  set(TAR_MODE c)
-  set(TAR_EXTRA_ARGS)
   string(REPLACE . _ EXT_SLUG ${ext})
 
   set(TMPDIR pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}/${CPACK_PACKAGE_FILE_NAME})
+  set(PACKAGE_OUTPUT ${CPACK_PACKAGE_FILE_NAME}.${ext})
 
   set(COPY_FILE_COMMANDS)
   set(COPY_DIR_COMMANDS)
@@ -4170,6 +4215,12 @@ foreach(ext zip tar.gz tar.xz)
   foreach(dir ${CPACK_DIRS})
     list(APPEND COPY_DIR_COMMANDS COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/${dir} ${TMPDIR}/${dir})
   endforeach()
+  if(TARGET_OS STREQUAL "windows")
+    list(APPEND COPY_DIR_COMMANDS
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${TMPDIR}/data/reshade
+      COMMAND ${CMAKE_COMMAND} -Dsrc=${PROJECT_SOURCE_DIR}/other/reshade/reshade-shaders -Ddst=${TMPDIR}/data/reshade -P ${PROJECT_SOURCE_DIR}/cmake/RobocopyDirectory.cmake
+    )
+  endif()
   foreach(target ${CPACK_TARGETS})
     if(TARGET_OS STREQUAL "emscripten")
       # The main target with Emscripten is the .html file, but we instead want the .data, .js and .wasm files and use our own index.html
@@ -4184,22 +4235,55 @@ foreach(ext zip tar.gz tar.xz)
     endif()
   endforeach()
 
+  set(PACKAGE_ARCHIVE_STEP)
   if(ext STREQUAL zip)
-    set(TAR_EXTRA_ARGS --format=zip)
+    list(APPEND PACKAGE_ARCHIVE_STEP
+      COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
+        ${CMAKE_COMMAND} -E tar cf ../${CPACK_PACKAGE_FILE_NAME}.${ext} --format=zip ${CPACK_PACKAGE_FILE_NAME}/
+    )
   elseif(ext STREQUAL tar.gz)
-    set(TAR_MODE cz)
+    if(TARGET_OS STREQUAL "linux" OR TARGET_OS STREQUAL "mac")
+      find_program(BESTCLIENT_TAR_EXECUTABLE tar REQUIRED)
+      list(APPEND PACKAGE_ARCHIVE_STEP
+        COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
+          ${BESTCLIENT_TAR_EXECUTABLE} -czf ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
+      )
+    else()
+      list(APPEND PACKAGE_ARCHIVE_STEP
+        COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
+          ${CMAKE_COMMAND} -E tar cfz ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
+      )
+    endif()
   elseif(ext STREQUAL tar.xz)
-    set(TAR_MODE cJ)
+    if(TARGET_OS STREQUAL "linux" OR TARGET_OS STREQUAL "mac")
+      find_program(BESTCLIENT_TAR_EXECUTABLE tar REQUIRED)
+      list(APPEND PACKAGE_ARCHIVE_STEP
+        COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
+          ${BESTCLIENT_TAR_EXECUTABLE} -cJf ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
+      )
+    else()
+      list(APPEND PACKAGE_ARCHIVE_STEP
+        COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
+          ${CMAKE_COMMAND} -E tar cfJ ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
+      )
+    endif()
+  else()
+    list(APPEND PACKAGE_ARCHIVE_STEP
+      COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
+        ${CMAKE_COMMAND} -E tar cf ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
+    )
   endif()
+
   add_custom_command(OUTPUT ${CPACK_PACKAGE_FILE_NAME}.${ext}
+    COMMAND ${CMAKE_COMMAND} -E rm -f ${PACKAGE_OUTPUT}
     COMMAND ${CMAKE_COMMAND} -E remove_directory ${TMPDIR}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${TMPDIR}
     ${COPY_FILE_COMMANDS}
     ${COPY_DIR_COMMANDS}
     ${COPY_TARGET_COMMANDS}
     ${STRIP_TARGET_COMMANDS}
-    COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG} ${CMAKE_COMMAND} -E tar ${TAR_MODE} ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${TAR_EXTRA_ARGS} -- ${CPACK_PACKAGE_FILE_NAME}/
-    DEPENDS ${CPACK_TARGETS}
+    ${PACKAGE_ARCHIVE_STEP}
+    DEPENDS ${CPACK_TARGETS} ${PACKAGE_EXTRA_DEPENDS}
   )
   add_custom_target(package_${EXT_SLUG} DEPENDS ${CPACK_PACKAGE_FILE_NAME}.${ext})
   list(APPEND PACKAGE_TARGETS package_${EXT_SLUG})
@@ -4412,6 +4496,76 @@ foreach(target ${TARGETS_DEP})
     target_compile_options(${target} PRIVATE ${OUR_FLAGS_DEP})
   endif()
 endforeach()
+
+if(TARGET_OS STREQUAL "windows" AND NOT MINGW)
+  add_library(bestclient-reshade-live MODULE
+    src/game/client/components/bestclient/reshade_addon.cpp
+  )
+  set_target_properties(bestclient-reshade-live PROPERTIES
+    PREFIX ""
+    SUFFIX ".addon"
+    OUTPUT_NAME "bestclient_reshade_live"
+  )
+  target_compile_features(bestclient-reshade-live PRIVATE cxx_std_20)
+  target_include_directories(bestclient-reshade-live SYSTEM PRIVATE
+    ${CMAKE_SOURCE_DIR}/other/reshade/include_api18
+  )
+  list(APPEND PACKAGE_EXTRA_DEPENDS bestclient-reshade-live)
+  add_custom_command(
+    TARGET bestclient-reshade-live POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "$<TARGET_FILE:bestclient-reshade-live>"
+      "$<TARGET_FILE_DIR:game-client>"
+  )
+
+  add_library(bestclient-reshade-bridge MODULE
+    src/game/client/components/bestclient/reshade_bridge_addon.cpp
+  )
+  set_target_properties(bestclient-reshade-bridge PROPERTIES
+    PREFIX ""
+    SUFFIX ".addon"
+    OUTPUT_NAME "bestclient_reshade_bridge"
+  )
+  target_compile_features(bestclient-reshade-bridge PRIVATE cxx_std_20)
+  target_include_directories(bestclient-reshade-bridge SYSTEM PRIVATE
+    ${CMAKE_SOURCE_DIR}/other/reshade/include_api18
+  )
+  list(APPEND PACKAGE_EXTRA_DEPENDS bestclient-reshade-bridge)
+  add_custom_command(
+    TARGET bestclient-reshade-bridge POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "$<TARGET_FILE:bestclient-reshade-bridge>"
+      "$<TARGET_FILE_DIR:game-client>"
+  )
+
+  add_custom_target(bestclient-reshade-assets ALL
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+      "$<TARGET_FILE_DIR:game-client>/data/reshade"
+    COMMAND ${CMAKE_COMMAND} -E rm -f
+      "$<TARGET_FILE_DIR:game-client>/vulkan-1.dll"
+    COMMAND ${CMAKE_COMMAND} -E rm -f
+      "$<TARGET_FILE_DIR:game-client>/data/reshade/ReShadePreset.ini"
+    COMMAND ${CMAKE_COMMAND} -E remove_directory
+      "$<TARGET_FILE_DIR:game-client>/reshade-shaders"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_SOURCE_DIR}/other/reshade/ReShade.ini"
+      "$<TARGET_FILE_DIR:game-client>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_SOURCE_DIR}/other/reshade/ReShadePreset.ini"
+      "$<TARGET_FILE_DIR:game-client>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_SOURCE_DIR}/other/reshade/ReShade64.dll"
+      "$<TARGET_FILE_DIR:game-client>"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_SOURCE_DIR}/other/reshade/ReShade64.json"
+      "$<TARGET_FILE_DIR:game-client>"
+    COMMAND ${CMAKE_COMMAND} -Dsrc=${CMAKE_SOURCE_DIR}/other/reshade/reshade-shaders -Ddst=$<TARGET_FILE_DIR:game-client>/data/reshade -P ${CMAKE_SOURCE_DIR}/cmake/RobocopyDirectory.cmake
+    COMMENT "Syncing ReShade runtime assets"
+  )
+  add_dependencies(game-client bestclient-reshade-live)
+  add_dependencies(game-client bestclient-reshade-bridge)
+  add_dependencies(game-client bestclient-reshade-assets)
+endif()
 
 if(TARGET_OS STREQUAL "windows" AND STEAM AND NOT CMAKE_BUILD_TYPE STREQUAL Debug)
   add_custom_command(

@@ -2,19 +2,21 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include "scoreboard.h"
 
+#include <base/system.h>
 #include <base/time.h>
 
 #include <engine/console.h>
 #include <engine/demo.h>
 #include <engine/font_icons.h>
 #include <engine/graphics.h>
+#include <engine/serverbrowser.h>
 #include <engine/shared/config.h>
 #include <engine/shared/http.h>
-#include <engine/serverbrowser.h>
+#include <engine/shared/json.h>
 #include <engine/textrender.h>
 
-#include <generated/client_data7.h>
 #include <generated/client_data.h>
+#include <generated/client_data7.h>
 #include <generated/protocol.h>
 
 #include <game/client/animstate.h>
@@ -25,6 +27,7 @@
 #include <game/client/gameclient.h>
 #include <game/client/ui.h>
 #include <game/localization.h>
+#include <game/version.h>
 
 #include <algorithm>
 #include <cctype>
@@ -33,158 +36,310 @@
 
 namespace
 {
-void RenderBestClientIcon(IGraphics *pGraphics, const CUIRect &Rect, bool Developer = false)
-{
-	pGraphics->TextureSet(g_pData->m_aImages[Developer ? IMAGE_BCDEVICON : IMAGE_BCICON].m_Id);
-	pGraphics->QuadsBegin();
-	pGraphics->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
-	pGraphics->QuadsSetSubset(0.0f, 0.0f, 1.0f, 1.0f);
-	const IGraphics::CQuadItem Quad(Rect.x, Rect.y, Rect.w, Rect.h);
-	pGraphics->QuadsDrawTL(&Quad, 1);
-	pGraphics->QuadsEnd();
-}
+	constexpr int MAX_TAB_PLAYER_POINTS_REQUESTS = 4;
+	constexpr int64_t TAB_PLAYER_POINTS_RETRY_SECONDS = 30;
+	constexpr const char *TAB_PLAYER_POINTS_URL = "https://ddnet.org/players/?json2=";
 
-float ScoreTextWidthForRenderTime(ITextRender *pTextRender, float FontSize, int Seconds, bool NotFinished, int Millis, bool TrueMilliseconds)
-{
-	if(NotFinished)
-		return 0.0f;
-
-	char aBuf[128];
-	str_time(((int64_t)absolute(Seconds)) * 100, ETimeFormat::HOURS, aBuf, sizeof(aBuf));
-
-	STextSizeProperties TextSizeProps{};
-	const float SecondsWidth = pTextRender->TextWidth(FontSize, aBuf, -1, -1.0f, 0, TextSizeProps);
-
-	// Mirror CUi::RenderTime width behavior when milliseconds are shown in smaller font.
-	if(Millis >= 0 && Seconds < 60 * 60)
+	bool IsDdnetCommunityServer(IClient *pClient)
 	{
-		const float CentisecondFontSize = FontSize * 0.61803398875f;
-		char aMillis[4];
-		Millis %= 1000;
-		if(!TrueMilliseconds)
-			str_format(aMillis, sizeof(aMillis), "%02d", (int)std::round(Millis / 10));
-		else
-			str_format(aMillis, sizeof(aMillis), "%03d", Millis);
-
-		const float MillisWidth = pTextRender->TextWidth(CentisecondFontSize, aMillis, -1, -1.0f, 0, TextSizeProps);
-		const float Tightening = TrueMilliseconds ? MillisWidth / (3.0f * 6.0f) : MillisWidth / (2.0f * 6.0f);
-		return SecondsWidth + MillisWidth - Tightening;
+		CServerInfo ServerInfo;
+		pClient->GetServerInfo(&ServerInfo);
+		return str_comp(ServerInfo.m_aCommunityId, IServerBrowser::COMMUNITY_DDNET) == 0;
 	}
 
-	return SecondsWidth;
-}
-
-std::string NormalizeVoiceNameKey(const char *pName)
-{
-	if(!pName)
-		return {};
-
-	const char *pBegin = pName;
-	const char *pEnd = pName + str_length(pName);
-	while(pBegin < pEnd && std::isspace((unsigned char)*pBegin))
-		++pBegin;
-	while(pEnd > pBegin && std::isspace((unsigned char)pEnd[-1]))
-		--pEnd;
-
-	std::string Key;
-	Key.reserve((size_t)(pEnd - pBegin));
-	for(const char *p = pBegin; p < pEnd; ++p)
-		Key.push_back((char)std::tolower((unsigned char)*p));
-	return Key;
-}
-
-bool IsVoiceNameMutedByConfig(const char *pName)
-{
-	const std::string Key = NormalizeVoiceNameKey(pName);
-	if(Key.empty())
-		return false;
-
-	const char *p = g_Config.m_BcVoiceChatMutedNames;
-	while(*p)
+	void RenderBestClientIcon(IGraphics *pGraphics, const CUIRect &Rect, bool Developer = false)
 	{
-		while(*p == ',' || std::isspace((unsigned char)*p))
-			++p;
-		if(*p == '\0')
-			break;
-
-		const char *pStart = p;
-		while(*p && *p != ',')
-			++p;
-		const char *pEnd = p;
-		while(pEnd > pStart && std::isspace((unsigned char)pEnd[-1]))
-			--pEnd;
-
-		char aName[128];
-		str_truncate(aName, sizeof(aName), pStart, (int)(pEnd - pStart));
-		if(NormalizeVoiceNameKey(aName) == Key)
-			return true;
+		pGraphics->TextureSet(g_pData->m_aImages[Developer ? IMAGE_BCDEVICON : IMAGE_BCICON].m_Id);
+		pGraphics->QuadsBegin();
+		pGraphics->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
+		pGraphics->QuadsSetSubset(0.0f, 0.0f, 1.0f, 1.0f);
+		const IGraphics::CQuadItem Quad(Rect.x, Rect.y, Rect.w, Rect.h);
+		pGraphics->QuadsDrawTL(&Quad, 1);
+		pGraphics->QuadsEnd();
 	}
 
-	return false;
-}
-
-int GetVoiceNameVolumePercentByConfig(const char *pName)
-{
-	const std::string Key = NormalizeVoiceNameKey(pName);
-	if(Key.empty())
-		return 100;
-
-	int Volume = 100;
-	const char *p = g_Config.m_BcVoiceChatNameVolumes;
-	while(*p)
+	float ScoreTextWidthForRenderTime(ITextRender *pTextRender, float FontSize, int Seconds, bool NotFinished, int Millis, bool TrueMilliseconds)
 	{
-		while(*p == ',' || std::isspace((unsigned char)*p))
-			++p;
-		if(*p == '\0')
-			break;
+		if(NotFinished)
+			return 0.0f;
 
-		const char *pStart = p;
-		while(*p && *p != ',')
-			++p;
-		const char *pEnd = p;
-		while(pEnd > pStart && std::isspace((unsigned char)pEnd[-1]))
-			--pEnd;
-		if(pEnd <= pStart)
-			continue;
+		char aBuf[128];
+		str_time(((int64_t)absolute(Seconds)) * 100, ETimeFormat::HOURS, aBuf, sizeof(aBuf));
 
-		const char *pSep = nullptr;
-		for(const char *q = pStart; q < pEnd; ++q)
+		STextSizeProperties TextSizeProps{};
+		const float SecondsWidth = pTextRender->TextWidth(FontSize, aBuf, -1, -1.0f, 0, TextSizeProps);
+
+		// Mirror CUi::RenderTime width behavior when milliseconds are shown in smaller font.
+		if(Millis >= 0 && Seconds < 60 * 60)
 		{
-			if(*q == '=' || *q == ':')
-			{
-				pSep = q;
-				break;
-			}
+			const float CentisecondFontSize = FontSize * 0.61803398875f;
+			char aMillis[4];
+			Millis %= 1000;
+			if(!TrueMilliseconds)
+				str_format(aMillis, sizeof(aMillis), "%02d", (int)std::round(Millis / 10));
+			else
+				str_format(aMillis, sizeof(aMillis), "%03d", Millis);
+
+			const float MillisWidth = pTextRender->TextWidth(CentisecondFontSize, aMillis, -1, -1.0f, 0, TextSizeProps);
+			const float Tightening = TrueMilliseconds ? MillisWidth / (3.0f * 6.0f) : MillisWidth / (2.0f * 6.0f);
+			return SecondsWidth + MillisWidth - Tightening;
 		}
-		if(!pSep)
-			continue;
 
-		const char *pNameEnd = pSep;
-		while(pNameEnd > pStart && std::isspace((unsigned char)pNameEnd[-1]))
-			--pNameEnd;
-		const char *pValueStart = pSep + 1;
-		while(pValueStart < pEnd && std::isspace((unsigned char)*pValueStart))
-			++pValueStart;
-		if(pNameEnd <= pStart || pValueStart >= pEnd)
-			continue;
-
-		char aName[128];
-		char aValue[16];
-		str_truncate(aName, sizeof(aName), pStart, (int)(pNameEnd - pStart));
-		if(NormalizeVoiceNameKey(aName) != Key)
-			continue;
-		str_truncate(aValue, sizeof(aValue), pValueStart, (int)(pEnd - pValueStart));
-		Volume = std::clamp(str_toint(aValue), 0, 100);
+		return SecondsWidth;
 	}
 
-	return std::clamp(Volume, 1, 100);
-}
+	std::string NormalizeVoiceNameKey(const char *pName)
+	{
+		if(!pName)
+			return {};
+
+		const char *pBegin = pName;
+		const char *pEnd = pName + str_length(pName);
+		while(pBegin < pEnd && std::isspace((unsigned char)*pBegin))
+			++pBegin;
+		while(pEnd > pBegin && std::isspace((unsigned char)pEnd[-1]))
+			--pEnd;
+
+		std::string Key;
+		Key.reserve((size_t)(pEnd - pBegin));
+		for(const char *p = pBegin; p < pEnd; ++p)
+			Key.push_back((char)std::tolower((unsigned char)*p));
+		return Key;
+	}
+
+	bool IsVoiceNameMutedByConfig(const char *pName)
+	{
+		const std::string Key = NormalizeVoiceNameKey(pName);
+		if(Key.empty())
+			return false;
+
+		const char *p = g_Config.m_BcVoiceChatMutedNames;
+		while(*p)
+		{
+			while(*p == ',' || std::isspace((unsigned char)*p))
+				++p;
+			if(*p == '\0')
+				break;
+
+			const char *pStart = p;
+			while(*p && *p != ',')
+				++p;
+			const char *pEnd = p;
+			while(pEnd > pStart && std::isspace((unsigned char)pEnd[-1]))
+				--pEnd;
+
+			char aName[128];
+			str_truncate(aName, sizeof(aName), pStart, (int)(pEnd - pStart));
+			if(NormalizeVoiceNameKey(aName) == Key)
+				return true;
+		}
+
+		return false;
+	}
+
+	int GetVoiceNameVolumePercentByConfig(const char *pName)
+	{
+		const std::string Key = NormalizeVoiceNameKey(pName);
+		if(Key.empty())
+			return 100;
+
+		int Volume = 100;
+		const char *p = g_Config.m_BcVoiceChatNameVolumes;
+		while(*p)
+		{
+			while(*p == ',' || std::isspace((unsigned char)*p))
+				++p;
+			if(*p == '\0')
+				break;
+
+			const char *pStart = p;
+			while(*p && *p != ',')
+				++p;
+			const char *pEnd = p;
+			while(pEnd > pStart && std::isspace((unsigned char)pEnd[-1]))
+				--pEnd;
+			if(pEnd <= pStart)
+				continue;
+
+			const char *pSep = nullptr;
+			for(const char *q = pStart; q < pEnd; ++q)
+			{
+				if(*q == '=' || *q == ':')
+				{
+					pSep = q;
+					break;
+				}
+			}
+			if(!pSep)
+				continue;
+
+			const char *pNameEnd = pSep;
+			while(pNameEnd > pStart && std::isspace((unsigned char)pNameEnd[-1]))
+				--pNameEnd;
+			const char *pValueStart = pSep + 1;
+			while(pValueStart < pEnd && std::isspace((unsigned char)*pValueStart))
+				++pValueStart;
+			if(pNameEnd <= pStart || pValueStart >= pEnd)
+				continue;
+
+			char aName[128];
+			char aValue[16];
+			str_truncate(aName, sizeof(aName), pStart, (int)(pNameEnd - pStart));
+			if(NormalizeVoiceNameKey(aName) != Key)
+				continue;
+			str_truncate(aValue, sizeof(aValue), pValueStart, (int)(pEnd - pValueStart));
+			Volume = std::clamp(str_toint(aValue), 0, 100);
+		}
+
+		return std::clamp(Volume, 1, 100);
+	}
 
 }
 
 CScoreboard::CScoreboard()
 {
 	OnReset();
+}
+
+void CScoreboard::ResetTabPlayerPoints()
+{
+	for(STabPlayerPointsEntry &Entry : m_aTabPlayerPoints)
+	{
+		if(Entry.m_pTask)
+		{
+			Entry.m_pTask->Abort();
+			Entry.m_pTask = nullptr;
+		}
+		Entry.m_aName[0] = '\0';
+		Entry.m_Points = 0;
+		Entry.m_NextRetryTick = 0;
+		Entry.m_HasResult = false;
+		Entry.m_HasPoints = false;
+	}
+}
+
+void CScoreboard::StartTabPlayerPointsRequest(int ClientId, const char *pName)
+{
+	if(ClientId < 0 || ClientId >= MAX_CLIENTS || !pName || pName[0] == '\0')
+		return;
+
+	STabPlayerPointsEntry &Entry = m_aTabPlayerPoints[ClientId];
+
+	char aEscapedName[256];
+	EscapeUrl(aEscapedName, sizeof(aEscapedName), pName);
+	if(aEscapedName[0] == '\0')
+		return;
+
+	char aUrl[512];
+	str_format(aUrl, sizeof(aUrl), "%s%s", TAB_PLAYER_POINTS_URL, aEscapedName);
+
+	Entry.m_pTask = HttpGet(aUrl);
+	Entry.m_pTask->HeaderString("Accept", "application/json");
+	Entry.m_pTask->HeaderString("User-Agent", CLIENT_NAME);
+	Entry.m_pTask->Timeout(CTimeout{5000, 0, 500, 10});
+	Entry.m_pTask->IpResolve(IPRESOLVE::V4);
+	Http()->Run(Entry.m_pTask);
+}
+
+void CScoreboard::UpdateTabPlayerPoints()
+{
+	const int64_t Now = time_get();
+	const int64_t RetryDelay = time_freq() * TAB_PLAYER_POINTS_RETRY_SECONDS;
+	int ActiveRequests = 0;
+
+	for(int ClientId = 0; ClientId < MAX_CLIENTS; ++ClientId)
+	{
+		STabPlayerPointsEntry &Entry = m_aTabPlayerPoints[ClientId];
+		if(Entry.m_pTask)
+		{
+			if(Entry.m_pTask->State() == EHttpState::DONE)
+			{
+				Entry.m_HasResult = true;
+				Entry.m_HasPoints = false;
+				json_value *pJson = Entry.m_pTask->ResultJson();
+				if(pJson)
+				{
+					const json_value *pPointsObject = json_object_get(pJson, "points");
+					const json_value *pPointsValue = json_object_get(pPointsObject, "points");
+					if(pPointsValue != nullptr)
+					{
+						Entry.m_Points = json_int_get(pPointsValue);
+						Entry.m_HasPoints = true;
+					}
+					json_value_free(pJson);
+				}
+				Entry.m_pTask = nullptr;
+			}
+			else if(Entry.m_pTask->State() == EHttpState::ERROR || Entry.m_pTask->State() == EHttpState::ABORTED)
+			{
+				Entry.m_pTask = nullptr;
+				Entry.m_HasResult = false;
+				Entry.m_HasPoints = false;
+				Entry.m_NextRetryTick = Now + RetryDelay;
+			}
+			else
+			{
+				++ActiveRequests;
+			}
+		}
+
+		const bool ActiveClient = GameClient()->m_aClients[ClientId].m_Active;
+		if(!ActiveClient)
+		{
+			if(Entry.m_aName[0] != '\0' || Entry.m_HasResult || Entry.m_HasPoints)
+			{
+				if(Entry.m_pTask)
+				{
+					Entry.m_pTask->Abort();
+					Entry.m_pTask = nullptr;
+				}
+				Entry.m_aName[0] = '\0';
+				Entry.m_Points = 0;
+				Entry.m_NextRetryTick = 0;
+				Entry.m_HasResult = false;
+				Entry.m_HasPoints = false;
+			}
+			continue;
+		}
+
+		const char *pName = GameClient()->m_aClients[ClientId].m_aName;
+		if(str_comp(Entry.m_aName, pName) != 0)
+		{
+			if(Entry.m_pTask)
+			{
+				Entry.m_pTask->Abort();
+				Entry.m_pTask = nullptr;
+				if(ActiveRequests > 0)
+					--ActiveRequests;
+			}
+			str_copy(Entry.m_aName, pName, sizeof(Entry.m_aName));
+			Entry.m_Points = 0;
+			Entry.m_NextRetryTick = 0;
+			Entry.m_HasResult = false;
+			Entry.m_HasPoints = false;
+		}
+
+		if(Entry.m_aName[0] == '\0' || Entry.m_HasResult || Entry.m_pTask || Entry.m_NextRetryTick > Now || ActiveRequests >= MAX_TAB_PLAYER_POINTS_REQUESTS)
+			continue;
+
+		StartTabPlayerPointsRequest(ClientId, Entry.m_aName);
+		if(Entry.m_pTask)
+			++ActiveRequests;
+	}
+}
+
+bool CScoreboard::TryGetTabPlayerPointsText(int ClientId, const char *pName, char *pBuf, int BufSize)
+{
+	if(!g_Config.m_BcShowPointsInTab || !IsDdnetCommunityServer(Client()) || ClientId < 0 || ClientId >= MAX_CLIENTS || !pBuf || BufSize <= 0)
+		return false;
+
+	pBuf[0] = '\0';
+	STabPlayerPointsEntry &Entry = m_aTabPlayerPoints[ClientId];
+	if(str_comp(Entry.m_aName, pName) != 0 || !Entry.m_HasPoints)
+		return false;
+
+	str_format(pBuf, BufSize, "[%d]", Entry.m_Points);
+	return true;
 }
 
 float CScoreboard::GetPopupHeight(int ClientId, bool IsLocal, bool IsSpectating) const
@@ -343,6 +498,7 @@ void CScoreboard::OnReset()
 	m_Active = false;
 	m_MouseUnlocked = false;
 	m_LastMousePos = std::nullopt;
+	ResetTabPlayerPoints();
 }
 
 void CScoreboard::OnRelease()
@@ -353,6 +509,8 @@ void CScoreboard::OnRelease()
 	{
 		LockMouse();
 	}
+
+	ResetTabPlayerPoints();
 }
 
 bool CScoreboard::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
@@ -460,16 +618,25 @@ void CScoreboard::RenderTitleScore(CUIRect ScoreLabel, int Team, float TitleFont
 	}
 }
 
-void CScoreboard::RenderTitleBar(CUIRect TitleBar, int Team, const char *pTitle)
+void CScoreboard::RenderTitleBar(CUIRect TitleBar, int Team, const char *pTitle, const char *pExtraLabel)
 {
 	dbg_assert(Team == TEAM_RED || Team == TEAM_BLUE, "Team invalid");
 
 	const float TitleFontSize = 20.0f;
+	const float ExtraLabelFontSize = 12.0f;
 	const float ScoreTextWidth = TextRender()->TextWidth(TitleFontSize, "00:00:00");
 	const float TitleTextWidth = TextRender()->TextWidth(TitleFontSize, pTitle);
+	const bool HasExtraLabel = pExtraLabel != nullptr && pExtraLabel[0] != '\0';
+	const float ExtraLabelWidth = HasExtraLabel ? TextRender()->TextWidth(ExtraLabelFontSize, pExtraLabel) : 0.0f;
 
-	TitleBar.VMargin(10.0f, &TitleBar);
-	CUIRect TitleLabel, ScoreLabel;
+	TitleBar.VSplitLeft(10.0f, nullptr, &TitleBar);
+	TitleBar.VSplitRight(4.0f, &TitleBar, nullptr);
+	CUIRect TitleLabel, ScoreLabel, ExtraLabel;
+	if(HasExtraLabel)
+	{
+		TitleBar.VSplitRight(ExtraLabelWidth, &TitleBar, &ExtraLabel);
+		TitleBar.VSplitRight(3.0f, &TitleBar, nullptr);
+	}
 	if(Team == TEAM_RED)
 	{
 		TitleBar.VSplitRight(ScoreTextWidth, &TitleLabel, &ScoreLabel);
@@ -485,6 +652,10 @@ void CScoreboard::RenderTitleBar(CUIRect TitleBar, int Team, const char *pTitle)
 
 	RenderTitle(TitleLabel, Team, pTitle, TitleFontSize);
 	RenderTitleScore(ScoreLabel, Team, TitleFontSize);
+	if(HasExtraLabel)
+	{
+		Ui()->DoLabel(&ExtraLabel, pExtraLabel, ExtraLabelFontSize, TEXTALIGN_MR);
+	}
 }
 
 void CScoreboard::RenderGoals(CUIRect Goals)
@@ -1043,12 +1214,16 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 			// name
 			{
 				char aSanitizedName[MAX_NAME_LENGTH];
+				char aPointsBuf[32];
 				GameClient()->m_BestClient.SanitizePlayerName(ClientData.m_aName, aSanitizedName, sizeof(aSanitizedName), pInfo->m_ClientId, true);
+				const bool ShowPoints = TryGetTabPlayerPointsText(pInfo->m_ClientId, ClientData.m_aName, aPointsBuf, sizeof(aPointsBuf));
+				const float PointsWidth = ShowPoints ? TextRender()->TextWidth(FontSize, aPointsBuf) : 0.0f;
+				const float NameLineWidth = ShowPoints ? maximum(0.0f, NameLength - PointsWidth - 3.0f) : NameLength;
 				CTextCursor Cursor;
 				Cursor.SetPosition(vec2(NameOffset, Row.y + (Row.h - FontSize) / 2.0f));
 				Cursor.m_FontSize = FontSize;
 				Cursor.m_Flags |= TEXTFLAG_ELLIPSIS_AT_END;
-				Cursor.m_LineWidth = NameLength;
+				Cursor.m_LineWidth = NameLineWidth;
 				if(ClientData.m_AuthLevel)
 				{
 					TextRender()->TextColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_ClAuthedPlayerColor)));
@@ -1078,6 +1253,11 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 				{
 					TextRender()->TextColor(0.1f, 1.0f, 0.1f, TextColor.a);
 					TextRender()->TextEx(&Cursor, "✓");
+				}
+				if(ShowPoints)
+				{
+					TextRender()->TextColor(TextColor);
+					TextRender()->Text(NameOffset + NameLength - PointsWidth, Row.y + (Row.h - FontSize) / 2.0f, FontSize, aPointsBuf);
 				}
 			}
 
@@ -1208,6 +1388,11 @@ void CScoreboard::OnRender()
 		Ui()->Update();
 	}
 
+	if(g_Config.m_BcShowPointsInTab && IsDdnetCommunityServer(Client()))
+		UpdateTabPlayerPoints();
+	else
+		ResetTabPlayerPoints();
+
 	// if the score board is active, then we should clear the motd message as well
 	if(GameClient()->m_Motd.IsActive())
 		GameClient()->m_Motd.Clear();
@@ -1219,6 +1404,13 @@ void CScoreboard::OnRender()
 	const bool Teams = GameClient()->IsTeamPlay();
 	const auto &aTeamSize = GameClient()->m_Snap.m_aTeamSize;
 	const int NumPlayers = Teams ? maximum(aTeamSize[TEAM_RED], aTeamSize[TEAM_BLUE]) : aTeamSize[TEAM_RED];
+	CServerInfo CurrentServerInfo;
+	Client()->GetServerInfo(&CurrentServerInfo);
+	char aPlayerCount[32];
+	if(CurrentServerInfo.m_MaxClients > 0)
+		str_format(aPlayerCount, sizeof(aPlayerCount), "%d/%d", GameClient()->m_Snap.m_NumPlayers, CurrentServerInfo.m_MaxClients);
+	else
+		str_format(aPlayerCount, sizeof(aPlayerCount), "%d", GameClient()->m_Snap.m_NumPlayers);
 
 	const float ScoreboardSmallWidth = 400.0f + 10.0f;
 	const float BaseScoreboardWidth = !Teams && NumPlayers <= 16 ? ScoreboardSmallWidth : 800.0f;
@@ -1297,7 +1489,7 @@ void CScoreboard::OnRender()
 		BlueScoreboard.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.5f), IGraphics::CORNER_B, 7.5f);
 
 		RenderTitleBar(RedTitle, TEAM_RED, pRedTeamName == nullptr ? Localize("Red team") : pRedTeamName);
-		RenderTitleBar(BlueTitle, TEAM_BLUE, pBlueTeamName == nullptr ? Localize("Blue team") : pBlueTeamName);
+		RenderTitleBar(BlueTitle, TEAM_BLUE, pBlueTeamName == nullptr ? Localize("Blue team") : pBlueTeamName, aPlayerCount);
 		RenderScoreboard(RedScoreboard, TEAM_RED, 0, NumPlayers, RenderState);
 		RenderScoreboard(BlueScoreboard, TEAM_BLUE, 0, NumPlayers, RenderState);
 	}
@@ -1317,7 +1509,7 @@ void CScoreboard::OnRender()
 
 		CUIRect Title;
 		Scoreboard.HSplitTop(TitleHeight, &Title, &Scoreboard);
-		RenderTitleBar(Title, TEAM_GAME, pTitle);
+		RenderTitleBar(Title, TEAM_GAME, pTitle, aPlayerCount);
 
 		if(NumPlayers <= 16)
 		{
@@ -1555,7 +1747,7 @@ CUi::EPopupMenuFunctionResult CScoreboard::CScoreboardPopupContext::Render(void 
 			CServerInfo ServerInfo;
 			pScoreboard->Client()->GetServerInfo(&ServerInfo);
 			const int Community = str_comp(ServerInfo.m_aCommunityId, "kog") == 0 ? 1 :
-						      (str_comp(ServerInfo.m_aCommunityId, "unique") == 0 ? 2 : 0);
+												(str_comp(ServerInfo.m_aCommunityId, "unique") == 0 ? 2 : 0);
 
 			char aCommunityLink[512];
 			char aEncodedName[256];
@@ -1688,7 +1880,7 @@ CUi::EPopupMenuFunctionResult CScoreboard::CScoreboardPopupContext::Render(void 
 		Container.VSplitLeft(ActionSize, &Action, &Container);
 		const bool IsInTeam = IsWarGroupMatch(2);
 		ColorRGBA TeamActionColor = IsInTeam ? ColorRGBA(0.32f, 0.92f, 0.42f, 0.85f * pUi->ButtonColorMul(&pPopupContext->m_WarListTeamButton)) :
-						      ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f * pUi->ButtonColorMul(&pPopupContext->m_WarListTeamButton));
+						       ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f * pUi->ButtonColorMul(&pPopupContext->m_WarListTeamButton));
 		if(pUi->DoButton_FontIcon(&pPopupContext->m_WarListTeamButton, FontIcon::ICON_USERS, IsInTeam, &Action, BUTTONFLAG_LEFT, ActionCorners, true, TeamActionColor))
 			ToggleWarGroup(2);
 		pScoreboard->GameClient()->m_Tooltips.DoToolTip(&pPopupContext->m_WarListTeamButton, &Action, IsInTeam ? Localize("Remove from teammate") : Localize("Add to teammate"));
@@ -1697,7 +1889,7 @@ CUi::EPopupMenuFunctionResult CScoreboard::CScoreboardPopupContext::Render(void 
 		Container.VSplitLeft(ActionSize, &Action, &Container);
 		const bool IsInHelper = IsWarGroupMatch(3);
 		ColorRGBA HelperActionColor = IsInHelper ? ColorRGBA(0.45f, 0.72f, 1.0f, 0.85f * pUi->ButtonColorMul(&pPopupContext->m_WarListHelperButton)) :
-							ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f * pUi->ButtonColorMul(&pPopupContext->m_WarListHelperButton));
+							   ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f * pUi->ButtonColorMul(&pPopupContext->m_WarListHelperButton));
 		if(pUi->DoButton_FontIcon(&pPopupContext->m_WarListHelperButton, FontIcon::STAR, IsInHelper, &Action, BUTTONFLAG_LEFT, ActionCorners, true, HelperActionColor))
 			ToggleWarGroup(3);
 		pScoreboard->GameClient()->m_Tooltips.DoToolTip(&pPopupContext->m_WarListHelperButton, &Action, IsInHelper ? Localize("Remove from helper") : Localize("Add to helper"));

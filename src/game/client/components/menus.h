@@ -426,6 +426,8 @@ protected:
 	bool m_NeedRestartGraphics;
 	bool m_NeedRestartSound;
 	bool m_NeedRestartUpdate;
+	bool m_BestClientReShadeNoticePending;
+	int m_BestClientReShadeNoticeDontShowAgain;
 	bool m_NeedSendinfo;
 	bool m_NeedSendDummyinfo;
 	int m_SettingPlayerPage;
@@ -1021,11 +1023,11 @@ public:
 		SMALL_TAB_EDITOR,
 		SMALL_TAB_IRC,
 		SMALL_TAB_DEMOBUTTON,
-			SMALL_TAB_SERVER,
-			SMALL_TAB_BROWSER_FILTER,
-			SMALL_TAB_BROWSER_INFO,
-			SMALL_TAB_BROWSER_BESTCLIENT,
-			SMALL_TAB_BROWSER_FRIENDS,
+		SMALL_TAB_SERVER,
+		SMALL_TAB_BROWSER_FILTER,
+		SMALL_TAB_BROWSER_INFO,
+		SMALL_TAB_BROWSER_BESTCLIENT,
+		SMALL_TAB_BROWSER_FRIENDS,
 
 		SMALL_TAB_LENGTH,
 	};
@@ -1111,6 +1113,7 @@ public:
 		POPUP_RESTART,
 		POPUP_WARNING,
 		POPUP_SAVE_SKIN,
+		POPUP_BESTCLIENT_RESHADE_NOTICE,
 	};
 
 	enum

@@ -43,6 +43,7 @@
 #include <engine/shared/fifo.h>
 #include <engine/shared/filecollection.h>
 #include <engine/shared/http.h>
+#include <engine/shared/linereader.h>
 #include <engine/shared/masterserver.h>
 #include <engine/shared/network.h>
 #include <engine/shared/packer.h>
@@ -84,7 +85,9 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
+#include <cwctype>
 #include <limits>
 #include <stack>
 #include <thread>
@@ -94,6 +97,230 @@ using namespace std::chrono_literals;
 
 static constexpr ColorRGBA CLIENT_NETWORK_PRINT_COLOR = ColorRGBA(0.7f, 1, 0.7f, 1.0f);
 static constexpr ColorRGBA CLIENT_NETWORK_PRINT_ERROR_COLOR = ColorRGBA(1.0f, 0.25f, 0.25f, 1.0f);
+
+#if defined(CONF_FAMILY_WINDOWS)
+static constexpr const char *gs_pPortableReShadeLayerDllFilename = "ReShade64.dll";
+static constexpr const char *gs_pPortableReShadeLayerManifestFilename = "ReShade64.json";
+static constexpr const char *gs_pPortableReShadeLayerDisabledManifestFilename = "ReShade64.reshade-disabled.json";
+static constexpr const char *gs_pPortableReShadeLayerDisableEnv = "DISABLE_VK_LAYER_reshade_1";
+static constexpr const char *gs_pPortableReShadeAppsFilename = "ReShadeApps.ini";
+static constexpr const char *gs_pPortableReShadeConfigFilename = "settings_BestClient.cfg";
+static constexpr const char *gs_pPortableReShadeEnabledConfigName = "bc_reshade_enabled";
+
+static bool QueryPortableReShadeConfigPath(char *pConfigPath, int ConfigPathSize)
+{
+	static constexpr const char *s_apUserDirs[] = {
+		"DDNet",
+		"Teeworlds",
+		"BestClient",
+	};
+
+	for(const char *pUserDirName : s_apUserDirs)
+	{
+		char aUserDir[IO_MAX_PATH_LENGTH];
+		if(fs_storage_path(pUserDirName, aUserDir, sizeof(aUserDir)) != 0)
+			continue;
+
+		str_format(pConfigPath, ConfigPathSize, "%s/%s", aUserDir, gs_pPortableReShadeConfigFilename);
+		if(fs_is_file(pConfigPath))
+			return true;
+	}
+
+	return false;
+}
+
+static bool QueryPortableReShadeConfigEnabled(bool &Enabled)
+{
+	char aConfigPath[IO_MAX_PATH_LENGTH];
+	if(!QueryPortableReShadeConfigPath(aConfigPath, sizeof(aConfigPath)))
+		return false;
+
+	CLineReader LineReader;
+	if(!LineReader.OpenFile(io_open(aConfigPath, IOFLAG_READ)))
+		return false;
+
+	while(const char *pLine = LineReader.Get())
+	{
+		const char *pValue = str_startswith_nocase(pLine, gs_pPortableReShadeEnabledConfigName);
+		if(pValue == nullptr)
+			continue;
+
+		pValue = str_skip_whitespaces_const(pValue);
+		char aValue[16];
+		int ValueLength = 0;
+		while(*pValue != '\0' && !str_isspace(*pValue) && ValueLength < (int)sizeof(aValue) - 1)
+			aValue[ValueLength++] = *pValue++;
+		aValue[ValueLength] = '\0';
+
+		int ParsedValue = 0;
+		if(str_toint(aValue, &ParsedValue))
+			Enabled = ParsedValue != 0;
+		return true;
+	}
+
+	return false;
+}
+
+static void WindowsUseBackslashes(char *pPath)
+{
+	for(char *pChr = pPath; *pChr != '\0'; ++pChr)
+	{
+		if(*pChr == '/')
+			*pChr = '\\';
+	}
+}
+
+static bool CopyFileUtf8(const char *pSource, const char *pDest)
+{
+	if(CopyFileW(windows_utf8_to_wide(pSource).c_str(), windows_utf8_to_wide(pDest).c_str(), FALSE) != 0)
+		return true;
+
+	const DWORD Error = GetLastError();
+	log_error("reshade", "Failed to copy '%s' to '%s' (%lu '%s')", pSource, pDest, Error, windows_format_system_message(Error).c_str());
+	return false;
+}
+
+static bool RegistryKeyHasReShadeImplicitLayer(HKEY RootKey)
+{
+	HKEY LayerKey;
+	const LRESULT OpenResult = RegOpenKeyExW(RootKey, L"SOFTWARE\\Khronos\\Vulkan\\ImplicitLayers", 0, KEY_QUERY_VALUE, &LayerKey);
+	if(OpenResult != ERROR_SUCCESS)
+		return false;
+
+	bool Found = false;
+	for(DWORD Index = 0; !Found; ++Index)
+	{
+		wchar_t aValueName[IO_MAX_PATH_LENGTH];
+		DWORD ValueNameSize = std::size(aValueName);
+		const LRESULT EnumResult = RegEnumValueW(LayerKey, Index, aValueName, &ValueNameSize, nullptr, nullptr, nullptr, nullptr);
+		if(EnumResult == ERROR_NO_MORE_ITEMS)
+			break;
+		if(EnumResult != ERROR_SUCCESS)
+			continue;
+
+		std::wstring ValueName(aValueName, ValueNameSize);
+		std::transform(ValueName.begin(), ValueName.end(), ValueName.begin(), towlower);
+		if(ValueName.find(L"reshade64.json") != std::wstring::npos)
+			Found = true;
+	}
+
+	RegCloseKey(LayerKey);
+	return Found;
+}
+
+static void EnsurePortableReShadeUserLayerRegistration(const char *pBinaryDir, bool HasLayerDll, bool HasLayerManifest, bool HasDisabledLayerManifest)
+{
+	if(!HasLayerDll || (!HasLayerManifest && !HasDisabledLayerManifest))
+		return;
+
+	if(RegistryKeyHasReShadeImplicitLayer(HKEY_LOCAL_MACHINE))
+		return;
+
+	char aUserDir[IO_MAX_PATH_LENGTH];
+	if(fs_storage_path("BestClient", aUserDir, sizeof(aUserDir)) != 0)
+		return;
+
+	char aRuntimeDir[IO_MAX_PATH_LENGTH];
+	str_format(aRuntimeDir, sizeof(aRuntimeDir), "%s/reshade-runtime", aUserDir);
+	char aTargetDllPath[IO_MAX_PATH_LENGTH];
+	char aTargetManifestPath[IO_MAX_PATH_LENGTH];
+	char aTargetAppsPath[IO_MAX_PATH_LENGTH];
+	str_format(aTargetDllPath, sizeof(aTargetDllPath), "%s/%s", aRuntimeDir, gs_pPortableReShadeLayerDllFilename);
+	str_format(aTargetManifestPath, sizeof(aTargetManifestPath), "%s/%s", aRuntimeDir, gs_pPortableReShadeLayerManifestFilename);
+	str_format(aTargetAppsPath, sizeof(aTargetAppsPath), "%s/%s", aRuntimeDir, gs_pPortableReShadeAppsFilename);
+
+	if(fs_makedir_rec_for(aTargetDllPath) != 0)
+	{
+		log_error("reshade", "Failed to create parent directories for '%s'.", aTargetDllPath);
+		return;
+	}
+	if(fs_is_dir(aRuntimeDir) == 0 && fs_makedir(aRuntimeDir) != 0)
+	{
+		log_error("reshade", "Failed to create portable ReShade runtime directory '%s'.", aRuntimeDir);
+		return;
+	}
+
+	char aSourceDllPath[IO_MAX_PATH_LENGTH];
+	char aSourceManifestPath[IO_MAX_PATH_LENGTH];
+	str_format(aSourceDllPath, sizeof(aSourceDllPath), "%s/%s", pBinaryDir, gs_pPortableReShadeLayerDllFilename);
+	str_format(aSourceManifestPath, sizeof(aSourceManifestPath), "%s/%s", pBinaryDir, HasLayerManifest ? gs_pPortableReShadeLayerManifestFilename : gs_pPortableReShadeLayerDisabledManifestFilename);
+
+	if(!CopyFileUtf8(aSourceDllPath, aTargetDllPath) || !CopyFileUtf8(aSourceManifestPath, aTargetManifestPath))
+		return;
+
+	char aExecutablePath[IO_MAX_PATH_LENGTH];
+	if(fs_executable_path(aExecutablePath, sizeof(aExecutablePath)) != 0)
+	{
+		log_error("reshade", "Failed to determine executable path for ReShadeApps.ini registration.");
+		return;
+	}
+	WindowsUseBackslashes(aExecutablePath);
+
+	char aAppsFile[IO_MAX_PATH_LENGTH + 16];
+	str_format(aAppsFile, sizeof(aAppsFile), "Apps=%s\n", aExecutablePath);
+	IOHANDLE AppsFile = io_open(aTargetAppsPath, IOFLAG_WRITE);
+	if(!AppsFile)
+	{
+		log_error("reshade", "Failed to open '%s' for writing.", aTargetAppsPath);
+		return;
+	}
+	const bool WroteAppsFile = io_write(AppsFile, aAppsFile, str_length(aAppsFile)) == static_cast<unsigned>(str_length(aAppsFile));
+	io_close(AppsFile);
+	if(!WroteAppsFile)
+	{
+		log_error("reshade", "Failed to write '%s'.", aTargetAppsPath);
+		return;
+	}
+
+	WindowsUseBackslashes(aTargetManifestPath);
+	HKEY LayerKey;
+	const LRESULT OpenResult = RegCreateKeyExW(HKEY_CURRENT_USER, L"SOFTWARE\\Khronos\\Vulkan\\ImplicitLayers", 0, nullptr, 0, KEY_ALL_ACCESS, nullptr, &LayerKey, nullptr);
+	if(OpenResult != ERROR_SUCCESS)
+	{
+		log_error("reshade", "Failed to open Vulkan implicit layers registry key (%" PRId64 " '%s').", static_cast<int64_t>(OpenResult), windows_format_system_message(OpenResult).c_str());
+		return;
+	}
+
+	const DWORD Enabled = 0;
+	const std::wstring WideManifestPath = windows_utf8_to_wide(aTargetManifestPath);
+	const LRESULT SetResult = RegSetValueExW(LayerKey, WideManifestPath.c_str(), 0, REG_DWORD, reinterpret_cast<const BYTE *>(&Enabled), sizeof(Enabled));
+	RegCloseKey(LayerKey);
+	if(SetResult != ERROR_SUCCESS)
+	{
+		log_error("reshade", "Failed to register portable ReShade Vulkan layer '%s' (%" PRId64 " '%s').", aTargetManifestPath, static_cast<int64_t>(SetResult), windows_format_system_message(SetResult).c_str());
+		return;
+	}
+
+	log_info("reshade", "Registered portable user-level ReShade Vulkan layer at '%s'.", aTargetManifestPath);
+}
+
+static void ConfigurePortableReShadeLayerEnvironmentEarly()
+{
+	char aBinaryDir[IO_MAX_PATH_LENGTH];
+	if(fs_executable_path(aBinaryDir, sizeof(aBinaryDir)) != 0 || fs_parent_dir(aBinaryDir) != 0)
+		return;
+
+	char aLayerDllPath[IO_MAX_PATH_LENGTH];
+	char aLayerManifestPath[IO_MAX_PATH_LENGTH];
+	char aDisabledLayerManifestPath[IO_MAX_PATH_LENGTH];
+	str_format(aLayerDllPath, sizeof(aLayerDllPath), "%s/%s", aBinaryDir, gs_pPortableReShadeLayerDllFilename);
+	str_format(aLayerManifestPath, sizeof(aLayerManifestPath), "%s/%s", aBinaryDir, gs_pPortableReShadeLayerManifestFilename);
+	str_format(aDisabledLayerManifestPath, sizeof(aDisabledLayerManifestPath), "%s/%s", aBinaryDir, gs_pPortableReShadeLayerDisabledManifestFilename);
+
+	const bool HasLayerDll = fs_is_file(aLayerDllPath) != 0;
+	const bool HasLayerManifest = fs_is_file(aLayerManifestPath) != 0;
+	const bool HasDisabledLayerManifest = fs_is_file(aDisabledLayerManifestPath) != 0;
+	if(!HasLayerDll || (!HasLayerManifest && !HasDisabledLayerManifest))
+		return;
+
+	bool ReShadeEnabled = false;
+	QueryPortableReShadeConfigEnabled(ReShadeEnabled);
+
+	EnsurePortableReShadeUserLayerRegistration(aBinaryDir, HasLayerDll, HasLayerManifest, HasDisabledLayerManifest);
+	_putenv_s("VK_IMPLICIT_LAYER_PATH", aBinaryDir);
+	_putenv_s(gs_pPortableReShadeLayerDisableEnv, ReShadeEnabled ? "" : "1");
+}
+#endif
 
 CClient::CClient() :
 	m_DemoPlayer(&m_SnapshotDelta, true, [&]() { UpdateDemoIntraTimers(); }),
@@ -3074,19 +3301,30 @@ void CClient::Update()
 			if(pJob->State() == IJob::STATE_DONE)
 			{
 				char aBuf[IO_MAX_PATH_LENGTH + 64];
+				const bool IsRollbackReplay = str_startswith(pJob->Destination(), "demos/rollback/") != nullptr;
 				if(pJob->Success())
 				{
 					str_format(aBuf, sizeof(aBuf), "Successfully saved the replay to '%s'!", pJob->Destination());
 					m_pConsole->Print(IConsole::OUTPUT_LEVEL_STANDARD, "replay", aBuf);
 
-					GameClient()->Echo(Localize("Successfully saved the replay!"));
+					if(IsRollbackReplay)
+					{
+						char aBroadcast[64];
+						str_format(aBroadcast, sizeof(aBroadcast), Localize("Rollback saved: %ds"), pJob->LengthSeconds());
+						GameClient()->Broadcast(aBroadcast);
+					}
+					else
+						GameClient()->Echo(Localize("Successfully saved the replay!"));
 				}
 				else
 				{
 					str_format(aBuf, sizeof(aBuf), "Failed saving the replay to '%s'...", pJob->Destination());
 					m_pConsole->Print(IConsole::OUTPUT_LEVEL_STANDARD, "replay", aBuf);
 
-					GameClient()->Echo(Localize("Failed saving the replay!"));
+					if(IsRollbackReplay)
+						GameClient()->Broadcast(Localize("Rollback save failed!"));
+					else
+						GameClient()->Echo(Localize("Failed saving the replay!"));
 				}
 				m_EditJobs.pop_front();
 			}
@@ -4017,7 +4255,10 @@ void CClient::SaveReplay(const int Length, const char *pFilename)
 		}
 		else
 		{
-			str_format(aFilename, sizeof(aFilename), "demos/replays/%s.demo", pFilename);
+			if(str_startswith(pFilename, "rollback/"))
+				str_format(aFilename, sizeof(aFilename), "demos/%s.demo", pFilename);
+			else
+				str_format(aFilename, sizeof(aFilename), "demos/replays/%s.demo", pFilename);
 			IOHANDLE Handle = m_pStorage->OpenFile(aFilename, IOFLAG_WRITE, IStorage::TYPE_SAVE);
 			if(!Handle)
 			{
@@ -4029,6 +4270,8 @@ void CClient::SaveReplay(const int Length, const char *pFilename)
 		}
 
 		// Stop the recorder to correctly slice the demo after
+		const int AvailableLength = DemoRecorder(RECORDER_REPLAYS)->Length();
+		const int SavedLength = minimum(Length, AvailableLength);
 		DemoRecorder(RECORDER_REPLAYS)->Stop(IDemoRecorder::EStopMode::KEEP_FILE);
 
 		// Slice the demo to get only the last cl_replay_length seconds
@@ -4039,7 +4282,7 @@ void CClient::SaveReplay(const int Length, const char *pFilename)
 		m_pConsole->Print(IConsole::OUTPUT_LEVEL_STANDARD, "replay", "Saving replay...");
 
 		// Create a job to do this slicing in background because it can be a bit long depending on the file size
-		std::shared_ptr<CDemoEdit> pDemoEditTask = std::make_shared<CDemoEdit>(GameClient()->NetVersion(), &m_SnapshotDelta, m_pStorage, pSrc, aFilename, StartTick, EndTick);
+		std::shared_ptr<CDemoEdit> pDemoEditTask = std::make_shared<CDemoEdit>(GameClient()->NetVersion(), &m_SnapshotDelta, m_pStorage, pSrc, aFilename, StartTick, EndTick, SavedLength);
 		Engine()->AddJob(pDemoEditTask);
 		m_EditJobs.push_back(pDemoEditTask);
 
@@ -4232,6 +4475,13 @@ void CClient::DemoRecorder_UpdateReplayRecorder()
 	if(!g_Config.m_ClReplays && DemoRecorder(RECORDER_REPLAYS)->IsRecording())
 	{
 		DemoRecorder(RECORDER_REPLAYS)->Stop(IDemoRecorder::EStopMode::REMOVE_FILE);
+	}
+
+	if(State() != IClient::STATE_ONLINE)
+	{
+		if(DemoRecorder(RECORDER_REPLAYS)->IsRecording())
+			DemoRecorder(RECORDER_REPLAYS)->Stop(IDemoRecorder::EStopMode::REMOVE_FILE);
+		return;
 	}
 
 	if(g_Config.m_ClReplays && !DemoRecorder(RECORDER_REPLAYS)->IsRecording())
@@ -5037,6 +5287,7 @@ int main(int argc, const char **argv)
 	gs_AndroidStarted = true;
 #elif defined(CONF_FAMILY_WINDOWS)
 	CWindowsComLifecycle WindowsComLifecycle(true);
+	ConfigurePortableReShadeLayerEnvironmentEarly();
 #endif
 	CCmdlineFix CmdlineFix(&argc, &argv);
 
