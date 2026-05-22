@@ -3379,8 +3379,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 				CUIRect Expand = {Visible.x, Visible.y, Visible.w, TeeStatsTargetHeight};
 				//Expand.HSplitTop(MarginSmall, nullptr, &Expand);
-				Expand.HSplitTop(LineSize, &Button, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_ClShowFlagsSize, &g_Config.m_ClShowFlagsSize, &Button, BCLocalize("Size of tee stat"), 1, 150);
+				Expand.HSplitTop(LineSize, &TabButton, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_ClShowFlagsSize, &g_Config.m_ClShowFlagsSize, &TabButton, BCLocalize("Size of tee stat"), 1, 150);
 			}
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClShowDJ, BCLocalize("Show double jumps of a tee"), &g_Config.m_ClShowDJ, &Content, LineSize);
@@ -3396,8 +3396,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 				CUIRect Expand = {Visible.x, Visible.y, Visible.w, TeeDJTargetHeight};
 				//Expand.HSplitTop(MarginSmall, nullptr, &Expand);
-				Expand.HSplitTop(LineSize, &Button, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_ClShowJumpsSize, &g_Config.m_ClShowJumpsSize, &Button, BCLocalize("Size of double jump"), 1, 150);
+				Expand.HSplitTop(LineSize, &TabButton, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_ClShowJumpsSize, &g_Config.m_ClShowJumpsSize, &TabButton, BCLocalize("Size of double jump"), 1, 150);
 			}
 
 			//Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
