@@ -15,6 +15,7 @@
 #include <engine/shared/uuid_manager.h>
 
 #include <memory>
+#include <unordered_map>
 #include <string>
 #include <unordered_set>
 
@@ -32,6 +33,7 @@ public:
 	bool IsPlayerBestClient(int ClientId) const;
 	bool IsPlayerBClient(int ClientId) { return IsPlayerBestClient(ClientId); }
 	bool IsPlayerDeveloper(int ClientId) const;
+	bool GetPlayerVersionLabel(int ClientId, char *pVersion, int VersionSize) const;
 
 	void RefreshBrowserCache(bool Force);
 	void RefreshToken(bool Force);
@@ -61,6 +63,7 @@ private:
 	CUuid m_ClientInstanceId = UUID_ZEROED;
 	std::unordered_set<int> m_RegisteredClientIds;
 	std::unordered_set<int> m_DeveloperClientIds;
+	std::unordered_map<int, std::string> m_ClientVersions;
 	CPresenceCache m_PresenceCache;
 
 	std::shared_ptr<CHttpRequest> m_pBrowserTask = nullptr;
@@ -78,6 +81,7 @@ private:
 	void SyncLocalRegistrations(bool Force = false);
 	void SendPresencePacket(int ClientId, int PacketType);
 	void SendDevAuthPacket(int ClientId);
+	void SendVersionPacket(int ClientId);
 	void SendLeaveForAll();
 	const char *CurrentGameServerAddress();
 	const char *PlayerNameForClient(int ClientId) const;

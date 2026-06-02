@@ -2811,8 +2811,6 @@ if(CLIENT)
     components/bestclient/fast_practice.h
     components/bestclient/hud_editor.cpp
     components/bestclient/hud_editor.h
-    components/bestclient/irc/irc.cpp
-    components/bestclient/irc/irc.h
     components/bestclient/magic_particles.cpp
     components/bestclient/magic_particles.h
     components/bestclient/menus_bestclient.cpp
@@ -3347,18 +3345,6 @@ if(CLIENT)
 
   list(APPEND TARGETS_OWN bestclient-voice-server)
   list(APPEND TARGETS_LINK bestclient-voice-server)
-
-  find_program(GO_EXECUTABLE go)
-  if(GO_EXECUTABLE)
-    add_custom_target(bestgram-server
-      COMMAND ${GO_EXECUTABLE} build -o "${PROJECT_BINARY_DIR}/bestgram-server" .
-      COMMAND ${CMAKE_COMMAND} -E copy "${PROJECT_BINARY_DIR}/bestgram-server" "${PROJECT_BINARY_DIR}/bestclient-irc-server"
-      WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}/src/irc"
-      COMMENT "Building BestGram server"
-      VERBATIM
-    )
-    add_custom_target(bestclient-irc-server DEPENDS bestgram-server)
-  endif()
 
   list(APPEND TARGETS_OWN game-client)
   list(APPEND TARGETS_LINK game-client)
@@ -4013,10 +3999,11 @@ endif()
 set(CPACK_GEN_FILES
   ${VULKAN_SHADER_FILE_LIST}
 )
+set(CPACK_GEN_TARGETS)
 if(TARGET_OS STREQUAL "windows" AND NOT MINGW)
-  list(APPEND CPACK_GEN_FILES
-    bestclient_reshade_live.addon
-    bestclient_reshade_bridge.addon
+  list(APPEND CPACK_GEN_TARGETS
+    bestclient-reshade-live
+    bestclient-reshade-bridge
   )
 endif()
 
@@ -4212,6 +4199,9 @@ foreach(ext zip tar.gz tar.xz)
   foreach(file ${CPACK_GEN_FILES})
     list(APPEND COPY_FILE_COMMANDS COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_BINARY_DIR}/${file} ${TMPDIR}/${file})
   endforeach()
+  foreach(target ${CPACK_GEN_TARGETS})
+    list(APPEND COPY_TARGET_COMMANDS COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${target}> ${TMPDIR}/)
+  endforeach()
   foreach(dir ${CPACK_DIRS})
     list(APPEND COPY_DIR_COMMANDS COMMAND ${CMAKE_COMMAND} -E copy_directory ${PROJECT_SOURCE_DIR}/${dir} ${TMPDIR}/${dir})
   endforeach()
@@ -4235,54 +4225,65 @@ foreach(ext zip tar.gz tar.xz)
     endif()
   endforeach()
 
-  set(PACKAGE_ARCHIVE_STEP)
+  set(PACKAGE_ARCHIVE_COMMAND ${CMAKE_COMMAND})
+  set(PACKAGE_ARCHIVE_ARGS)
   if(ext STREQUAL zip)
-    list(APPEND PACKAGE_ARCHIVE_STEP
-      COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
-        ${CMAKE_COMMAND} -E tar cf ../${CPACK_PACKAGE_FILE_NAME}.${ext} --format=zip ${CPACK_PACKAGE_FILE_NAME}/
+    list(APPEND PACKAGE_ARCHIVE_ARGS
+      -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
+      ${CMAKE_COMMAND} -E tar cf ../${CPACK_PACKAGE_FILE_NAME}.${ext} --format=zip ${CPACK_PACKAGE_FILE_NAME}/
     )
   elseif(ext STREQUAL tar.gz)
     if(TARGET_OS STREQUAL "linux" OR TARGET_OS STREQUAL "mac")
       find_program(BESTCLIENT_TAR_EXECUTABLE tar REQUIRED)
-      list(APPEND PACKAGE_ARCHIVE_STEP
-        COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
-          ${BESTCLIENT_TAR_EXECUTABLE} -czf ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
+      set(PACKAGE_ARCHIVE_COMMAND ${CMAKE_COMMAND})
+      list(APPEND PACKAGE_ARCHIVE_ARGS
+        -DTAR_EXECUTABLE=${BESTCLIENT_TAR_EXECUTABLE}
+        -DARCHIVE_FORMAT=${ext}
+        -DARCHIVE_OUTPUT=${PROJECT_BINARY_DIR}/${PACKAGE_OUTPUT}
+        -DARCHIVE_SOURCE_DIR=${PROJECT_BINARY_DIR}/pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
+        -DARCHIVE_SOURCE_NAME=${CPACK_PACKAGE_FILE_NAME}
+        -P ${PROJECT_SOURCE_DIR}/cmake/CreatePackageArchive.cmake
       )
     else()
-      list(APPEND PACKAGE_ARCHIVE_STEP
-        COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
-          ${CMAKE_COMMAND} -E tar cfz ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
+      list(APPEND PACKAGE_ARCHIVE_ARGS
+        -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
+        ${CMAKE_COMMAND} -E tar cfz ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
       )
     endif()
   elseif(ext STREQUAL tar.xz)
     if(TARGET_OS STREQUAL "linux" OR TARGET_OS STREQUAL "mac")
       find_program(BESTCLIENT_TAR_EXECUTABLE tar REQUIRED)
-      list(APPEND PACKAGE_ARCHIVE_STEP
-        COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
-          ${BESTCLIENT_TAR_EXECUTABLE} -cJf ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
+      set(PACKAGE_ARCHIVE_COMMAND ${CMAKE_COMMAND})
+      list(APPEND PACKAGE_ARCHIVE_ARGS
+        -DTAR_EXECUTABLE=${BESTCLIENT_TAR_EXECUTABLE}
+        -DARCHIVE_FORMAT=${ext}
+        -DARCHIVE_OUTPUT=${PROJECT_BINARY_DIR}/${PACKAGE_OUTPUT}
+        -DARCHIVE_SOURCE_DIR=${PROJECT_BINARY_DIR}/pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
+        -DARCHIVE_SOURCE_NAME=${CPACK_PACKAGE_FILE_NAME}
+        -P ${PROJECT_SOURCE_DIR}/cmake/CreatePackageArchive.cmake
       )
     else()
-      list(APPEND PACKAGE_ARCHIVE_STEP
-        COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
-          ${CMAKE_COMMAND} -E tar cfJ ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
+      list(APPEND PACKAGE_ARCHIVE_ARGS
+        -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
+        ${CMAKE_COMMAND} -E tar cfJ ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
       )
     endif()
   else()
-    list(APPEND PACKAGE_ARCHIVE_STEP
-      COMMAND ${CMAKE_COMMAND} -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
-        ${CMAKE_COMMAND} -E tar cf ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
+    list(APPEND PACKAGE_ARCHIVE_ARGS
+      -E chdir pack_${CPACK_PACKAGE_FILE_NAME}_${EXT_SLUG}
+      ${CMAKE_COMMAND} -E tar cf ../${CPACK_PACKAGE_FILE_NAME}.${ext} ${CPACK_PACKAGE_FILE_NAME}/
     )
   endif()
 
   add_custom_command(OUTPUT ${CPACK_PACKAGE_FILE_NAME}.${ext}
-    COMMAND ${CMAKE_COMMAND} -E rm -f ${PACKAGE_OUTPUT}
+    COMMAND ${CMAKE_COMMAND} -E remove -f ${PACKAGE_OUTPUT}
     COMMAND ${CMAKE_COMMAND} -E remove_directory ${TMPDIR}
     COMMAND ${CMAKE_COMMAND} -E make_directory ${TMPDIR}
     ${COPY_FILE_COMMANDS}
     ${COPY_DIR_COMMANDS}
     ${COPY_TARGET_COMMANDS}
     ${STRIP_TARGET_COMMANDS}
-    ${PACKAGE_ARCHIVE_STEP}
+    COMMAND ${PACKAGE_ARCHIVE_COMMAND} ${PACKAGE_ARCHIVE_ARGS}
     DEPENDS ${CPACK_TARGETS} ${PACKAGE_EXTRA_DEPENDS}
   )
   add_custom_target(package_${EXT_SLUG} DEPENDS ${CPACK_PACKAGE_FILE_NAME}.${ext})
@@ -4306,6 +4307,7 @@ unset(CPACK_TARGETS)
 unset(CPACK_DIRS)
 unset(CPACK_FILES)
 unset(CPACK_GEN_FILES)
+unset(CPACK_GEN_TARGETS)
 
 include(CPack)
 
@@ -4541,9 +4543,9 @@ if(TARGET_OS STREQUAL "windows" AND NOT MINGW)
   add_custom_target(bestclient-reshade-assets ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory
       "$<TARGET_FILE_DIR:game-client>/data/reshade"
-    COMMAND ${CMAKE_COMMAND} -E rm -f
+    COMMAND ${CMAKE_COMMAND} -E remove -f
       "$<TARGET_FILE_DIR:game-client>/vulkan-1.dll"
-    COMMAND ${CMAKE_COMMAND} -E rm -f
+    COMMAND ${CMAKE_COMMAND} -E remove -f
       "$<TARGET_FILE_DIR:game-client>/data/reshade/ReShadePreset.ini"
     COMMAND ${CMAKE_COMMAND} -E remove_directory
       "$<TARGET_FILE_DIR:game-client>/reshade-shaders"
@@ -4565,6 +4567,14 @@ if(TARGET_OS STREQUAL "windows" AND NOT MINGW)
   add_dependencies(game-client bestclient-reshade-live)
   add_dependencies(game-client bestclient-reshade-bridge)
   add_dependencies(game-client bestclient-reshade-assets)
+
+  if(NOT DEV AND CPACK_GEN_TARGETS)
+    install(TARGETS ${CPACK_GEN_TARGETS}
+      DESTINATION ${CPACK_PACKAGE_FILE_NAME}
+      COMPONENT portable
+      EXCLUDE_FROM_ALL
+    )
+  endif()
 endif()
 
 if(TARGET_OS STREQUAL "windows" AND STEAM AND NOT CMAKE_BUILD_TYPE STREQUAL Debug)

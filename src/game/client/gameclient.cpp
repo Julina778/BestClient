@@ -115,6 +115,34 @@ namespace
 			g_Config.m_BcDisabledComponentsMaskLo, g_Config.m_BcDisabledComponentsMaskHi);
 	}
 
+	void RenderEyeComfortOverlay(CGameClient *pGameClient)
+	{
+		if(!g_Config.m_BcEyeComfort || pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_EYE_COMFORT))
+			return;
+
+		const float Strength = std::clamp(g_Config.m_BcEyeComfortStrength / 100.0f, 0.0f, 1.0f);
+		const CUIRect Screen = *pGameClient->Ui()->Screen();
+
+		if(Strength <= 0.0f)
+			return;
+
+		const float Brightness = std::clamp(1.0f - Strength * 0.43f, 0.57f, 1.0f);
+
+		pGameClient->Ui()->MapScreen();
+		pGameClient->Graphics()->TextureClear();
+		pGameClient->Graphics()->BlendNormal();
+		if(Strength > 0.0f)
+		{
+			const ColorRGBA WarmOverlayColor(1.0f, 0.93f, 0.74f, 0.34f * Strength);
+			pGameClient->Graphics()->DrawRect(Screen.x, Screen.y, Screen.w, Screen.h, WarmOverlayColor, IGraphics::CORNER_ALL, 0.0f);
+		}
+		if(Brightness < 1.0f)
+		{
+			const ColorRGBA BrightnessOverlayColor(0.0f, 0.0f, 0.0f, 1.0f - Brightness);
+			pGameClient->Graphics()->DrawRect(Screen.x, Screen.y, Screen.w, Screen.h, BrightnessOverlayColor, IGraphics::CORNER_ALL, 0.0f);
+		}
+	}
+
 	float EffectiveFastInputOffsetTicksFastMode()
 	{
 		if(!g_Config.m_TcFastInput ||
@@ -161,6 +189,17 @@ namespace
 		return Offset;
 	}
 
+	float EffectiveFastInputOffsetTicksDeltaInputMode()
+	{
+		if(!g_Config.m_TcFastInput ||
+			BcFastInputNormalizedMode(g_Config.m_BcFastInputMode) != 1 ||
+			IsGameplayInputComponentDisabled())
+			return 0.0f;
+		if(g_Config.m_BcFastInputDeltaInput <= 0)
+			return 0.0f;
+		return g_Config.m_BcFastInputDeltaInput / 100.0f;
+	}
+
 	float EffectiveFastInputOffsetTicksSaikoPlusMode()
 	{
 		if(!g_Config.m_TcFastInput ||
@@ -177,6 +216,8 @@ namespace
 		const int FastInputMode = BcFastInputNormalizedMode(g_Config.m_BcFastInputMode);
 		if(FastInputMode == 0)
 			return EffectiveFastInputOffsetTicksFastMode();
+		if(FastInputMode == 1)
+			return EffectiveFastInputOffsetTicksDeltaInputMode();
 		if(FastInputMode == 4)
 			return EffectiveFastInputOffsetTicksSaikoPlusMode();
 		return EffectiveFastInputOffsetTicksBestMode(pGameClient);
@@ -258,6 +299,13 @@ namespace
 		       !IsGameplayInputComponentDisabled();
 	}
 
+	bool EffectiveDeltaInputOthers()
+	{
+		return BcFastInputNormalizedMode(g_Config.m_BcFastInputMode) == 1 &&
+		       g_Config.m_BcDeltaInputOthers != 0 &&
+		       !IsGameplayInputComponentDisabled();
+	}
+
 	bool EffectiveSaikoPlusOthers()
 	{
 		return BcFastInputNormalizedMode(g_Config.m_BcFastInputMode) == 4 &&
@@ -267,12 +315,12 @@ namespace
 
 	bool EffectiveAnyFastInputOthers()
 	{
-		return EffectiveFastInputOthers() || EffectiveBestInputOthers() || EffectiveSaikoPlusOthers();
+		return EffectiveFastInputOthers() || EffectiveDeltaInputOthers() || EffectiveBestInputOthers() || EffectiveSaikoPlusOthers();
 	}
 
 	bool EffectiveImmediateFastInputOthers()
 	{
-		return EffectiveBestInputOthers() || EffectiveSaikoPlusOthers();
+		return EffectiveDeltaInputOthers() || EffectiveBestInputOthers() || EffectiveSaikoPlusOthers();
 	}
 } // namespace
 
@@ -625,7 +673,6 @@ void CGameClient::OnConsoleInit()
 					      &m_AdminPanel,
 					      &m_Menus,
 					      &m_PieMenu,
-					      &m_IrcChat,
 					      &m_Tooltips,
 					      &m_Scripting, // TClient
 					      &m_KeyBinder,
@@ -638,7 +685,6 @@ void CGameClient::OnConsoleInit()
 	m_vpInput.insert(m_vpInput.end(), {&m_KeyBinder, // this will take over all input when we want to bind a key
 						  &m_HudEditor,
 						  &m_VoiceChat,
-						  &m_IrcChat,
 						  &m_Binds.m_SpecialBinds,
 						  &m_GameConsole,
 						  &m_Chat, // chat has higher prio, due to that you can quit it by pressing esc
@@ -1381,6 +1427,7 @@ void CGameClient::OnRender()
 	Input()->Clear();
 
 	CLineInput::RenderCandidates();
+	RenderEyeComfortOverlay(this);
 
 	const bool WasNewTick = m_NewTick;
 

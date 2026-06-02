@@ -2733,6 +2733,7 @@ static const SBestClientComponentEntry gs_aBestClientComponentEntries[] = {
 	{CBestClient::COMPONENT_VISUALS_MEDIA_BACKGROUND, "Media Background", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_ANIMATIONS, "Animations", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_ASPECT_RATIO, "Aspect Ratio", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_EYE_COMFORT, "Eye Comfort", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_GAMEPLAY_HOOK_COMBO, "Hook Combo", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_GAMEPLAY_INPUT, "Input", COMPONENTS_GROUP_GAMEPLAY},
 	{CBestClient::COMPONENT_GAMEPLAY_FAST_ACTIONS, "Fast Actions", COMPONENTS_GROUP_GAMEPLAY},
@@ -3975,6 +3976,65 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
 
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_EYE_COMFORT))
+		{
+			static float s_EyeComfortPhase = 0.0f;
+			static CButtonContainer s_EyeComfortResetButton;
+			const bool EyeComfortEnabled = g_Config.m_BcEyeComfort != 0;
+			UpdateRevealPhase(s_EyeComfortPhase, EyeComfortEnabled);
+			const float ExtraTargetHeight = LineSize;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraTargetHeight * s_EyeComfortPhase;
+			CUIRect Content, Label, Row, Visible;
+			BeginBlock(Column, ContentHeight, Content);
+
+			Content.HSplitTop(LineSize, &Label, &Content);
+			const float ResetButtonWidth = LineSize + 8.0f;
+			const float BadgeWidth = 56.0f;
+			const float HeaderSpacing = 4.0f;
+			CUIRect TitleLabel, HeaderRight, BadgeSlot, ResetButton, ResetHitbox, Badge;
+			Label.VSplitRight(BadgeWidth + HeaderSpacing + ResetButtonWidth, &TitleLabel, &HeaderRight);
+			HeaderRight.VSplitLeft(BadgeWidth, &BadgeSlot, &HeaderRight);
+			HeaderRight.VSplitLeft(HeaderSpacing, nullptr, &HeaderRight);
+			ResetButton = HeaderRight;
+			ResetHitbox = ResetButton;
+			const bool EyeComfortResetClicked = Ui()->DoButton_FontIcon(&s_EyeComfortResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
+			GameClient()->m_Tooltips.DoToolTip(&s_EyeComfortResetButton, &ResetHitbox, BCLocalize("Reset to defaults"));
+			if(EyeComfortResetClicked)
+				g_Config.m_BcEyeComfortStrength = DefaultConfig::BcEyeComfortStrength;
+			Ui()->DoLabel(&TitleLabel, BCLocalize("Eye Comfort"), HeadlineFontSize, TEXTALIGN_ML);
+			BadgeSlot.HMargin(1.5f, &Badge);
+			Badge.x += 4.0f;
+			Badge.w -= 4.0f;
+			Graphics()->DrawRect4(
+				Badge.x, Badge.y, Badge.w, Badge.h,
+				ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f),
+				ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
+				ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f),
+				ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
+				IGraphics::CORNER_ALL, 5.0f);
+			Ui()->DoLabel(&Badge, "NEW", 11.0f, TEXTALIGN_MC);
+			Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcEyeComfort, BCLocalize("Enable warm screen filter"), &g_Config.m_BcEyeComfort, &Content, LineSize);
+
+			const float ExpandedHeight = ExtraTargetHeight * s_EyeComfortPhase;
+			if(!EyeComfortResetClicked && ExpandedHeight > 0.0f)
+			{
+				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
+
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExtraTargetHeight};
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcEyeComfortStrength, &g_Config.m_BcEyeComfortStrength, &Row, BCLocalize("Comfort level"), 0, 100, &CUi::ms_LinearScrollbarScale, 0u, "%");
+			}
+			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
+		}
+
 		// Sweat Weapon (left column block)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CRYSTAL_LASER))
 		{
@@ -4476,10 +4536,10 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				s_MusicPlayerVisualizerPhase = VisualizerOn ? 1.0f : 0.0f;
 			}
 
+			const float VisualizerSliderHeight = LineSize;
 			const float StaticColorTargetHeight = ColorPickerLineSize + ColorPickerSpacing;
-			const float VisualizerSliderHeight = LineSize + 4.0f;
-			const float VisualizerTargetHeight = LineSize + VisualizerSliderHeight * 2.0f;
-			const float ExtraTargetHeight = LineSize * 2.0f + VisualizerTargetHeight * s_MusicPlayerVisualizerPhase + StaticColorTargetHeight * s_MusicPlayerStaticColorPhase;
+			const float VisualizerTargetHeight = LineSize * 7.0f;
+			const float ExtraTargetHeight = LineSize * 6.0f + MarginSmall + VisualizerTargetHeight * s_MusicPlayerVisualizerPhase + StaticColorTargetHeight * s_MusicPlayerStaticColorPhase;
 			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraTargetHeight * s_MusicPlayerPhase;
 			CUIRect Content, Label, Row, Visible;
 			BeginBlock(Column, ContentHeight, Content);
@@ -4500,11 +4560,21 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			if(MusicPlayerResetClicked)
 			{
 				g_Config.m_BcMusicPlayerColorMode = DefaultConfig::BcMusicPlayerColorMode;
+				g_Config.m_BcMusicPlayerSizeMode = DefaultConfig::BcMusicPlayerSizeMode;
 				g_Config.m_BcMusicPlayerStaticColor = DefaultConfig::BcMusicPlayerStaticColor;
+				g_Config.m_BcMusicPlayerTextScale = DefaultConfig::BcMusicPlayerTextScale;
+				g_Config.m_BcMusicPlayerAnimationMs = DefaultConfig::BcMusicPlayerAnimationMs;
+				g_Config.m_BcMusicPlayerShowCover = DefaultConfig::BcMusicPlayerShowCover;
+				g_Config.m_BcMusicPlayerUseColorForHud = DefaultConfig::BcMusicPlayerUseColorForHud;
+				g_Config.m_BcMusicPlayerHudColorAlpha = DefaultConfig::BcMusicPlayerHudColorAlpha;
 				g_Config.m_BcMusicPlayerVisualizer = DefaultConfig::BcMusicPlayerVisualizer;
 				g_Config.m_BcMusicPlayerVisualizerMode = DefaultConfig::BcMusicPlayerVisualizerMode;
 				g_Config.m_BcMusicPlayerVisualizerSensitivity = DefaultConfig::BcMusicPlayerVisualizerSensitivity;
 				g_Config.m_BcMusicPlayerVisualizerSmoothing = DefaultConfig::BcMusicPlayerVisualizerSmoothing;
+				g_Config.m_BcMusicPlayerVisualizerRounding = DefaultConfig::BcMusicPlayerVisualizerRounding;
+				g_Config.m_BcMusicPlayerVisualizerColumns = DefaultConfig::BcMusicPlayerVisualizerColumns;
+				g_Config.m_BcMusicPlayerVisualizerColumnWidth = DefaultConfig::BcMusicPlayerVisualizerColumnWidth;
+				g_Config.m_BcMusicPlayerVisualizerGap = DefaultConfig::BcMusicPlayerVisualizerGap;
 			}
 			Ui()->DoLabel(&TitleLabel, BCLocalize("Music Player"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
@@ -4541,6 +4611,34 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				g_Config.m_BcMusicPlayerColorMode = std::clamp(g_Config.m_BcMusicPlayerColorMode, 0, 3);
 				g_Config.m_BcMusicPlayerColorMode = Ui()->DoDropDown(&ModeDropDown, g_Config.m_BcMusicPlayerColorMode, apMusicPlayerColorModes, (int)std::size(apMusicPlayerColorModes), s_MusicPlayerColorModeState);
 
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Row.VSplitLeft(120.0f, &ModeLabel, &ModeDropDown);
+				Ui()->DoLabel(&ModeLabel, BCLocalize("Size mode"), 14.0f, TEXTALIGN_ML);
+
+				static CUi::SDropDownState s_MusicPlayerSizeModeState;
+				static CScrollRegion s_MusicPlayerSizeModeScrollRegion;
+				s_MusicPlayerSizeModeState.m_SelectionPopupContext.m_pScrollRegion = &s_MusicPlayerSizeModeScrollRegion;
+				const char *apMusicPlayerSizeModes[2] = {
+					BCLocalize("Normal"),
+					BCLocalize("Mini"),
+				};
+				g_Config.m_BcMusicPlayerSizeMode = std::clamp(g_Config.m_BcMusicPlayerSizeMode, 0, 1);
+				g_Config.m_BcMusicPlayerSizeMode = Ui()->DoDropDown(&ModeDropDown, g_Config.m_BcMusicPlayerSizeMode, apMusicPlayerSizeModes, (int)std::size(apMusicPlayerSizeModes), s_MusicPlayerSizeModeState);
+
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMusicPlayerShowCover, BCLocalize("Show cover art"), &g_Config.m_BcMusicPlayerShowCover, &Expand, LineSize);
+
+				CUIRect SliderRow, SliderLabel, SliderButton;
+				Expand.HSplitTop(VisualizerSliderHeight, &SliderRow, &Expand);
+				SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
+				Ui()->DoLabel(&SliderLabel, BCLocalize("Text scale"), 14.0f, TEXTALIGN_ML);
+				Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerTextScale, &g_Config.m_BcMusicPlayerTextScale, &SliderButton, "", 70, 150, &CUi::ms_LinearScrollbarScale, 0u, "%");
+
+				Expand.HSplitTop(VisualizerSliderHeight, &SliderRow, &Expand);
+				SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
+				Ui()->DoLabel(&SliderLabel, BCLocalize("Animation duration"), 14.0f, TEXTALIGN_ML);
+				Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerAnimationMs, &g_Config.m_BcMusicPlayerAnimationMs, &SliderButton, "", 50, 1000, &CUi::ms_LinearScrollbarScale, 0u, " ms");
+
 				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMusicPlayerVisualizer, BCLocalize("Enable visualizer"), &g_Config.m_BcMusicPlayerVisualizer, &Expand, LineSize);
 
 				const float VisualizerHeight = VisualizerTargetHeight * s_MusicPlayerVisualizerPhase;
@@ -4566,7 +4664,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					g_Config.m_BcMusicPlayerVisualizerMode = std::clamp(g_Config.m_BcMusicPlayerVisualizerMode, 0, 1);
 					g_Config.m_BcMusicPlayerVisualizerMode = Ui()->DoDropDown(&ModeDropDown, g_Config.m_BcMusicPlayerVisualizerMode, apMusicPlayerVisualizerModes, (int)std::size(apMusicPlayerVisualizerModes), s_MusicPlayerVisualizerModeState);
 
-					CUIRect SliderRow, SliderLabel, SliderButton;
 					VisualizerExpand.HSplitTop(VisualizerSliderHeight, &SliderRow, &VisualizerExpand);
 					SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
 					Ui()->DoLabel(&SliderLabel, BCLocalize("Visualizer sensitivity"), 14.0f, TEXTALIGN_ML);
@@ -4576,6 +4673,26 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
 					Ui()->DoLabel(&SliderLabel, BCLocalize("Visualizer smoothing"), 14.0f, TEXTALIGN_ML);
 					Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerSmoothing, &g_Config.m_BcMusicPlayerVisualizerSmoothing, &SliderButton, "", 0, 100, &CUi::ms_LinearScrollbarScale, 0u, "%");
+
+					VisualizerExpand.HSplitTop(VisualizerSliderHeight, &SliderRow, &VisualizerExpand);
+					SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
+					Ui()->DoLabel(&SliderLabel, BCLocalize("Visualizer columns"), 14.0f, TEXTALIGN_ML);
+					Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerColumns, &g_Config.m_BcMusicPlayerVisualizerColumns, &SliderButton, "", 2, 12, &CUi::ms_LinearScrollbarScale, 0u);
+
+					VisualizerExpand.HSplitTop(VisualizerSliderHeight, &SliderRow, &VisualizerExpand);
+					SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
+					Ui()->DoLabel(&SliderLabel, BCLocalize("Visualizer column width"), 14.0f, TEXTALIGN_ML);
+					Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerColumnWidth, &g_Config.m_BcMusicPlayerVisualizerColumnWidth, &SliderButton, "", 50, 250, &CUi::ms_LinearScrollbarScale, 0u, "%");
+
+					VisualizerExpand.HSplitTop(VisualizerSliderHeight, &SliderRow, &VisualizerExpand);
+					SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
+					Ui()->DoLabel(&SliderLabel, BCLocalize("Visualizer gap"), 14.0f, TEXTALIGN_ML);
+					Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerGap, &g_Config.m_BcMusicPlayerVisualizerGap, &SliderButton, "", 0, 250, &CUi::ms_LinearScrollbarScale, 0u, "%");
+
+					VisualizerExpand.HSplitTop(VisualizerSliderHeight, &SliderRow, &VisualizerExpand);
+					SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
+					Ui()->DoLabel(&SliderLabel, BCLocalize("Rounding"), 14.0f, TEXTALIGN_ML);
+					Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerRounding, &g_Config.m_BcMusicPlayerVisualizerRounding, &SliderButton, "", 0, 400, &CUi::ms_LinearScrollbarScale, 0u, "%");
 				}
 
 				const float StaticColorHeight = StaticColorTargetHeight * s_MusicPlayerStaticColorPhase;
@@ -5191,8 +5308,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				static CButtonContainer s_FastInputModeFast;
 				static CButtonContainer s_FastInputModeBest;
 				static CButtonContainer s_FastInputModeSaikoPlus;
-				g_Config.m_BcFastInputMode = BcFastInputNormalizedMode(g_Config.m_BcFastInputMode);
 				const int OldMode = g_Config.m_BcFastInputMode;
+				const int UiFastInputMode = g_Config.m_BcFastInputMode == 2 ? 3 : g_Config.m_BcFastInputMode;
 
 				Expand.HSplitTop(LineSize, &Button, &Expand);
 				{
@@ -5208,11 +5325,11 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					BestButton.HMargin(2.0f, &BestButton);
 					SaikoPlusButton.HMargin(2.0f, &SaikoPlusButton);
 
-					if(DoButton_Menu(&s_FastInputModeFast, BCLocalize("Fast input"), g_Config.m_BcFastInputMode == 0, &FastButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
+					if(DoButton_Menu(&s_FastInputModeFast, BCLocalize("Fast input"), UiFastInputMode == 0, &FastButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
 						g_Config.m_BcFastInputMode = 0;
-					if(DoButton_Menu(&s_FastInputModeBest, BCLocalize("Best input"), g_Config.m_BcFastInputMode == 3, &BestButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
+					if(DoButton_Menu(&s_FastInputModeBest, BCLocalize("Best input"), UiFastInputMode == 3, &BestButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
 						g_Config.m_BcFastInputMode = 3;
-					if(DoButton_Menu(&s_FastInputModeSaikoPlus, "Saiko+", g_Config.m_BcFastInputMode == 4, &SaikoPlusButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
+					if(DoButton_Menu(&s_FastInputModeSaikoPlus, "Saiko+", UiFastInputMode == 4, &SaikoPlusButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
 						g_Config.m_BcFastInputMode = 4;
 				}
 
@@ -5273,7 +5390,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					Value = (int)(Min + NewRel * (Max - Min) + 0.5f);
 					*pAmountValue = std::clamp(Value, Min, Max);
 				}
-				else
+				else if(g_Config.m_BcFastInputMode == 2 || g_Config.m_BcFastInputMode == 3)
 				{
 					const CGameClient::SBestInputSettings BestInputSettings = GameClient()->BestInputSettings();
 					Button.HMargin(2.0f, &Button);
@@ -5407,9 +5524,9 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
 				if(g_Config.m_BcFastInputMode == 0)
 					DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_TcFastInputOthers, BCLocalize("Fast Input others"), &g_Config.m_TcFastInputOthers, &Expand, LineSize);
-				else if(g_Config.m_BcFastInputMode == 3)
+				else if(g_Config.m_BcFastInputMode == 2 || g_Config.m_BcFastInputMode == 3)
 					DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcBestInputOthers, BCLocalize("Best input others"), &g_Config.m_BcBestInputOthers, &Expand, LineSize);
-				else
+				else if(g_Config.m_BcFastInputMode == 4)
 					DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcSaikoPlusOthers, "Saiko+ others", &g_Config.m_BcSaikoPlusOthers, &Expand, LineSize);
 			}
 

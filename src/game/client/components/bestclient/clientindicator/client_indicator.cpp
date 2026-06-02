@@ -2,6 +2,7 @@
 #include "client_indicator.h"
 
 #include "protocol.h"
+#include "../version.h"
 
 #include <base/logger.h>
 #include <base/system.h>
@@ -19,105 +20,109 @@
 
 namespace
 {
-constexpr const char *LOG_SCOPE = "clientindicator-cl";
-constexpr const char *OLD_BC_BROWSER_URL = "http://150.241.70.188:8779/users.json";
-constexpr const char *OLD_BC_TOKEN_URL = "http://150.241.70.188:8779/token.json";
-constexpr const char *NEW_BC_BROWSER_URL = "https://150.241.70.188:8779/users.json";
-constexpr const char *NEW_BC_TOKEN_URL = "https://150.241.70.188:8779/token.json";
-constexpr int PACKET_DUMP_BYTES_PER_LINE = 64;
+	constexpr const char *LOG_SCOPE = "clientindicator-cl";
+	constexpr const char *OLD_BC_BROWSER_URL = "http://150.241.70.188:8779/users.json";
+	constexpr const char *OLD_BC_TOKEN_URL = "http://150.241.70.188:8779/token.json";
+	constexpr const char *NEW_BC_BROWSER_URL = "https://150.241.70.188:8779/users.json";
+	constexpr const char *NEW_BC_TOKEN_URL = "https://150.241.70.188:8779/token.json";
+	constexpr int PACKET_DUMP_BYTES_PER_LINE = 64;
 
-void TrimConfigString(char *pValue, int Size)
-{
-	if(!pValue || Size <= 0)
-		return;
-
-	const int Length = str_length(pValue);
-	int Start = 0;
-	while(Start < Length && str_isspace(pValue[Start]))
-		++Start;
-
-	int End = Length;
-	while(End > Start && str_isspace(pValue[End - 1]))
-		--End;
-
-	if(Start == 0 && End == Length)
-		return;
-
-	const std::string Trimmed(pValue + Start, End - Start);
-	str_copy(pValue, Trimmed.c_str(), Size);
-}
-
-int64_t SlowPacketProcessTicks()
-{
-	return time_freq() / 500; // ~2ms
-}
-
-void NormalizeBestClientIndicatorConfig()
-{
-	TrimConfigString(g_Config.m_BcClientIndicatorServerAddress, sizeof(g_Config.m_BcClientIndicatorServerAddress));
-	TrimConfigString(g_Config.m_BcClientIndicatorBrowserUrl, sizeof(g_Config.m_BcClientIndicatorBrowserUrl));
-	TrimConfigString(g_Config.m_BcClientIndicatorTokenUrl, sizeof(g_Config.m_BcClientIndicatorTokenUrl));
-	TrimConfigString(g_Config.m_BcClientIndicatorSharedToken, sizeof(g_Config.m_BcClientIndicatorSharedToken));
-	TrimConfigString(g_Config.m_BcClientIndicatorSecretKey, sizeof(g_Config.m_BcClientIndicatorSecretKey));
-
-	if(g_Config.m_BcClientIndicatorBrowserUrl[0] == '\0' || str_comp(g_Config.m_BcClientIndicatorBrowserUrl, OLD_BC_BROWSER_URL) == 0)
-		str_copy(g_Config.m_BcClientIndicatorBrowserUrl, NEW_BC_BROWSER_URL, sizeof(g_Config.m_BcClientIndicatorBrowserUrl));
-	if(g_Config.m_BcClientIndicatorTokenUrl[0] == '\0' || str_comp(g_Config.m_BcClientIndicatorTokenUrl, OLD_BC_TOKEN_URL) == 0)
-		str_copy(g_Config.m_BcClientIndicatorTokenUrl, NEW_BC_TOKEN_URL, sizeof(g_Config.m_BcClientIndicatorTokenUrl));
-}
-
-bool IsBlockedIndicatorAddress(const NETADDR &Addr)
-{
-	return net_addr_is_local(&Addr);
-}
-
-const char *PacketTypeName(int PacketType)
-{
-	switch(PacketType)
+	void TrimConfigString(char *pValue, int Size)
 	{
-	case BestClientIndicator::PACKET_JOIN:
-		return "join";
-	case BestClientIndicator::PACKET_HEARTBEAT:
-		return "heartbeat";
-	case BestClientIndicator::PACKET_LEAVE:
-		return "leave";
-	case BestClientIndicator::PACKET_PEER_STATE:
-		return "peer_state";
-	case BestClientIndicator::PACKET_PEER_REMOVE:
-		return "peer_remove";
-	case BestClientIndicator::PACKET_PEER_LIST:
-		return "peer_list";
-	case BestClientIndicator::PACKET_DEV_AUTH:
-		return "dev_auth";
-	case BestClientIndicator::PACKET_PEER_DEV_STATE:
-		return "peer_dev_state";
-	case BestClientIndicator::PACKET_PEER_DEV_LIST:
-		return "peer_dev_list";
-	case BestClientIndicator::PACKET_DEV_AUTH_RESULT:
-		return "dev_auth_result";
-	default:
-		return "unknown";
+		if(!pValue || Size <= 0)
+			return;
+
+		const int Length = str_length(pValue);
+		int Start = 0;
+		while(Start < Length && str_isspace(pValue[Start]))
+			++Start;
+
+		int End = Length;
+		while(End > Start && str_isspace(pValue[End - 1]))
+			--End;
+
+		if(Start == 0 && End == Length)
+			return;
+
+		const std::string Trimmed(pValue + Start, End - Start);
+		str_copy(pValue, Trimmed.c_str(), Size);
 	}
-}
 
-void DumpUdpPacketBytes(const char *pDirection, const NETADDR &Addr, const void *pData, int DataSize)
-{
-	if(!pDirection || !pData || DataSize <= 0)
-		return;
-
-	char aAddr[NETADDR_MAXSTRSIZE];
-	net_addr_str(&Addr, aAddr, sizeof(aAddr), true);
-	log_info(LOG_SCOPE, "%s udp packet bytes=%d addr=%s", pDirection, DataSize, aAddr);
-
-	const auto *pBytes = static_cast<const uint8_t *>(pData);
-	for(int Offset = 0; Offset < DataSize; Offset += PACKET_DUMP_BYTES_PER_LINE)
+	int64_t SlowPacketProcessTicks()
 	{
-		const int ChunkSize = minimum(PACKET_DUMP_BYTES_PER_LINE, DataSize - Offset);
-		char aHex[PACKET_DUMP_BYTES_PER_LINE * 2 + 1];
-		str_hex(aHex, sizeof(aHex), pBytes + Offset, ChunkSize);
-		log_info(LOG_SCOPE, "%s udp dump offset=%d size=%d hex=%s", pDirection, Offset, ChunkSize, aHex);
+		return time_freq() / 500; // ~2ms
 	}
-}
+
+	void NormalizeBestClientIndicatorConfig()
+	{
+		TrimConfigString(g_Config.m_BcClientIndicatorServerAddress, sizeof(g_Config.m_BcClientIndicatorServerAddress));
+		TrimConfigString(g_Config.m_BcClientIndicatorBrowserUrl, sizeof(g_Config.m_BcClientIndicatorBrowserUrl));
+		TrimConfigString(g_Config.m_BcClientIndicatorTokenUrl, sizeof(g_Config.m_BcClientIndicatorTokenUrl));
+		TrimConfigString(g_Config.m_BcClientIndicatorSharedToken, sizeof(g_Config.m_BcClientIndicatorSharedToken));
+		TrimConfigString(g_Config.m_BcClientIndicatorSecretKey, sizeof(g_Config.m_BcClientIndicatorSecretKey));
+
+		if(g_Config.m_BcClientIndicatorBrowserUrl[0] == '\0' || str_comp(g_Config.m_BcClientIndicatorBrowserUrl, OLD_BC_BROWSER_URL) == 0)
+			str_copy(g_Config.m_BcClientIndicatorBrowserUrl, NEW_BC_BROWSER_URL, sizeof(g_Config.m_BcClientIndicatorBrowserUrl));
+		if(g_Config.m_BcClientIndicatorTokenUrl[0] == '\0' || str_comp(g_Config.m_BcClientIndicatorTokenUrl, OLD_BC_TOKEN_URL) == 0)
+			str_copy(g_Config.m_BcClientIndicatorTokenUrl, NEW_BC_TOKEN_URL, sizeof(g_Config.m_BcClientIndicatorTokenUrl));
+	}
+
+	bool IsBlockedIndicatorAddress(const NETADDR &Addr)
+	{
+		return net_addr_is_local(&Addr);
+	}
+
+	const char *PacketTypeName(int PacketType)
+	{
+		switch(PacketType)
+		{
+		case BestClientIndicator::PACKET_JOIN:
+			return "join";
+		case BestClientIndicator::PACKET_HEARTBEAT:
+			return "heartbeat";
+		case BestClientIndicator::PACKET_LEAVE:
+			return "leave";
+		case BestClientIndicator::PACKET_PEER_STATE:
+			return "peer_state";
+		case BestClientIndicator::PACKET_PEER_REMOVE:
+			return "peer_remove";
+		case BestClientIndicator::PACKET_PEER_LIST:
+			return "peer_list";
+		case BestClientIndicator::PACKET_DEV_AUTH:
+			return "dev_auth";
+		case BestClientIndicator::PACKET_PEER_DEV_STATE:
+			return "peer_dev_state";
+		case BestClientIndicator::PACKET_PEER_DEV_LIST:
+			return "peer_dev_list";
+		case BestClientIndicator::PACKET_DEV_AUTH_RESULT:
+			return "dev_auth_result";
+		case BestClientIndicator::PACKET_VERSION_ANNOUNCE:
+			return "version_announce";
+		case BestClientIndicator::PACKET_PEER_VERSION_STATE:
+			return "peer_version_state";
+		default:
+			return "unknown";
+		}
+	}
+
+	void DumpUdpPacketBytes(const char *pDirection, const NETADDR &Addr, const void *pData, int DataSize)
+	{
+		if(!pDirection || !pData || DataSize <= 0)
+			return;
+
+		char aAddr[NETADDR_MAXSTRSIZE];
+		net_addr_str(&Addr, aAddr, sizeof(aAddr), true);
+		log_info(LOG_SCOPE, "%s udp packet bytes=%d addr=%s", pDirection, DataSize, aAddr);
+
+		const auto *pBytes = static_cast<const uint8_t *>(pData);
+		for(int Offset = 0; Offset < DataSize; Offset += PACKET_DUMP_BYTES_PER_LINE)
+		{
+			const int ChunkSize = minimum(PACKET_DUMP_BYTES_PER_LINE, DataSize - Offset);
+			char aHex[PACKET_DUMP_BYTES_PER_LINE * 2 + 1];
+			str_hex(aHex, sizeof(aHex), pBytes + Offset, ChunkSize);
+			log_info(LOG_SCOPE, "%s udp dump offset=%d size=%d hex=%s", pDirection, Offset, ChunkSize, aHex);
+		}
+	}
 }
 
 CClientIndicator::CClientIndicator()
@@ -241,8 +246,58 @@ bool CClientIndicator::IsPlayerDeveloper(int ClientId) const
 	return false;
 }
 
+bool CClientIndicator::GetPlayerVersionLabel(int ClientId, char *pVersion, int VersionSize) const
+{
+	if(!pVersion || VersionSize <= 0)
+		return false;
+	pVersion[0] = '\0';
+
+	const CGameClient *pGameClient = GameClient();
+	if(pGameClient && pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR))
+		return false;
+
+	if(Client()->State() != IClient::STATE_ONLINE || !g_Config.m_BcClientIndicator)
+		return false;
+
+	for(const int LocalId : GameClient()->m_aLocalIds)
+	{
+		if(LocalId >= 0 && ClientId == LocalId)
+		{
+			str_copy(pVersion, BESTCLIENT_VERSION, VersionSize);
+			return true;
+		}
+	}
+
+	const char *pPlayerName = PlayerNameForClient(ClientId);
+	if(pPlayerName[0] == '\0')
+		return false;
+
+	char aCurrentServerAddress[NETADDR_MAXSTRSIZE];
+	net_addr_str(&Client()->ServerAddress(), aCurrentServerAddress, sizeof(aCurrentServerAddress), true);
+	const auto It = m_ClientVersions.find(ClientId);
+	if(It != m_ClientVersions.end() && !It->second.empty())
+	{
+		str_copy(pVersion, It->second.c_str(), VersionSize);
+		return true;
+	}
+	if(m_BrowserCache.GetPlayerVersion(aCurrentServerAddress, pPlayerName, pVersion, VersionSize))
+		return true;
+
+	if(IsPlayerBestClient(ClientId))
+	{
+		str_copy(pVersion, "under", VersionSize);
+		return true;
+	}
+
+	return false;
+}
+
 void CClientIndicator::RefreshBrowserCache(bool Force)
 {
+#if defined(CONF_HEADLESS_CLIENT)
+	(void)Force;
+	return;
+#endif
 	if(g_Config.m_BcClientIndicator == 0)
 		return;
 	NormalizeBestClientIndicatorConfig();
@@ -276,6 +331,10 @@ void CClientIndicator::RefreshBrowserCache(bool Force)
 
 void CClientIndicator::RefreshToken(bool Force)
 {
+#if defined(CONF_HEADLESS_CLIENT)
+	(void)Force;
+	return;
+#endif
 	if(g_Config.m_BcClientIndicator == 0)
 		return;
 	NormalizeBestClientIndicatorConfig();
@@ -634,6 +693,38 @@ void CClientIndicator::SendDevAuthPacket(int ClientId)
 		ClientId, PlayerNameForClient(ClientId), CurrentGameServerAddress(), aServerAddr, (int)vPacket.size(), Sent);
 }
 
+void CClientIndicator::SendVersionPacket(int ClientId)
+{
+	if(!m_Socket || !m_HasServerAddr)
+		return;
+
+	const char *pSharedToken = EffectiveSharedToken();
+	if(pSharedToken[0] == '\0' || BESTCLIENT_VERSION[0] == '\0')
+		return;
+
+	std::vector<uint8_t> vPacket;
+	vPacket.reserve(256);
+	BestClientIndicator::WriteHeader(vPacket, BestClientIndicator::PACKET_VERSION_ANNOUNCE);
+	BestClientIndicator::WriteUuid(vPacket, m_ClientInstanceId);
+	CUuid Nonce = RandomUuid();
+	BestClientIndicator::WriteUuid(vPacket, Nonce);
+	BestClientIndicator::WriteU64(vPacket, (uint64_t)time_timestamp());
+	BestClientIndicator::WriteString(vPacket, CurrentGameServerAddress());
+	BestClientIndicator::WriteString(vPacket, PlayerNameForClient(ClientId));
+	BestClientIndicator::WriteS16(vPacket, (int16_t)ClientId);
+	BestClientIndicator::WriteString(vPacket, BESTCLIENT_VERSION);
+	BestClientIndicator::AppendProof(vPacket, pSharedToken);
+
+	if(g_Config.m_DbgClientIndicator >= 2)
+		DumpUdpPacketBytes("sent", m_ServerAddr, vPacket.data(), (int)vPacket.size());
+
+	const int Sent = net_udp_send(m_Socket, &m_ServerAddr, vPacket.data(), (int)vPacket.size());
+	char aServerAddr[NETADDR_MAXSTRSIZE];
+	net_addr_str(&m_ServerAddr, aServerAddr, sizeof(aServerAddr), true);
+	DebugLogF("sent %s packet client_id=%d version='%s' player='%s' game_server=%s indicator_server=%s bytes=%d result=%d",
+		PacketTypeName(BestClientIndicator::PACKET_VERSION_ANNOUNCE), ClientId, BESTCLIENT_VERSION, PlayerNameForClient(ClientId), CurrentGameServerAddress(), aServerAddr, (int)vPacket.size(), Sent);
+}
+
 void CClientIndicator::SendLeaveForAll()
 {
 	if(!m_Socket || !m_HasServerAddr)
@@ -697,7 +788,10 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 		{
 			DebugLogF("received peer_state client_id=%d player='%s' server=%s", PeerState.m_ClientId, PeerState.m_PlayerName.c_str(), PeerState.m_ServerAddress.c_str());
 			if(PeerState.m_ServerAddress == m_PresenceCache.ServerAddress())
+			{
 				m_PresenceCache.SetPresent(PeerState.m_ClientId, true);
+				SchedulePresenceBrowserRefresh();
+			}
 			continue;
 		}
 
@@ -708,6 +802,8 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 			{
 				m_PresenceCache.SetPresent(PeerState.m_ClientId, false);
 				m_DeveloperClientIds.erase(PeerState.m_ClientId);
+				m_ClientVersions.erase(PeerState.m_ClientId);
+				SchedulePresenceBrowserRefresh();
 			}
 			continue;
 		}
@@ -718,6 +814,7 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 		{
 			DebugLogF("received peer_list server=%s count=%llu", PeerList.m_ServerAddress.c_str(), (unsigned long long)PeerList.m_vClientIds.size());
 			m_PresenceCache.Replace(PeerList.m_vClientIds);
+			SchedulePresenceBrowserRefresh();
 			continue;
 		}
 
@@ -741,6 +838,15 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 			m_DeveloperClientIds.clear();
 			for(const int ClientId : PeerList.m_vClientIds)
 				m_DeveloperClientIds.insert(ClientId);
+			continue;
+		}
+
+		BestClientIndicator::CPeerVersionState PeerVersionState;
+		if(BestClientIndicator::ReadPeerVersionStatePacket(pRawData, DataSize, PeerVersionState))
+		{
+			DebugLogF("received peer_version_state client_id=%d version='%s' player='%s' server=%s", PeerVersionState.m_ClientId, PeerVersionState.m_ClientVersion.c_str(), PeerVersionState.m_PlayerName.c_str(), PeerVersionState.m_ServerAddress.c_str());
+			if(PeerVersionState.m_ServerAddress == m_PresenceCache.ServerAddress())
+				m_ClientVersions[PeerVersionState.m_ClientId] = PeerVersionState.m_ClientVersion;
 			continue;
 		}
 
@@ -794,6 +900,7 @@ void CClientIndicator::SyncLocalRegistrations(bool Force)
 		if(m_RegisteredClientIds.find(ClientId) == m_RegisteredClientIds.end())
 		{
 			SendPresencePacket(ClientId, BestClientIndicator::PACKET_JOIN);
+			SendVersionPacket(ClientId);
 			SendDevAuthPacket(ClientId);
 			m_RegisteredClientIds.insert(ClientId);
 			m_PresenceCache.SetPresent(ClientId, true);
@@ -865,6 +972,7 @@ void CClientIndicator::UpdatePresence()
 		DebugLogF("presence server changed to game server %s", pCurrentGameServer);
 		m_RegisteredClientIds.clear();
 		m_DeveloperClientIds.clear();
+		m_ClientVersions.clear();
 		m_LastHeartbeatTick = 0;
 		SchedulePresenceBrowserRefresh();
 	}
@@ -880,6 +988,7 @@ void CClientIndicator::UpdatePresence()
 		for(const int ClientId : m_RegisteredClientIds)
 		{
 			SendPresencePacket(ClientId, BestClientIndicator::PACKET_HEARTBEAT);
+			SendVersionPacket(ClientId);
 			if(SendDevAuth)
 				SendDevAuthPacket(ClientId);
 		}
@@ -986,6 +1095,7 @@ void CClientIndicator::ResetPresenceState()
 	m_WasPresenceEnabled = false;
 	m_RegisteredClientIds.clear();
 	m_DeveloperClientIds.clear();
+	m_ClientVersions.clear();
 	m_PresenceCache.Clear();
 	m_aLastGameServerAddr[0] = '\0';
 	m_aLastBlockedGameServerAddr[0] = '\0';
@@ -1020,15 +1130,15 @@ bool CClientIndicator::IsBrowserSnapshotEnabled() const
 {
 	const CGameClient *pGameClient = GameClient();
 	return g_Config.m_BcClientIndicator != 0 &&
-		(!pGameClient || !pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR));
+	       (!pGameClient || !pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR));
 }
 
 bool CClientIndicator::IsPresenceEnabled() const
 {
 	const CGameClient *pGameClient = GameClient();
 	return g_Config.m_BcClientIndicator != 0 &&
-		Client()->State() == IClient::STATE_ONLINE &&
-		(!pGameClient || !pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR));
+	       Client()->State() == IClient::STATE_ONLINE &&
+	       (!pGameClient || !pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR));
 }
 
 const char *CClientIndicator::EffectiveSharedToken() const

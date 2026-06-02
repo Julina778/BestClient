@@ -1,9 +1,9 @@
-﻿#include "tclient.h"
+#include "tclient.h"
 
 #include "data_version.h"
 
-#include <base/math.h>
 #include <base/log.h>
+#include <base/math.h>
 
 #include <engine/client.h>
 #include <engine/client/enums.h>
@@ -106,7 +106,9 @@ void CTClient::OnInit()
 {
 	TextRender()->SetCustomFace(g_Config.m_TcCustomFont);
 	m_pGraphics = Kernel()->RequestInterface<IEngineGraphics>();
+#if !defined(CONF_HEADLESS_CLIENT)
 	FetchTClientInfo();
+#endif
 
 	char aError[512] = "";
 	if(!Storage()->FileExists("tclient/gui_logo.png", IStorage::TYPE_ALL))

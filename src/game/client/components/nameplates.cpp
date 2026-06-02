@@ -73,6 +73,9 @@ public:
 	float m_FontSizeJumps;
 	
 	bool m_IsUserDeveloperIndicator;
+	bool m_ShowBClientVersion;
+	float m_FontSizeBClientVersion;
+	char m_aBClientVersion[32];
 };
 
 // Part Types
@@ -875,6 +878,38 @@ public:
 	}
 };
 
+class CNamePlatePartBClientVersion : public CNamePlatePartText
+{
+private:
+	float m_FontSize = -INFINITY;
+	char m_aVersion[32] = "";
+	char m_aText[40] = "";
+
+protected:
+	bool UpdateNeeded(CGameClient &This, const CNamePlateData &Data) override
+	{
+		m_Visible = Data.m_ShowBClientVersion;
+		if(!m_Visible)
+			return false;
+		m_Color = Data.m_Color;
+		return m_FontSize != Data.m_FontSizeBClientVersion || str_comp(m_aVersion, Data.m_aBClientVersion) != 0;
+	}
+
+	void UpdateText(CGameClient &This, const CNamePlateData &Data) override
+	{
+		m_FontSize = Data.m_FontSizeBClientVersion;
+		str_copy(m_aVersion, Data.m_aBClientVersion, sizeof(m_aVersion));
+		str_format(m_aText, sizeof(m_aText), "[%s]", Data.m_aBClientVersion);
+		CTextCursor Cursor;
+		Cursor.m_FontSize = m_FontSize;
+		This.TextRender()->CreateOrAppendTextContainer(m_TextContainerIndex, &Cursor, m_aText);
+	}
+
+public:
+	CNamePlatePartBClientVersion(CGameClient &This) :
+		CNamePlatePartText(This) {}
+};
+
 // ***** Name Plates *****
 
 class CNamePlate
@@ -919,6 +954,8 @@ private:
 		AddPart<CNamePlatePartClientId>(This, false);
 		AddPart<CNamePlatePartBClientIndicator>(This);
 		AddPart<CNamePlatePartName>(This);
+		AddPart<CNamePlatePartNewLine>(This);
+		AddPart<CNamePlatePartBClientVersion>(This);
 		AddPart<CNamePlatePartNewLine>(This);
 
 		AddPart<CNamePlatePartClan>(This);
@@ -1303,6 +1340,14 @@ void CNamePlates::RenderNamePlateGame(vec2 Position, const CNetObj_PlayerInfo *p
 	Data.m_JumpsUsed = 0;
 	Data.m_JumpsLeft = 0;
 	Data.m_IsUserDeveloperIndicator = Data.m_ShowBClientIndicator && GameClient()->m_ClientIndicator.IsPlayerDeveloper(pPlayerInfo->m_ClientId);
+	Data.m_ShowBClientVersion = false;
+	Data.m_FontSizeBClientVersion = 0.0f;
+	Data.m_aBClientVersion[0] = '\0';
+	if(g_Config.m_IndicatorVersion && Data.m_IsUserBClientIndicator)
+	{
+		Data.m_ShowBClientVersion = GameClient()->m_ClientIndicator.GetPlayerVersionLabel(pPlayerInfo->m_ClientId, Data.m_aBClientVersion, sizeof(Data.m_aBClientVersion));
+		Data.m_FontSizeBClientVersion = maximum(10.0f, Data.m_FontSize * 0.75f);
+	}
 
 	const bool Following = (GameClient()->m_Snap.m_SpecInfo.m_Active && !GameClient()->m_MultiViewActivated && GameClient()->m_Snap.m_SpecInfo.m_SpectatorId != SPEC_FREEVIEW);
 	const CGameClient::CSnapState::CCharacterInfo &Other = GameClient()->m_Snap.m_aCharacters[pPlayerInfo->m_ClientId];
@@ -1436,6 +1481,19 @@ void CNamePlates::RenderNamePlatePreview(vec2 Position, int Dummy)
 					(HasPreviewClient ? GameClient()->m_ClientIndicator.IsPlayerBClient(PreviewDisplayClientId) : true);
 	Data.m_IsUserDeveloperIndicator = Data.m_ShowBClientIndicator &&
 					  HasPreviewClient && GameClient()->m_ClientIndicator.IsPlayerDeveloper(PreviewDisplayClientId);
+	Data.m_ShowBClientVersion = false;
+	Data.m_FontSizeBClientVersion = maximum(10.0f, FontSize * 0.75f);
+	Data.m_aBClientVersion[0] = '\0';
+	if(g_Config.m_IndicatorVersion && Data.m_IsUserBClientIndicator)
+	{
+		if(HasPreviewClient)
+			Data.m_ShowBClientVersion = GameClient()->m_ClientIndicator.GetPlayerVersionLabel(PreviewDisplayClientId, Data.m_aBClientVersion, sizeof(Data.m_aBClientVersion));
+		else
+		{
+			Data.m_ShowBClientVersion = true;
+			str_copy(Data.m_aBClientVersion, "under", sizeof(Data.m_aBClientVersion));
+		}
+	}
 
 	Data.m_FontSizeHookStrongWeak = FontSizeHookStrongWeak;
 	Data.m_HookStrongWeakId = Data.m_ClientId;

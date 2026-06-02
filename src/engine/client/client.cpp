@@ -446,9 +446,30 @@ int CClient::SendMsgActive(CMsgPacker *pMsg, int Flags)
 
 void CClient::SendBClientInfo(int Conn)
 {
-	CMsgPacker Msg(NETMSG_IAMBESTCLIENT, true);
-	Msg.AddString(BESTCLIENT_VERSION " built on " __DATE__ ", " __TIME__);
-	SendMsg(Conn, &Msg, MSGFLAG_VITAL);
+	int64_t ExeSize = -1;
+	if(IOHANDLE CurrentExe = io_current_exe())
+	{
+		ExeSize = io_length(CurrentExe);
+		io_close(CurrentExe);
+	}
+
+	{
+		CMsgPacker Msg(NETMSG_IAMBESTCLIENT, true);
+		Msg.AddString(BESTCLIENT_VERSION " built on " __DATE__ ", " __TIME__);
+		SendMsg(Conn, &Msg, MSGFLAG_VITAL);
+	}
+	{
+		CMsgPacker Msg(NETMSG_IAMTATER, true);
+		Msg.AddString(BESTCLIENT_VERSION " built on " __DATE__ ", " __TIME__);
+		SendMsg(Conn, &Msg, MSGFLAG_VITAL);
+	}
+	{
+		char aBuf[32];
+		str_format(aBuf, sizeof(aBuf), "%" PRId64, ExeSize);
+		CMsgPacker Msg(NETMSG_BESTCLIENT_EXESIZE, true);
+		Msg.AddString(aBuf);
+		SendMsg(Conn, &Msg, MSGFLAG_VITAL);
+	}
 }
 
 void CClient::SendInfo(int Conn)
@@ -3164,6 +3185,7 @@ void CClient::Update()
 				const bool HasFastInput =
 					g_Config.m_TcFastInput &&
 					((BcFastInputNormalizedMode(g_Config.m_BcFastInputMode) == 0 && g_Config.m_TcFastInputAmount > 0) ||
+						(BcFastInputNormalizedMode(g_Config.m_BcFastInputMode) == 1 && g_Config.m_BcFastInputDeltaInput > 0) ||
 						(BcFastInputNormalizedMode(g_Config.m_BcFastInputMode) == 3 && g_Config.m_BcBestInputOffset > 0) ||
 						(BcFastInputNormalizedMode(g_Config.m_BcFastInputMode) == 4 && g_Config.m_BcSaikoPlusAmount > 0));
 				if(HasFastInput && BcFastInputNormalizedMode(g_Config.m_BcFastInputMode) == 4)
@@ -5931,6 +5953,11 @@ int CClient::PredictionMargin() const
 		if(FastInputMode == 0)
 		{
 			FastInputMargin = std::max(0, g_Config.m_TcFastInputAmount);
+		}
+		else if(FastInputMode == 1)
+		{
+			const int DeltaInputAmount = std::max(0, g_Config.m_BcFastInputDeltaInput);
+			FastInputMargin = (DeltaInputAmount + 2) / 5;
 		}
 		else if(FastInputMode == 4)
 		{
