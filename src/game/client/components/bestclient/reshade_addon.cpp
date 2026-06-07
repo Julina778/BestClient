@@ -761,7 +761,7 @@ namespace
 
 	void RefreshPresetPath(reshade::api::effect_runtime *pRuntime, SRuntimeState &State)
 	{
-		char aPresetPath[4096];
+		char aPresetPath[4096] = {0};
 		pRuntime->get_current_preset_path(aPresetPath);
 		State.m_PresetPath = std::filesystem::u8path(aPresetPath);
 	}
@@ -806,7 +806,7 @@ namespace
 
 		SRuntimeState &State = It->second;
 
-		char aPresetPath[4096];
+		char aPresetPath[4096] = {0};
 		pRuntime->get_current_preset_path(aPresetPath);
 		const std::filesystem::path CurrentPresetPath = std::filesystem::u8path(aPresetPath);
 		if(CurrentPresetPath != State.m_PresetPath)
@@ -842,6 +842,10 @@ namespace
 
 		std::filesystem::file_time_type WriteTime;
 		if(!QueryWriteTime(State.m_PresetPath, WriteTime))
+			return;
+
+		// mtime unchanged since the applied preset: skip the full file read + hash.
+		if(State.m_HasAppliedPreset && State.m_HasWriteTime && WriteTime == State.m_LastWriteTime)
 			return;
 
 		size_t PresetHash = 0;

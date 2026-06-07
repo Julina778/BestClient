@@ -37,10 +37,9 @@
 #include "components/bestclient/clientindicator/client_indicator.h"
 #include "components/bestclient/fast_actions.h"
 #include "components/bestclient/fast_practice.h"
+#include "components/bestclient/graffity/graffity.h"
 #include "components/bestclient/hud_editor.h"
-#include "components/bestclient/magic_particles.h"
 #include "components/bestclient/music_player.h"
-#include "components/bestclient/orbit_aura.h"
 #include "components/bestclient/translate.h"
 #include "components/bestclient/voice/voice.h"
 #include "components/binds.h"
@@ -229,8 +228,6 @@ public:
 	CGhost m_Ghost;
 	C3DParticles m_3DParticles;
 	CAfterimage m_Afterimage;
-	CMagicParticles m_MagicParticles;
-	COrbitAura m_OrbitAura;
 	CChatBubbles m_ChatBubbles;
 	CClientIndicator m_ClientIndicator;
 	CMusicPlayer m_MusicPlayer;
@@ -238,6 +235,7 @@ public:
 	CAdminPanel m_AdminPanel;
 	CFastActions m_FastActions;
 	CFastPractice m_FastPractice;
+	CGraffity m_Graffity;
 	CBestClient m_BestClient;
 	CVoiceChat m_VoiceChat;
 

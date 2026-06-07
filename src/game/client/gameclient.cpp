@@ -626,6 +626,7 @@ void CGameClient::OnConsoleInit()
 					      &m_3DParticles,
 					      &m_Translate, // TClient
 					      &m_Ghost,
+					      &m_Graffity,
 					      &m_BestClient, // BestClient binds
 					      &m_TClient, // TClient (Must be before chat and players)
 					      &m_Afterimage,
@@ -637,9 +638,7 @@ void CGameClient::OnConsoleInit()
 					      &m_Outlines, // TClient
 					      &m_Mumble, // TClient
 					      &m_Pet, // TClient
-					      &m_MagicParticles,
-					      &m_OrbitAura,
-					      &m_ChatBubbles,
+							      &m_ChatBubbles,
 					      &m_ClientIndicator,
 					      &m_Particles.m_RenderExplosions,
 					      &m_NamePlates,
@@ -692,10 +691,12 @@ void CGameClient::OnConsoleInit()
 						  &m_Motd, // for pressing esc to remove it
 						  &m_Spectator,
 						  &m_FastActions,
+						  &m_Graffity,
 						  &m_BindWheel, // TClient
 						  &m_Emoticon,
 						  &m_ImportantAlert,
 						  &m_AdminPanel,
+						  &m_BestClient,
 						  &m_Menus,
 						  &m_PieMenu,
 						  &m_Controls,
@@ -1408,6 +1409,8 @@ void CGameClient::OnRender()
 	// render all systems
 	for(auto &pComponent : m_vpAll)
 	{
+		if(pComponent == &m_MusicPlayer)
+			m_Graffity.RenderOverlayWorld();
 		if(UseGameNoHudAspect && !HudAspectDisabled && pComponent == &m_MusicPlayer)
 		{
 			Graphics()->SetScreenAspectOverrideEnabled(false);

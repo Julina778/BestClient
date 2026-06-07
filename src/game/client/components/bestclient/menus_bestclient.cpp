@@ -64,6 +64,15 @@ static bool IsBestClientTabFlagSet(int32_t Flags, int Tab)
 	return (Flags & (1 << Tab)) != 0;
 }
 
+static int MusicPlayerVisualizerRoundingPreset(int RoundingPercent)
+{
+	if(RoundingPercent < 100)
+		return 0;
+	if(RoundingPercent < 300)
+		return 1;
+	return 2;
+}
+
 [[maybe_unused]] static void RenderSettingsBestClientReShadeUnsupported(CUi *pUi, CUIRect MainView)
 {
 	CUIRect Content, Line;
@@ -153,6 +162,8 @@ struct SBestClientReShadeUiCache
 	time_t m_SettingsModifiedTime = 0;
 	bool m_HasEffectIndex = false;
 	bool m_HasTechniqueIndex = false;
+	int64_t m_EffectIndexRetryTime = 0;
+	int64_t m_TechniqueIndexRetryTime = 0;
 	bool m_HasPresetCache = false;
 	SBestClientReShadePresetState m_PresetState;
 	std::string m_StatusText;
@@ -163,6 +174,14 @@ static const std::vector<SBestClientReShadeUniformMeta> &BestClientGetReShadeUni
 static std::unordered_set<std::string> BestClientBuildTrackedReShadeEffectSet(const SBestClientReShadePresetState &PresetState);
 
 static SBestClientReShadeUiCache gs_BestClientReShadeUiCache;
+
+static bool gs_ReShadeEffectsMuted = false;
+static bool gs_ReShadeTogglePending = false;
+
+void BestClientTriggerReShadeToggle()
+{
+	gs_ReShadeTogglePending = true;
+}
 
 static std::string BestClientTrimString(std::string Text)
 {
@@ -914,6 +933,38 @@ static bool BestClientSaveReShadeBridgeState(IStorage *pStorage, const SBestClie
 	return true;
 }
 
+static uint64_t gs_ReShadeToggleRevision = 0;
+
+void BestClientProcessReShadeToggle(IStorage *pStorage)
+{
+	if(!gs_ReShadeTogglePending)
+		return;
+	gs_ReShadeTogglePending = false;
+
+	SBestClientReShadePresetState PresetState;
+	char aError[192];
+	if(!BestClientLoadReShadePreset(pStorage, PresetState, aError, sizeof(aError)))
+		return;
+
+	if(!gs_ReShadeEffectsMuted)
+	{
+		PresetState.m_EnabledTokens.clear();
+		gs_ReShadeEffectsMuted = true;
+	}
+	else
+	{
+		for(const std::string &Token : PresetState.m_vTechniqueSorting)
+			PresetState.m_EnabledTokens.insert(Token);
+		gs_ReShadeEffectsMuted = false;
+	}
+
+	BestClientSaveReShadePreset(pStorage, PresetState, aError, sizeof(aError));
+	BestClientSaveReShadeSettings(pStorage, PresetState, aError, sizeof(aError));
+	BestClientSaveReShadeBridgeState(pStorage, PresetState, ++gs_ReShadeToggleRevision, aError, sizeof(aError));
+
+	gs_BestClientReShadeUiCache.m_HasPresetCache = false;
+}
+
 static std::string BestClientBuildTechniqueToken(const std::string &TechniqueName, const std::string &EffectName)
 {
 	if(TechniqueName.empty())
@@ -966,6 +1017,10 @@ static void BestClientBuildReShadeEffectIndex(IStorage *pStorage)
 {
 	if(gs_BestClientReShadeUiCache.m_HasEffectIndex)
 		return;
+	// While the index is empty, retry on a throttle instead of every frame so a
+	// shader folder that becomes ready after startup still gets picked up.
+	if(gs_BestClientReShadeUiCache.m_EffectIndexRetryTime != 0 && time_get() < gs_BestClientReShadeUiCache.m_EffectIndexRetryTime)
+		return;
 
 	gs_BestClientReShadeUiCache.m_EffectPaths.clear();
 
@@ -973,7 +1028,7 @@ static void BestClientBuildReShadeEffectIndex(IStorage *pStorage)
 	pStorage->GetBinaryPathAbsolute(gs_pBestClientReShadeShadersPath, aShadersAbsolutePath, sizeof(aShadersAbsolutePath));
 	if(aShadersAbsolutePath[0] == '\0')
 	{
-		gs_BestClientReShadeUiCache.m_HasEffectIndex = true;
+		gs_BestClientReShadeUiCache.m_EffectIndexRetryTime = time_get() + time_freq() * 2;
 		return;
 	}
 
@@ -992,6 +1047,15 @@ static void BestClientBuildReShadeEffectIndex(IStorage *pStorage)
 			gs_BestClientReShadeUiCache.m_EffectPaths[EffectName] = Path.string();
 	}
 
+	// Only lock the cache once we actually found effects. An empty result means the
+	// folder is missing/not-yet-ready or a transient FS error occurred; retry later.
+	if(gs_BestClientReShadeUiCache.m_EffectPaths.empty())
+	{
+		gs_BestClientReShadeUiCache.m_EffectIndexRetryTime = time_get() + time_freq() * 2;
+		return;
+	}
+
+	gs_BestClientReShadeUiCache.m_EffectIndexRetryTime = 0;
 	gs_BestClientReShadeUiCache.m_HasEffectIndex = true;
 }
 
@@ -1153,6 +1217,8 @@ static void BestClientBuildReShadeTechniqueIndex(IStorage *pStorage)
 {
 	if(gs_BestClientReShadeUiCache.m_HasTechniqueIndex)
 		return;
+	if(gs_BestClientReShadeUiCache.m_TechniqueIndexRetryTime != 0 && time_get() < gs_BestClientReShadeUiCache.m_TechniqueIndexRetryTime)
+		return;
 
 	BestClientBuildReShadeEffectIndex(pStorage);
 	gs_BestClientReShadeUiCache.m_vTechniqueIndex.clear();
@@ -1182,6 +1248,16 @@ static void BestClientBuildReShadeTechniqueIndex(IStorage *pStorage)
 		gs_BestClientReShadeUiCache.m_vTechniqueIndex.insert(gs_BestClientReShadeUiCache.m_vTechniqueIndex.end(), vTechniques.begin(), vTechniques.end());
 	}
 
+	// Don't lock an empty technique list while the effect index is still retrying
+	// (shader folder not ready / transient FS error). Once effects are indexed, an
+	// empty technique list is a real result, so lock it to stop re-parsing.
+	if(gs_BestClientReShadeUiCache.m_vTechniqueIndex.empty() && !gs_BestClientReShadeUiCache.m_HasEffectIndex)
+	{
+		gs_BestClientReShadeUiCache.m_TechniqueIndexRetryTime = time_get() + time_freq() * 2;
+		return;
+	}
+
+	gs_BestClientReShadeUiCache.m_TechniqueIndexRetryTime = 0;
 	gs_BestClientReShadeUiCache.m_HasTechniqueIndex = true;
 }
 
@@ -1769,7 +1845,7 @@ static void RenderSettingsBestClientReShadeTab(CMenus *pMenus, IStorage *pStorag
 	MainView.VSplitMid(&LeftColumn, &RightColumn, MarginLarge);
 
 	CUIRect ControlsPanel, AvailablePanel;
-	LeftColumn.HSplitTop(122.0f, &ControlsPanel, &LeftColumn);
+	LeftColumn.HSplitTop(148.0f, &ControlsPanel, &LeftColumn);
 	LeftColumn.HSplitTop(MarginMedium, nullptr, &LeftColumn);
 	AvailablePanel = LeftColumn;
 
@@ -1810,7 +1886,7 @@ static void RenderSettingsBestClientReShadeTab(CMenus *pMenus, IStorage *pStorag
 		Inner.VMargin(10.0f, &Inner);
 		Inner.HMargin(10.0f, &Inner);
 
-		CUIRect TitleRow, RuntimeRow, AutoAcceptRow, FilterRow;
+		CUIRect TitleRow, RuntimeRow, AutoAcceptRow, FilterRow, BindRow;
 		Inner.HSplitTop(HeaderLineSize, &TitleRow, &Inner);
 		Inner.HSplitTop(MarginSmall, nullptr, &Inner);
 		Inner.HSplitTop(ControlsLineSize, &RuntimeRow, &Inner);
@@ -1818,11 +1894,27 @@ static void RenderSettingsBestClientReShadeTab(CMenus *pMenus, IStorage *pStorag
 		Inner.HSplitTop(ControlsLineSize, &AutoAcceptRow, &Inner);
 		Inner.HSplitTop(MarginSmall, nullptr, &Inner);
 		Inner.HSplitTop(ControlsLineSize, &FilterRow, &Inner);
+		Inner.HSplitTop(MarginSmall, nullptr, &Inner);
+		Inner.HSplitTop(ControlsLineSize, &BindRow, &Inner);
 
-		pUi->DoLabel(&TitleRow, BCLocalize("ReShade controls"), 18.0f, TEXTALIGN_ML);
+		{
+			CUIRect TitleLabel, BadgeSlot, Badge;
+			TitleRow.VSplitLeft(pTextRender->TextWidth(18.0f, BCLocalize("Live-Shaders controls")) + 8.0f, &TitleLabel, &BadgeSlot);
+			pUi->DoLabel(&TitleLabel, BCLocalize("Live-Shaders controls"), 18.0f, TEXTALIGN_ML);
+			BadgeSlot.VSplitLeft(52.0f, &BadgeSlot, nullptr);
+			BadgeSlot.HMargin(1.5f, &Badge);
+			pGraphics->DrawRect4(
+				Badge.x, Badge.y, Badge.w, Badge.h,
+				ColorRGBA(0.85f, 0.15f, 0.15f, 1.0f),
+				ColorRGBA(0.65f, 0.05f, 0.05f, 1.0f),
+				ColorRGBA(0.85f, 0.15f, 0.15f, 1.0f),
+				ColorRGBA(0.65f, 0.05f, 0.05f, 1.0f),
+				IGraphics::CORNER_ALL, 5.0f);
+			pUi->DoLabel(&Badge, "BETA", 11.0f, TEXTALIGN_MC);
+		}
 
 		int RuntimeValue = ReShadeConfiguredEnabled ? 1 : 0;
-		if(pMenus->DoButton_CheckBox(&s_RuntimeEnabledToggle, BCLocalize("Enable ReShade on startup (restart required)"), RuntimeValue, &RuntimeRow))
+		if(pMenus->DoButton_CheckBox(&s_RuntimeEnabledToggle, BCLocalize("Enable Live-Shaders on startup (restart required)"), RuntimeValue, &RuntimeRow))
 		{
 			char aRestartError[256];
 			if(!BestClientSaveReShadeRuntimeSetting(pMenus->MenuGameClient()->ConfigManager(), !ReShadeConfiguredEnabled, aRestartError, sizeof(aRestartError)))
@@ -1832,19 +1924,50 @@ static void RenderSettingsBestClientReShadeTab(CMenus *pMenus, IStorage *pStorag
 			}
 			else
 			{
-				gs_BestClientReShadeUiCache.m_StatusText = BCLocalize("Saved ReShade startup state. Restart the game to apply it.");
+				gs_BestClientReShadeUiCache.m_StatusText = BCLocalize("Saved Live-Shaders startup state. Restart the game to apply it.");
 				gs_BestClientReShadeUiCache.m_StatusIsError = false;
 			}
 		}
 
 		pMenus->DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcReshadeAutoAccept, BCLocalize("Auto accept"), &g_Config.m_BcReshadeAutoAccept, &AutoAcceptRow, ControlsLineSize);
 		pMenus->DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcReshadeShowOnlyEnabled, BCLocalize("Show only enabled on the right"), &g_Config.m_BcReshadeShowOnlyEnabled, &FilterRow, ControlsLineSize);
+
+		{
+			static CButtonContainer s_ToggleBindReaderButton;
+			static CButtonContainer s_ToggleBindClearButton;
+			const float BindLabelWidth = 120.0f;
+			CUIRect BindLabel, BindReader;
+			BindRow.VSplitLeft(BindLabelWidth, &BindLabel, &BindRow);
+			BindRow.VSplitLeft(MarginSmall, nullptr, &BindRow);
+			BindRow.VSplitLeft(minimum(120.0f, BindRow.w), &BindReader, &BindRow);
+
+			pUi->DoLabel(&BindLabel, BCLocalize("Toggle effects bind"), 13.0f, TEXTALIGN_ML);
+
+			const CBindSlot ToggleBind = [&]() -> CBindSlot {
+				for(int Mod = KeyModifier::NONE; Mod < KeyModifier::COMBINATION_COUNT; Mod++)
+					for(int Key = KEY_FIRST; Key < KEY_LAST; Key++)
+						if(str_comp(pMenus->MenuGameClient()->m_Binds.Get(Key, Mod), "BC_reshade_toggle_effects") == 0)
+							return CBindSlot(Key, Mod);
+				return EMPTY_BIND_SLOT;
+			}();
+
+			const CKeyBinder::CKeyReaderResult BindResult = pMenus->MenuGameClient()->m_KeyBinder.DoKeyReader(
+				&s_ToggleBindReaderButton, &s_ToggleBindClearButton, &BindReader, ToggleBind, false);
+
+			if(BindResult.m_Bind != ToggleBind && !BindResult.m_Aborted)
+			{
+				if(ToggleBind != EMPTY_BIND_SLOT)
+					pMenus->MenuGameClient()->m_Binds.Bind(ToggleBind.m_Key, "", false, ToggleBind.m_ModifierMask);
+				if(BindResult.m_Bind != EMPTY_BIND_SLOT)
+					pMenus->MenuGameClient()->m_Binds.Bind(BindResult.m_Bind.m_Key, "BC_reshade_toggle_effects", false, BindResult.m_Bind.m_ModifierMask);
+			}
+		}
 	}
 
 	if(!HasReShadeRuntimeFiles)
 	{
-		DrawPanelMessage(AvailablePanel, BCLocalize("ReShade runtime files are missing"), BCLocalize("This build does not contain the bundled ReShade64 runtime files. Repack the client with ReShade64.dll and ReShade64.json."), true);
-		DrawPanelMessage(RightColumn, BCLocalize("Added effects"), BCLocalize("The ReShade tab will stay unavailable until the portable ReShade runtime files are present next to the game executable."), false);
+		DrawPanelMessage(AvailablePanel, BCLocalize("Live-Shaders runtime files are missing"), BCLocalize("This build does not contain the bundled ReShade64 runtime files. Repack the client with ReShade64.dll and ReShade64.json."), true);
+		DrawPanelMessage(RightColumn, BCLocalize("Added effects"), BCLocalize("The Live-Shaders tab will stay unavailable until the portable ReShade runtime files are present next to the game executable."), false);
 		if(NeedReShadeRestart)
 			RenderRestartWarning(RestartBar);
 		return;
@@ -1852,8 +1975,8 @@ static void RenderSettingsBestClientReShadeTab(CMenus *pMenus, IStorage *pStorag
 
 	if(!ReShadeRuntimeEnabled)
 	{
-		DrawPanelMessage(AvailablePanel, BCLocalize("ReShade is disabled"), BCLocalize("Enable ReShade with the checkbox above and restart the game. Until then this tab stays inactive."), false);
-		DrawPanelMessage(RightColumn, BCLocalize("Added effects"), BCLocalize("To manage shaders here, first enable ReShade above and restart the game."), false);
+		DrawPanelMessage(AvailablePanel, BCLocalize("Live-Shaders is disabled"), BCLocalize("Enable Live-Shaders with the checkbox above and restart the game. Until then this tab stays inactive."), false);
+		DrawPanelMessage(RightColumn, BCLocalize("Added effects"), BCLocalize("To manage shaders here, first enable Live-Shaders above and restart the game."), false);
 		if(NeedReShadeRestart)
 			RenderRestartWarning(RestartBar);
 		return;
@@ -1861,7 +1984,7 @@ static void RenderSettingsBestClientReShadeTab(CMenus *pMenus, IStorage *pStorag
 
 	if(!IsVulkanBackend)
 	{
-		DrawPanelMessage(AvailablePanel, BCLocalize("Vulkan is required"), BCLocalize("Switch the graphics backend to Vulkan in the client settings and restart the game to use the ReShade tab."), true);
+		DrawPanelMessage(AvailablePanel, BCLocalize("Vulkan is required"), BCLocalize("Switch the graphics backend to Vulkan in the client settings and restart the game to use the Live-Shaders tab."), true);
 		DrawPanelMessage(RightColumn, BCLocalize("Added effects"), BCLocalize("Effect controls are available only when the client is running on the Vulkan renderer."), false);
 		if(NeedReShadeRestart)
 			RenderRestartWarning(RestartBar);
@@ -2720,20 +2843,18 @@ static const SBestClientComponentEntry gs_aBestClientComponentEntries[] = {
 	{CBestClient::COMPONENT_ALESSTYA_WEAPONS_PATH, "Grenade & Laser Path", COMPONENTS_GROUP_ALESSTYA},
 	{CBestClient::COMPONENT_ALESSTYA_TEE_STATS, "Show Tee Stats", COMPONENTS_GROUP_ALESSTYA},
 	{CBestClient::COMPONENT_ALESSTYA_PIE_MENU, "Pie Menu", COMPONENTS_GROUP_ALESSTYA},
-	{CBestClient::COMPONENT_VISUALS_CAMERA_DRIFT, "Camera Drift", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_JELLY_TEE, "Jelly Tee", COMPONENTS_GROUP_VISUALS},
-	{CBestClient::COMPONENT_VISUALS_MAGIC_PARTICLES, "Magic Particles", COMPONENTS_GROUP_VISUALS},
-	{CBestClient::COMPONENT_VISUALS_ORBIT_AURA, "Orbit Aura", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_3D_PARTICLES, "3D Particles", COMPONENTS_GROUP_VISUALS},
-	{CBestClient::COMPONENT_VISUALS_DYNAMIC_FOV, "Dynamic FOV", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_AFTERIMAGE, "Afterimage", COMPONENTS_GROUP_VISUALS},
-	{CBestClient::COMPONENT_VISUALS_CRYSTAL_LASER, "Crystal Laser", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_GRAFFITI, "Graffiti", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_MUSIC_PLAYER, "Music Player", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_KEYSTROKES, "Keystrokes", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_MEDIA_BACKGROUND, "Media Background", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_ANIMATIONS, "Animations", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_ASPECT_RATIO, "Aspect Ratio", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_VISUALS_EYE_COMFORT, "Eye Comfort", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_MOTION_BLUR, "Motion Blur", COMPONENTS_GROUP_VISUALS},
+	{CBestClient::COMPONENT_VISUALS_FLYING_NAMEPLATES, "Flying Nameplates", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_GAMEPLAY_HOOK_COMBO, "Hook Combo", COMPONENTS_GROUP_VISUALS},
 	{CBestClient::COMPONENT_GAMEPLAY_INPUT, "Input", COMPONENTS_GROUP_GAMEPLAY},
 	{CBestClient::COMPONENT_GAMEPLAY_FAST_ACTIONS, "Fast Actions", COMPONENTS_GROUP_GAMEPLAY},
@@ -2800,6 +2921,9 @@ static void ComponentsEditorSetDisabled(int Component, int &MaskLo, int &MaskHi,
 
 void CMenus::RenderSettingsBestClient(CUIRect MainView)
 {
+	MainView.y -= 20.0f;
+	MainView.h += 20.0f;
+
 	enum
 	{
 		BESTCLIENT_TAB_ALESSTYA = 0,
@@ -2807,9 +2931,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
 		BESTCLIENT_TAB_RESHADE,
-		BESTCLIENT_TAB_FUN,
-		BESTCLIENT_TAB_SHOP,
-		BESTCLIENT_TAB_EDITORS,
 		BESTCLIENT_TAB_INFO,
 		NUM_BESTCLIENT_TABS,
 	};
@@ -2819,18 +2940,25 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 	if(m_AssetsEditorState.m_VisualsEditorOpen && m_AssetsEditorState.m_FullscreenOpen)
 	{
-		s_CurTab = BESTCLIENT_TAB_EDITORS;
 		SetBestClientShopVisible(false);
 		RenderAssetsEditorScreen(*Ui()->Screen());
 		return;
 	}
 	if(m_ComponentsEditorState.m_Open && m_ComponentsEditorState.m_FullscreenOpen)
 	{
-		s_CurTab = BESTCLIENT_TAB_EDITORS;
 		SetBestClientShopVisible(false);
 		RenderComponentsEditorScreen(*Ui()->Screen());
 		return;
 	}
+
+	{
+		CUIRect HintBar, Badge;
+		MainView.HSplitTop(18.0f, &HintBar, &MainView);
+		HintBar.VSplitLeft(310.0f, &Badge, nullptr);
+		Badge.HMargin(1.5f, &Badge);
+		Ui()->DoLabel(&Badge, BCLocalize("assets & components editors/fun/shop \xe2\x86\x92 Info"), 14.0f, TEXTALIGN_ML);
+	}
+	MainView.HSplitTop(4.0f, nullptr, &MainView);
 
 	CUIRect TabBar, TabButton;
 	MainView.HSplitTop(24.0f, &TabBar, &MainView);
@@ -2839,10 +2967,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		BCLocalize("Visuals"),
 		BCLocalize("Gameplay"),
 		BCLocalize("Others"),
-		BCLocalize("ReShade"),
-		BCLocalize("Fun"),
-		BCLocalize("Shop"),
-		BCLocalize("Editors"),
+		BCLocalize("Live-Shaders"),
 		BCLocalize("Info"),
 	};
 	const int aTabOrder[NUM_BESTCLIENT_TABS] = {
@@ -2851,9 +2976,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
 		BESTCLIENT_TAB_RESHADE,
-		BESTCLIENT_TAB_EDITORS,
-		BESTCLIENT_TAB_FUN,
-		BESTCLIENT_TAB_SHOP,
 		BESTCLIENT_TAB_INFO,
 	};
 
@@ -2896,11 +3018,13 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		{
 			s_CurTab = Tab;
 		}
+		if(Tab == BESTCLIENT_TAB_INFO)
+			GameClient()->m_Tooltips.DoToolTip(&s_aPageTabs[Tab], &TabButton, BCLocalize("Fun and Shop moved here"));
 		VisibleIndex++;
 	}
 
 	MainView.HSplitTop(10.0f, nullptr, &MainView);
-	SetBestClientShopVisible(s_CurTab == BESTCLIENT_TAB_SHOP);
+	SetBestClientShopVisible(false);
 
 	if(s_CurTab == BESTCLIENT_TAB_ALESSTYA)
 	{
@@ -3445,6 +3569,21 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			return Clicked && CanOpenHudEditor;
 		};
 
+		{
+			CUIRect HudButtonRow;
+			MainView.HSplitTop(24.0f, &HudButtonRow, &MainView);
+			MainView.HSplitTop(MarginSmall, nullptr, &MainView);
+			static CButtonContainer s_HudEditorButton;
+			const bool CanOpen = Client()->State() == IClient::STATE_ONLINE || Client()->State() == IClient::STATE_DEMOPLAYBACK;
+			if(DoButton_MenuTab(&s_HudEditorButton, BCLocalize("HUD editor"), 0, &HudButtonRow, IGraphics::CORNER_ALL, nullptr, nullptr, nullptr, nullptr, 4.0f) && CanOpen)
+			{
+				SetActive(false);
+				GameClient()->m_HudEditor.Activate();
+			}
+			GameClient()->m_Tooltips.DoToolTip(&s_HudEditorButton, &HudButtonRow, CanOpen ? BCLocalize("Open in HUD editor") : BCLocalize("Join a game first"));
+			GameClient()->m_Tooltips.SetFadeTime(&s_HudEditorButton, 0.0f);
+		}
+
 		static CScrollRegion s_BestClientVisualsScrollRegion;
 		vec2 VisualsScrollOffset(0.0f, 0.0f);
 		CScrollRegionParams VisualsScrollParams;
@@ -3456,11 +3595,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		MainView.y += VisualsScrollOffset.y;
 		MainView.VSplitRight(5.0f, &MainView, nullptr);
 		MainView.VSplitLeft(5.0f, nullptr, &MainView);
-
-		const bool IsOnline = Client()->State() == IClient::STATE_ONLINE;
-		const bool IsFngServer = IsOnline && GameClient()->m_GameInfo.m_PredictFNG;
-		const bool Is0xFServer = IsOnline && str_comp_nocase(GameClient()->m_GameInfo.m_aGameType, "0xf") == 0;
-		const bool IsBlockedCameraServer = IsFngServer || Is0xFServer;
 
 		CUIRect LeftView, RightView;
 		MainView.VSplitMid(&LeftView, &RightView, MarginBetweenViews);
@@ -3756,94 +3890,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
 
-		// Orbit aura (left column block)
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_ORBIT_AURA))
-		{
-			static float s_OrbitAuraPhase = 0.0f;
-			static float s_OrbitAuraIdlePhase = 0.0f;
-			static CButtonContainer s_OrbitAuraResetButton;
-			const bool OrbitEnabled = g_Config.m_BcOrbitAura != 0;
-			const bool OrbitIdleEnabled = OrbitEnabled && g_Config.m_BcOrbitAuraIdle != 0;
-			const float Dt = Client()->RenderFrameTime();
-			if(ModuleUiRevealAnimationsEnabled())
-				BCUiAnimations::UpdatePhase(s_OrbitAuraPhase, OrbitEnabled ? 1.0f : 0.0f, Dt, ModuleUiRevealAnimationDuration());
-			else
-				s_OrbitAuraPhase = OrbitEnabled ? 1.0f : 0.0f;
-			if(BCUiAnimations::Enabled())
-				BCUiAnimations::UpdatePhase(s_OrbitAuraIdlePhase, OrbitIdleEnabled ? 1.0f : 0.0f, Dt, 0.16f);
-			else
-				s_OrbitAuraIdlePhase = OrbitIdleEnabled ? 1.0f : 0.0f;
-
-			const float OrbitIdleTargetHeight = 1.0f * LineSize;
-			const float OrbitBaseTargetHeight = 5.0f * LineSize;
-			const float OrbitExtraTargetHeight = OrbitBaseTargetHeight + OrbitIdleTargetHeight * s_OrbitAuraIdlePhase;
-			const float ContentHeight = LineSize + MarginSmall + LineSize + OrbitExtraTargetHeight * s_OrbitAuraPhase;
-			CUIRect Content, Label, Row, Visible;
-			BeginBlock(Column, ContentHeight, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			CUIRect TitleLabel, ResetButton, ResetHitbox;
-			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
-			ResetHitbox = ResetButton;
-			const bool OrbitAuraResetClicked = Ui()->DoButton_FontIcon(&s_OrbitAuraResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
-			GameClient()->m_Tooltips.DoToolTip(&s_OrbitAuraResetButton, &ResetHitbox, BCLocalize("Reset to defaults"));
-			if(OrbitAuraResetClicked)
-			{
-				g_Config.m_BcOrbitAuraRadius = DefaultConfig::BcOrbitAuraRadius;
-				g_Config.m_BcOrbitAuraParticles = DefaultConfig::BcOrbitAuraParticles;
-				g_Config.m_BcOrbitAuraAlpha = DefaultConfig::BcOrbitAuraAlpha;
-				g_Config.m_BcOrbitAuraSpeed = DefaultConfig::BcOrbitAuraSpeed;
-				g_Config.m_BcOrbitAuraIdle = DefaultConfig::BcOrbitAuraIdle;
-				g_Config.m_BcOrbitAuraIdleTimer = DefaultConfig::BcOrbitAuraIdleTimer;
-			}
-			Ui()->DoLabel(&TitleLabel, BCLocalize("Orbit Aura"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcOrbitAura, BCLocalize("Orbit Aura"), &g_Config.m_BcOrbitAura, &Content, LineSize);
-
-			const float OrbitExtraHeight = OrbitExtraTargetHeight * s_OrbitAuraPhase;
-			if(!OrbitAuraResetClicked && OrbitExtraHeight > 0.0f)
-			{
-				Content.HSplitTop(OrbitExtraHeight, &Visible, &Content);
-				Ui()->ClipEnable(&Visible);
-				struct SScopedClip
-				{
-					CUi *m_pUi;
-					~SScopedClip() { m_pUi->ClipDisable(); }
-				} ClipGuard{Ui()};
-
-				CUIRect Expand = {Visible.x, Visible.y, Visible.w, OrbitExtraTargetHeight};
-
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcOrbitAuraIdle, BCLocalize("Enable in idle mode"), &g_Config.m_BcOrbitAuraIdle, &Expand, LineSize);
-
-				const float OrbitIdleHeight = OrbitIdleTargetHeight * s_OrbitAuraIdlePhase;
-				if(OrbitIdleHeight > 0.0f)
-				{
-					CUIRect IdleVisible;
-					Expand.HSplitTop(OrbitIdleHeight, &IdleVisible, &Expand);
-					Ui()->ClipEnable(&IdleVisible);
-					SScopedClip IdleClipGuard{Ui()};
-
-					CUIRect IdleExpand = {IdleVisible.x, IdleVisible.y, IdleVisible.w, OrbitIdleTargetHeight};
-					IdleExpand.HSplitTop(LineSize, &Row, &IdleExpand);
-					Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraIdleTimer, &g_Config.m_BcOrbitAuraIdleTimer, &Row, BCLocalize("Idle delay"), 1, 30);
-				}
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraRadius, &g_Config.m_BcOrbitAuraRadius, &Row, BCLocalize("Aura radius"), 8, 200);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraParticles, &g_Config.m_BcOrbitAuraParticles, &Row, BCLocalize("Particles"), 2, 120);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraAlpha, &g_Config.m_BcOrbitAuraAlpha, &Row, BCLocalize("Aura alpha"), 0, 100);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcOrbitAuraSpeed, &g_Config.m_BcOrbitAuraSpeed, &Row, BCLocalize("Aura speed"), 10, 200);
-			}
-			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-		}
-
 		// Media background (left column block)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MEDIA_BACKGROUND))
 		{
@@ -3989,30 +4035,14 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 			Content.HSplitTop(LineSize, &Label, &Content);
 			const float ResetButtonWidth = LineSize + 8.0f;
-			const float BadgeWidth = 56.0f;
-			const float HeaderSpacing = 4.0f;
-			CUIRect TitleLabel, HeaderRight, BadgeSlot, ResetButton, ResetHitbox, Badge;
-			Label.VSplitRight(BadgeWidth + HeaderSpacing + ResetButtonWidth, &TitleLabel, &HeaderRight);
-			HeaderRight.VSplitLeft(BadgeWidth, &BadgeSlot, &HeaderRight);
-			HeaderRight.VSplitLeft(HeaderSpacing, nullptr, &HeaderRight);
-			ResetButton = HeaderRight;
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(ResetButtonWidth, &TitleLabel, &ResetButton);
 			ResetHitbox = ResetButton;
 			const bool EyeComfortResetClicked = Ui()->DoButton_FontIcon(&s_EyeComfortResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
 			GameClient()->m_Tooltips.DoToolTip(&s_EyeComfortResetButton, &ResetHitbox, BCLocalize("Reset to defaults"));
 			if(EyeComfortResetClicked)
 				g_Config.m_BcEyeComfortStrength = DefaultConfig::BcEyeComfortStrength;
 			Ui()->DoLabel(&TitleLabel, BCLocalize("Eye Comfort"), HeadlineFontSize, TEXTALIGN_ML);
-			BadgeSlot.HMargin(1.5f, &Badge);
-			Badge.x += 4.0f;
-			Badge.w -= 4.0f;
-			Graphics()->DrawRect4(
-				Badge.x, Badge.y, Badge.w, Badge.h,
-				ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f),
-				ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
-				ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f),
-				ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
-				IGraphics::CORNER_ALL, 5.0f);
-			Ui()->DoLabel(&Badge, "NEW", 11.0f, TEXTALIGN_MC);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcEyeComfort, BCLocalize("Enable warm screen filter"), &g_Config.m_BcEyeComfort, &Content, LineSize);
@@ -4034,31 +4064,74 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			}
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-
-		// Sweat Weapon (left column block)
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CRYSTAL_LASER))
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_GRAFFITI))
 		{
-			const float ContentHeight = LineSize + MarginSmall + LineSize + MarginSmall + LineSize + 58.0f + MarginSmall + LineSize + 58.0f;
-			CUIRect Content, Label, PreviewLabel, PreviewRect;
+			static float s_GraffityPhase = 0.0f;
+			const bool GraffityExpanded = g_Config.m_BcGraffityEnabled != 0;
+			UpdateRevealPhase(s_GraffityPhase, GraffityExpanded);
+			const float KeyReaderLineSize = LineSize;
+			const float ExtraTargetHeight = LineSize * 3.0f + KeyReaderLineSize + MarginSmall * 4.0f;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraTargetHeight * s_GraffityPhase;
+			CUIRect Content, Label, Row, Visible;
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, BCLocalize("Sweat Weapon"), HeadlineFontSize, TEXTALIGN_ML);
+			{
+				const float BadgeWidth = 52.0f;
+				const float BadgeSpacing = 4.0f;
+				CUIRect TitleLabel, BadgeNew, BadgeBeta;
+				Label.VSplitLeft(TextRender()->TextWidth(HeadlineFontSize, BCLocalize("Graffiti")) + BadgeSpacing, &TitleLabel, &Label);
+				Label.VSplitLeft(BadgeWidth, &BadgeNew, &Label);
+				Label.VSplitLeft(BadgeSpacing, nullptr, &Label);
+				Label.VSplitLeft(BadgeWidth, &BadgeBeta, &Label);
+				Ui()->DoLabel(&TitleLabel, BCLocalize("Graffiti"), HeadlineFontSize, TEXTALIGN_ML);
+				BadgeNew.HMargin(1.5f, &BadgeNew);
+				Graphics()->DrawRect4(BadgeNew.x, BadgeNew.y, BadgeNew.w, BadgeNew.h,
+					ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f), ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
+					ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f), ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
+					IGraphics::CORNER_ALL, 5.0f);
+				Ui()->DoLabel(&BadgeNew, "NEW", 11.0f, TEXTALIGN_MC);
+				BadgeBeta.HMargin(1.5f, &BadgeBeta);
+				Graphics()->DrawRect4(BadgeBeta.x, BadgeBeta.y, BadgeBeta.w, BadgeBeta.h,
+					ColorRGBA(0.85f, 0.15f, 0.15f, 1.0f), ColorRGBA(0.65f, 0.05f, 0.05f, 1.0f),
+					ColorRGBA(0.85f, 0.15f, 0.15f, 1.0f), ColorRGBA(0.65f, 0.05f, 0.05f, 1.0f),
+					IGraphics::CORNER_ALL, 5.0f);
+				Ui()->DoLabel(&BadgeBeta, "BETA", 11.0f, TEXTALIGN_MC);
+			}
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcCrystalLaser, BCLocalize("Enable"), &g_Config.m_BcCrystalLaser, &Content, LineSize);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcGraffityEnabled, BCLocalize("Enable graffiti"), &g_Config.m_BcGraffityEnabled, &Content, LineSize);
 
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-			Content.HSplitTop(LineSize, &PreviewLabel, &Content);
-			Ui()->DoLabel(&PreviewLabel, BCLocalize("Crystal Laser"), 14.0f, TEXTALIGN_ML);
-			Content.HSplitTop(58.0f, &PreviewRect, &Content);
-			DoLaserPreview(&PreviewRect, ColorHSLA(g_Config.m_ClLaserRifleOutlineColor), ColorHSLA(g_Config.m_ClLaserRifleInnerColor), LASERTYPE_RIFLE);
+			if(ExtraTargetHeight * s_GraffityPhase > 0.0f)
+			{
+				Content.HSplitTop(ExtraTargetHeight * s_GraffityPhase, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClip
+				{
+					CUi *m_pUi;
+					~SScopedClip() { m_pUi->ClipDisable(); }
+				} ClipGuard{Ui()};
 
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-			Content.HSplitTop(LineSize, &PreviewLabel, &Content);
-			Ui()->DoLabel(&PreviewLabel, BCLocalize("Sand Shotgun"), 14.0f, TEXTALIGN_ML);
-			Content.HSplitTop(58.0f, &PreviewRect, &Content);
-			DoLaserPreview(&PreviewRect, ColorHSLA(g_Config.m_ClLaserShotgunOutlineColor), ColorHSLA(g_Config.m_ClLaserShotgunInnerColor), LASERTYPE_SHOTGUN);
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExtraTargetHeight};
+
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcGraffitySize, &g_Config.m_BcGraffitySize, &Row, BCLocalize("Graffiti size"), 1, 6);
+
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				Expand.HSplitTop(LineSize, &Row, &Expand);
+				Ui()->DoScrollbarOption(&g_Config.m_BcGraffitySoundVolume, &g_Config.m_BcGraffitySoundVolume, &Row, BCLocalize("Graffiti spray volume"), 0, 200, &CUi::ms_LogarithmicScrollbarScale, 0u, "%");
+
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcGraffityHoldWheel, BCLocalize("Hold key for graffiti wheel"), &g_Config.m_BcGraffityHoldWheel, &Expand, LineSize);
+
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				Expand.HSplitTop(KeyReaderLineSize, &Label, &Expand);
+				static CButtonContainer s_GraffityReaderButton;
+				static CButtonContainer s_GraffityClearButton;
+				DoLine_KeyReader(Label, s_GraffityReaderButton, s_GraffityClearButton, BCLocalize("Graffiti wheel key"), "+graffity");
+			}
+
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
 
@@ -4159,6 +4232,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
 
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_FLYING_NAMEPLATES))
 		{
 			static CButtonContainer s_FlyingNamePlatesResetButton;
 			const bool ShowFlyingNamePlateSettings = g_Config.m_BcFlyingNamePlates != 0;
@@ -4170,13 +4244,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 			Content.HSplitTop(LineSize, &Label, &Content);
 			const float ResetButtonWidth = LineSize + 8.0f;
-			const float BadgeWidth = 56.0f;
-			const float HeaderSpacing = 4.0f;
-			CUIRect TitleLabel, HeaderRight, BadgeSlot, ResetButton, ResetHitbox, Badge;
-			Label.VSplitRight(BadgeWidth + HeaderSpacing + ResetButtonWidth, &TitleLabel, &HeaderRight);
-			HeaderRight.VSplitLeft(BadgeWidth, &BadgeSlot, &HeaderRight);
-			HeaderRight.VSplitLeft(HeaderSpacing, nullptr, &HeaderRight);
-			ResetButton = HeaderRight;
+			CUIRect TitleLabel, ResetButton, ResetHitbox;
+			Label.VSplitRight(ResetButtonWidth, &TitleLabel, &ResetButton);
 			ResetHitbox = ResetButton;
 			const bool FlyingNamePlatesResetClicked = Ui()->DoButton_FontIcon(&s_FlyingNamePlatesResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
 			GameClient()->m_Tooltips.DoToolTip(&s_FlyingNamePlatesResetButton, &ResetHitbox, BCLocalize("Reset to defaults"));
@@ -4187,17 +4256,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				g_Config.m_BcFlyingNamePlatesFollow = DefaultConfig::BcFlyingNamePlatesFollow;
 			}
 			Ui()->DoLabel(&TitleLabel, BCLocalize("Flying Name Plates"), HeadlineFontSize, TEXTALIGN_ML);
-			BadgeSlot.HMargin(1.5f, &Badge);
-			Badge.x += 4.0f;
-			Badge.w -= 4.0f;
-			Graphics()->DrawRect4(
-				Badge.x, Badge.y, Badge.w, Badge.h,
-				ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f),
-				ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
-				ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f),
-				ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
-				IGraphics::CORNER_ALL, 5.0f);
-			Ui()->DoLabel(&Badge, "NEW", 11.0f, TEXTALIGN_MC);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcFlyingNamePlates, BCLocalize("Enable flying name plates"), &g_Config.m_BcFlyingNamePlates, &Content, LineSize);
@@ -4270,86 +4328,12 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
 
-		// Magic particles (left column block)
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MAGIC_PARTICLES))
-		{
-			static float s_MagicParticlesPhase = 0.0f;
-			static CButtonContainer s_MagicParticlesResetButton;
-			const bool MagicParticlesEnabled = g_Config.m_BcMagicParticles != 0;
-			UpdateRevealPhase(s_MagicParticlesPhase, MagicParticlesEnabled);
-			const float ExpandedTargetHeight = 5.0f * LineSize;
-			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedTargetHeight * s_MagicParticlesPhase;
-			CUIRect Content, Label, Row, Visible;
-			BeginBlock(Column, ContentHeight, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			CUIRect TitleLabel, ResetButton, ResetHitbox;
-			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
-			ResetHitbox = ResetButton;
-			const bool MagicParticlesResetClicked = Ui()->DoButton_FontIcon(&s_MagicParticlesResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
-			GameClient()->m_Tooltips.DoToolTip(&s_MagicParticlesResetButton, &ResetHitbox, BCLocalize("Reset to defaults"));
-			if(MagicParticlesResetClicked)
-			{
-				g_Config.m_BcMagicParticlesCount = DefaultConfig::BcMagicParticlesCount;
-				g_Config.m_BcMagicParticlesRadius = DefaultConfig::BcMagicParticlesRadius;
-				g_Config.m_BcMagicParticlesSize = DefaultConfig::BcMagicParticlesSize;
-				g_Config.m_BcMagicParticlesAlphaDelay = DefaultConfig::BcMagicParticlesAlphaDelay;
-				g_Config.m_BcMagicParticlesType = DefaultConfig::BcMagicParticlesType;
-			}
-			Ui()->DoLabel(&TitleLabel, BCLocalize("Magic Particles"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMagicParticles, BCLocalize("Magic Particles"), &g_Config.m_BcMagicParticles, &Content, LineSize);
-
-			const float ExpandedHeight = ExpandedTargetHeight * s_MagicParticlesPhase;
-			if(!MagicParticlesResetClicked && ExpandedHeight > 0.0f)
-			{
-				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
-				Ui()->ClipEnable(&Visible);
-				struct SScopedClip
-				{
-					CUi *m_pUi;
-					~SScopedClip() { m_pUi->ClipDisable(); }
-				} ClipGuard{Ui()};
-
-				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExpandedTargetHeight};
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcMagicParticlesCount, &g_Config.m_BcMagicParticlesCount, &Row, BCLocalize("Particles count"), 1, 100);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcMagicParticlesRadius, &g_Config.m_BcMagicParticlesRadius, &Row, BCLocalize("Radius"), 1, 1000);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcMagicParticlesSize, &g_Config.m_BcMagicParticlesSize, &Row, BCLocalize("Size"), 1, 50);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcMagicParticlesAlphaDelay, &g_Config.m_BcMagicParticlesAlphaDelay, &Row, BCLocalize("Alpha delay"), 1, 100);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				CUIRect TypeLabel, TypeSelect;
-				Row.VSplitLeft(150.0f, &TypeLabel, &TypeSelect);
-				Ui()->DoLabel(&TypeLabel, BCLocalize("Particle type"), 14.0f, TEXTALIGN_ML);
-
-				static CUi::SDropDownState s_MagicParticlesTypeState;
-				static CScrollRegion s_MagicParticlesTypeScrollRegion;
-				s_MagicParticlesTypeState.m_SelectionPopupContext.m_pScrollRegion = &s_MagicParticlesTypeScrollRegion;
-				const char *apMagicParticleTypes[4] = {
-					BCLocalize("Slice"),
-					BCLocalize("Ball"),
-					BCLocalize("Smoke"),
-					BCLocalize("Shell"),
-				};
-				g_Config.m_BcMagicParticlesType = Ui()->DoDropDown(&TypeSelect, g_Config.m_BcMagicParticlesType - 1, apMagicParticleTypes, (int)std::size(apMagicParticleTypes), s_MagicParticlesTypeState) + 1;
-			}
-			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-		}
-
 		const float LeftColumnEndY = Column.y;
 		Column = RightView;
 		Column.HSplitTop(10.0f, nullptr, &Column);
 
 		// Motion blur / frame blend (right column block)
+		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MOTION_BLUR))
 		{
 			static float s_MotionBlurPhase = 0.0f;
 			static CButtonContainer s_MotionBlurResetButton;
@@ -4370,12 +4354,12 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 			Content.HSplitTop(LineSize, &Label, &Content);
 			const float ResetButtonWidth = LineSize + 8.0f;
-			const float BadgeWidth = 56.0f;
-			const float HeaderSpacing = 4.0f;
+			const float BadgeWidth = 52.0f;
+			const float BadgeSpacing = 4.0f;
 			CUIRect TitleLabel, HeaderRight, BadgeSlot, ResetButton, ResetHitbox, Badge;
-			Label.VSplitRight(BadgeWidth + HeaderSpacing + ResetButtonWidth, &TitleLabel, &HeaderRight);
+			Label.VSplitRight(BadgeWidth + BadgeSpacing + ResetButtonWidth, &TitleLabel, &HeaderRight);
 			HeaderRight.VSplitLeft(BadgeWidth, &BadgeSlot, &HeaderRight);
-			HeaderRight.VSplitLeft(HeaderSpacing, nullptr, &HeaderRight);
+			HeaderRight.VSplitLeft(BadgeSpacing, nullptr, &HeaderRight);
 			ResetButton = HeaderRight;
 			ResetHitbox = ResetButton;
 			const bool MotionBlurResetClicked = Ui()->DoButton_FontIcon(&s_MotionBlurResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
@@ -4384,16 +4368,14 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				g_Config.m_BcMotionBlurStrength = DefaultConfig::BcMotionBlurStrength;
 			Ui()->DoLabel(&TitleLabel, BCLocalize("Motion Blur"), HeadlineFontSize, TEXTALIGN_ML);
 			BadgeSlot.HMargin(1.5f, &Badge);
-			Badge.x += 4.0f;
-			Badge.w -= 4.0f;
 			Graphics()->DrawRect4(
 				Badge.x, Badge.y, Badge.w, Badge.h,
-				ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f),
-				ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
-				ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f),
-				ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
+				ColorRGBA(0.85f, 0.15f, 0.15f, 1.0f),
+				ColorRGBA(0.65f, 0.05f, 0.05f, 1.0f),
+				ColorRGBA(0.85f, 0.15f, 0.15f, 1.0f),
+				ColorRGBA(0.65f, 0.05f, 0.05f, 1.0f),
 				IGraphics::CORNER_ALL, 5.0f);
-			Ui()->DoLabel(&Badge, "NEW", 11.0f, TEXTALIGN_MC);
+			Ui()->DoLabel(&Badge, "BETA", 11.0f, TEXTALIGN_MC);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMotionBlur, BCLocalize("Enable motion blur (frame blend)"), &g_Config.m_BcMotionBlur, &Content, LineSize);
@@ -4522,8 +4504,16 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			static CButtonContainer s_MusicPlayerResizeButton;
 			static CButtonContainer s_MusicPlayerResetButton;
 			const bool MusicPlayerEnabled = g_Config.m_BcMusicPlayer != 0;
+			if(MusicPlayerEnabled)
+			{
+				g_Config.m_BcMusicPlayerShowCover = 1;
+				g_Config.m_BcMusicPlayerVisualizer = 1;
+				g_Config.m_BcMusicPlayerAnimationMs = DefaultConfig::BcMusicPlayerAnimationMs;
+				g_Config.m_BcMusicPlayerVisualizerColumnWidth = DefaultConfig::BcMusicPlayerVisualizerColumnWidth;
+				g_Config.m_BcMusicPlayerVisualizerGap = DefaultConfig::BcMusicPlayerVisualizerGap;
+			}
 			const bool StaticColorOn = MusicPlayerEnabled && g_Config.m_BcMusicPlayerColorMode == 0;
-			const bool VisualizerOn = MusicPlayerEnabled && g_Config.m_BcMusicPlayerVisualizer != 0;
+			const bool VisualizerOn = MusicPlayerEnabled;
 			UpdateRevealPhase(s_MusicPlayerPhase, MusicPlayerEnabled);
 			if(BCUiAnimations::Enabled())
 			{
@@ -4538,8 +4528,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 			const float VisualizerSliderHeight = LineSize;
 			const float StaticColorTargetHeight = ColorPickerLineSize + ColorPickerSpacing;
-			const float VisualizerTargetHeight = LineSize * 7.0f;
-			const float ExtraTargetHeight = LineSize * 6.0f + MarginSmall + VisualizerTargetHeight * s_MusicPlayerVisualizerPhase + StaticColorTargetHeight * s_MusicPlayerStaticColorPhase;
+			const float VisualizerTargetHeight = LineSize * 6.0f + MarginSmall;
+			const float ExtraTargetHeight = LineSize * 2.0f + MarginSmall * 2.0f + VisualizerTargetHeight * s_MusicPlayerVisualizerPhase + StaticColorTargetHeight * s_MusicPlayerStaticColorPhase;
 			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraTargetHeight * s_MusicPlayerPhase;
 			CUIRect Content, Label, Row, Visible;
 			BeginBlock(Column, ContentHeight, Content);
@@ -4626,21 +4616,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				g_Config.m_BcMusicPlayerSizeMode = std::clamp(g_Config.m_BcMusicPlayerSizeMode, 0, 1);
 				g_Config.m_BcMusicPlayerSizeMode = Ui()->DoDropDown(&ModeDropDown, g_Config.m_BcMusicPlayerSizeMode, apMusicPlayerSizeModes, (int)std::size(apMusicPlayerSizeModes), s_MusicPlayerSizeModeState);
 
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMusicPlayerShowCover, BCLocalize("Show cover art"), &g_Config.m_BcMusicPlayerShowCover, &Expand, LineSize);
-
-				CUIRect SliderRow, SliderLabel, SliderButton;
-				Expand.HSplitTop(VisualizerSliderHeight, &SliderRow, &Expand);
-				SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
-				Ui()->DoLabel(&SliderLabel, BCLocalize("Text scale"), 14.0f, TEXTALIGN_ML);
-				Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerTextScale, &g_Config.m_BcMusicPlayerTextScale, &SliderButton, "", 70, 150, &CUi::ms_LinearScrollbarScale, 0u, "%");
-
-				Expand.HSplitTop(VisualizerSliderHeight, &SliderRow, &Expand);
-				SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
-				Ui()->DoLabel(&SliderLabel, BCLocalize("Animation duration"), 14.0f, TEXTALIGN_ML);
-				Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerAnimationMs, &g_Config.m_BcMusicPlayerAnimationMs, &SliderButton, "", 50, 1000, &CUi::ms_LinearScrollbarScale, 0u, " ms");
-
-				DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMusicPlayerVisualizer, BCLocalize("Enable visualizer"), &g_Config.m_BcMusicPlayerVisualizer, &Expand, LineSize);
-
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
 				const float VisualizerHeight = VisualizerTargetHeight * s_MusicPlayerVisualizerPhase;
 				if(VisualizerHeight > 0.0f)
 				{
@@ -4652,47 +4628,73 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 					CUIRect VisualizerExpand = {VisualizerVisible.x, VisualizerVisible.y, VisualizerVisible.w, VisualizerTargetHeight};
 					VisualizerExpand.HSplitTop(LineSize, &Row, &VisualizerExpand);
 					Row.VSplitLeft(120.0f, &ModeLabel, &ModeDropDown);
-					Ui()->DoLabel(&ModeLabel, BCLocalize("Visualizer mode"), 14.0f, TEXTALIGN_ML);
+					Ui()->DoLabel(&ModeLabel, BCLocalize("Mode"), 14.0f, TEXTALIGN_ML);
 
 					static CUi::SDropDownState s_MusicPlayerVisualizerModeState;
 					static CScrollRegion s_MusicPlayerVisualizerModeScrollRegion;
 					s_MusicPlayerVisualizerModeState.m_SelectionPopupContext.m_pScrollRegion = &s_MusicPlayerVisualizerModeScrollRegion;
-					const char *apMusicPlayerVisualizerModes[2] = {
+					const char *apMusicPlayerVisualizerModes[3] = {
 						BCLocalize("Bottom"),
 						BCLocalize("Center"),
+						BCLocalize("Up"),
 					};
-					g_Config.m_BcMusicPlayerVisualizerMode = std::clamp(g_Config.m_BcMusicPlayerVisualizerMode, 0, 1);
+					g_Config.m_BcMusicPlayerVisualizerMode = std::clamp(g_Config.m_BcMusicPlayerVisualizerMode, 0, 2);
 					g_Config.m_BcMusicPlayerVisualizerMode = Ui()->DoDropDown(&ModeDropDown, g_Config.m_BcMusicPlayerVisualizerMode, apMusicPlayerVisualizerModes, (int)std::size(apMusicPlayerVisualizerModes), s_MusicPlayerVisualizerModeState);
 
-					VisualizerExpand.HSplitTop(VisualizerSliderHeight, &SliderRow, &VisualizerExpand);
-					SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
-					Ui()->DoLabel(&SliderLabel, BCLocalize("Visualizer sensitivity"), 14.0f, TEXTALIGN_ML);
-					Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerSensitivity, &g_Config.m_BcMusicPlayerVisualizerSensitivity, &SliderButton, "", 50, 300, &CUi::ms_LinearScrollbarScale, 0u, "%");
+					VisualizerExpand.HSplitTop(MarginSmall, nullptr, &VisualizerExpand);
+					CUIRect SliderRow;
+					// Align slider tracks with the dropdowns/buttons above (label takes a fixed 120px)
+					const auto DoMusicPlayerSlider = [&](int *pOption, const CUIRect *pRow, const char *pStr, int Min, int Max, const char *pSuffix) {
+						int Value = std::clamp(*pOption, Min, Max);
+						char aBuf[256];
+						str_format(aBuf, sizeof(aBuf), "%s: %d%s", pStr, Value, pSuffix);
+						CUIRect SliderLabel, ScrollBar;
+						pRow->VSplitLeft(120.0f, &SliderLabel, &ScrollBar);
+						Ui()->DoLabel(&SliderLabel, aBuf, SliderLabel.h * CUi::ms_FontmodHeight * 0.8f, TEXTALIGN_ML);
+						const float Rel = (Value - Min) / (float)(Max - Min);
+						const float NewRel = Ui()->DoScrollbarH(pOption, &ScrollBar, Rel);
+						const int NewValue = std::clamp((int)(Min + NewRel * (Max - Min) + 0.5f), Min, Max);
+						if(NewValue != *pOption)
+							*pOption = NewValue;
+					};
 
 					VisualizerExpand.HSplitTop(VisualizerSliderHeight, &SliderRow, &VisualizerExpand);
-					SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
-					Ui()->DoLabel(&SliderLabel, BCLocalize("Visualizer smoothing"), 14.0f, TEXTALIGN_ML);
-					Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerSmoothing, &g_Config.m_BcMusicPlayerVisualizerSmoothing, &SliderButton, "", 0, 100, &CUi::ms_LinearScrollbarScale, 0u, "%");
+					DoMusicPlayerSlider(&g_Config.m_BcMusicPlayerTextScale, &SliderRow, BCLocalize("Text scale"), 70, 150, "%");
 
 					VisualizerExpand.HSplitTop(VisualizerSliderHeight, &SliderRow, &VisualizerExpand);
-					SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
-					Ui()->DoLabel(&SliderLabel, BCLocalize("Visualizer columns"), 14.0f, TEXTALIGN_ML);
-					Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerColumns, &g_Config.m_BcMusicPlayerVisualizerColumns, &SliderButton, "", 2, 12, &CUi::ms_LinearScrollbarScale, 0u);
+					DoMusicPlayerSlider(&g_Config.m_BcMusicPlayerVisualizerSensitivity, &SliderRow, BCLocalize("Sensitivity"), 50, 300, "%");
 
 					VisualizerExpand.HSplitTop(VisualizerSliderHeight, &SliderRow, &VisualizerExpand);
-					SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
-					Ui()->DoLabel(&SliderLabel, BCLocalize("Visualizer column width"), 14.0f, TEXTALIGN_ML);
-					Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerColumnWidth, &g_Config.m_BcMusicPlayerVisualizerColumnWidth, &SliderButton, "", 50, 250, &CUi::ms_LinearScrollbarScale, 0u, "%");
+					DoMusicPlayerSlider(&g_Config.m_BcMusicPlayerVisualizerSmoothing, &SliderRow, BCLocalize("Smoothing"), 0, 100, "%");
 
 					VisualizerExpand.HSplitTop(VisualizerSliderHeight, &SliderRow, &VisualizerExpand);
-					SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
-					Ui()->DoLabel(&SliderLabel, BCLocalize("Visualizer gap"), 14.0f, TEXTALIGN_ML);
-					Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerGap, &g_Config.m_BcMusicPlayerVisualizerGap, &SliderButton, "", 0, 250, &CUi::ms_LinearScrollbarScale, 0u, "%");
+					DoMusicPlayerSlider(&g_Config.m_BcMusicPlayerVisualizerColumns, &SliderRow, BCLocalize("Columns"), 5, 10, "");
 
 					VisualizerExpand.HSplitTop(VisualizerSliderHeight, &SliderRow, &VisualizerExpand);
+					CUIRect SliderLabel, SliderButton;
 					SliderRow.VSplitLeft(120.0f, &SliderLabel, &SliderButton);
 					Ui()->DoLabel(&SliderLabel, BCLocalize("Rounding"), 14.0f, TEXTALIGN_ML);
-					Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerRounding, &g_Config.m_BcMusicPlayerVisualizerRounding, &SliderButton, "", 0, 400, &CUi::ms_LinearScrollbarScale, 0u, "%");
+					static CButtonContainer s_MusicPlayerVisualizerRoundingCube;
+					static CButtonContainer s_MusicPlayerVisualizerRoundingSoft;
+					static CButtonContainer s_MusicPlayerVisualizerRoundingPill;
+					const int VisualizerRoundingPreset = MusicPlayerVisualizerRoundingPreset(g_Config.m_BcMusicPlayerVisualizerRounding);
+					CUIRect CubeButton, SoftButton, PillButton, Rest;
+					const float Spacing = 2.0f;
+					const float ButtonWidth = (SliderButton.w - Spacing * 2.0f) / 3.0f;
+					SliderButton.VSplitLeft(ButtonWidth, &CubeButton, &Rest);
+					Rest.VSplitLeft(Spacing, nullptr, &Rest);
+					Rest.VSplitLeft(ButtonWidth, &SoftButton, &Rest);
+					Rest.VSplitLeft(Spacing, nullptr, &Rest);
+					PillButton = Rest;
+					CubeButton.HMargin(2.0f, &CubeButton);
+					SoftButton.HMargin(2.0f, &SoftButton);
+					PillButton.HMargin(2.0f, &PillButton);
+					if(DoButton_Menu(&s_MusicPlayerVisualizerRoundingCube, BCLocalize("Cube"), VisualizerRoundingPreset == 0, &CubeButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
+						g_Config.m_BcMusicPlayerVisualizerRounding = 0;
+					if(DoButton_Menu(&s_MusicPlayerVisualizerRoundingSoft, BCLocalize("Soft"), VisualizerRoundingPreset == 1, &SoftButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
+						g_Config.m_BcMusicPlayerVisualizerRounding = 200;
+					if(DoButton_Menu(&s_MusicPlayerVisualizerRoundingPill, BCLocalize("Pill"), VisualizerRoundingPreset == 2, &PillButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
+						g_Config.m_BcMusicPlayerVisualizerRounding = 400;
 				}
 
 				const float StaticColorHeight = StaticColorTargetHeight * s_MusicPlayerStaticColorPhase;
@@ -4715,8 +4717,14 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_KEYSTROKES))
 		{
 			static CButtonContainer s_KeystrokesResizeButton;
-			const float ContentHeight = MarginSmall * 4.0f + LineSize * 6.0f;
-			CUIRect Content, Label, Button;
+			static float s_KeyboardPhase = 0.0f;
+			static float s_MousePhase = 0.0f;
+			UpdateRevealPhase(s_KeyboardPhase, g_Config.m_BcKeystrokesKeyboard != 0);
+			UpdateRevealPhase(s_MousePhase, g_Config.m_BcKeystrokesMouse != 0);
+			const float KeyboardExpandedHeight = LineSize * s_KeyboardPhase;
+			const float MouseExpandedHeight = (LineSize * 2.0f + MarginSmall) * s_MousePhase;
+			const float ContentHeight = LineSize + MarginSmall + LineSize + KeyboardExpandedHeight + MarginSmall + LineSize + MouseExpandedHeight;
+			CUIRect Content, Label;
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
@@ -4730,205 +4738,91 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcKeystrokesKeyboard, BCLocalize("Show keyboard HUD"), &g_Config.m_BcKeystrokesKeyboard, &Content, LineSize);
 			if(g_Config.m_BcKeystrokesKeyboard && !HudLayout::IsEnabled(HudLayout::MODULE_KEYSTROKES_KEYBOARD))
 				HudLayout::SetEnabled(HudLayout::MODULE_KEYSTROKES_KEYBOARD, true);
-			Content.HSplitTop(LineSize, &Button, &Content);
+			if(KeyboardExpandedHeight > 0.0f)
 			{
-				static CButtonContainer s_KeyboardPresetMinimal;
-				static CButtonContainer s_KeyboardPresetFull;
-				static CButtonContainer s_KeyboardPresetMicro;
-				CUIRect MinimalButton, Rest, FullButton, MicroButton;
-				const float Spacing = 2.0f;
-				const float ButtonWidth = (Button.w - Spacing * 2.0f) / 3.0f;
-				Button.VSplitLeft(ButtonWidth, &MinimalButton, &Rest);
-				Rest.VSplitLeft(Spacing, nullptr, &Rest);
-				Rest.VSplitLeft(ButtonWidth, &FullButton, &Rest);
-				Rest.VSplitLeft(Spacing, nullptr, &Rest);
-				MicroButton = Rest;
-				MinimalButton.HMargin(2.0f, &MinimalButton);
-				FullButton.HMargin(2.0f, &FullButton);
-				MicroButton.HMargin(2.0f, &MicroButton);
-				if(DoButton_Menu(&s_KeyboardPresetMinimal, BCLocalize("Minimal"), g_Config.m_BcKeystrokesKeyboardPreset == 0, &MinimalButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
-					g_Config.m_BcKeystrokesKeyboardPreset = 0;
-				if(DoButton_Menu(&s_KeyboardPresetFull, BCLocalize("Full"), g_Config.m_BcKeystrokesKeyboardPreset == 1, &FullButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
-					g_Config.m_BcKeystrokesKeyboardPreset = 1;
-				if(DoButton_Menu(&s_KeyboardPresetMicro, BCLocalize("Micro"), g_Config.m_BcKeystrokesKeyboardPreset == 2, &MicroButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
-					g_Config.m_BcKeystrokesKeyboardPreset = 2;
+				CUIRect Visible;
+				Content.HSplitTop(KeyboardExpandedHeight, &Visible, &Content);
+				Ui()->ClipEnable(&Visible);
+				struct SScopedClipKb { CUi *m_pUi; ~SScopedClipKb() { m_pUi->ClipDisable(); } } ClipKb{Ui()};
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, LineSize};
+				{
+					static CButtonContainer s_KeyboardPresetMinimal;
+					static CButtonContainer s_KeyboardPresetFull;
+					static CButtonContainer s_KeyboardPresetMicro;
+					CUIRect MinimalButton, Rest, FullButton, MicroButton;
+					const float Spacing = 2.0f;
+					const float ButtonWidth = (Expand.w - Spacing * 2.0f) / 3.0f;
+					Expand.VSplitLeft(ButtonWidth, &MinimalButton, &Rest);
+					Rest.VSplitLeft(Spacing, nullptr, &Rest);
+					Rest.VSplitLeft(ButtonWidth, &FullButton, &Rest);
+					Rest.VSplitLeft(Spacing, nullptr, &Rest);
+					MicroButton = Rest;
+					MinimalButton.HMargin(2.0f, &MinimalButton);
+					FullButton.HMargin(2.0f, &FullButton);
+					MicroButton.HMargin(2.0f, &MicroButton);
+					if(DoButton_Menu(&s_KeyboardPresetMinimal, BCLocalize("Minimal"), g_Config.m_BcKeystrokesKeyboardPreset == 0, &MinimalButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
+						g_Config.m_BcKeystrokesKeyboardPreset = 0;
+					if(DoButton_Menu(&s_KeyboardPresetFull, BCLocalize("Full"), g_Config.m_BcKeystrokesKeyboardPreset == 1, &FullButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
+						g_Config.m_BcKeystrokesKeyboardPreset = 1;
+					if(DoButton_Menu(&s_KeyboardPresetMicro, BCLocalize("Micro"), g_Config.m_BcKeystrokesKeyboardPreset == 2, &MicroButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
+						g_Config.m_BcKeystrokesKeyboardPreset = 2;
+				}
 			}
 
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcKeystrokesMouse, BCLocalize("Show mouse HUD"), &g_Config.m_BcKeystrokesMouse, &Content, LineSize);
 			if(g_Config.m_BcKeystrokesMouse && !HudLayout::IsEnabled(HudLayout::MODULE_KEYSTROKES_MOUSE))
 				HudLayout::SetEnabled(HudLayout::MODULE_KEYSTROKES_MOUSE, true);
-			Content.HSplitTop(LineSize, &Button, &Content);
+			if(MouseExpandedHeight > 0.0f)
 			{
-				static CButtonContainer s_MousePresetDot;
-				static CButtonContainer s_MousePresetArrow;
-				static CButtonContainer s_MousePresetDotDot;
-				CUIRect DotButton, Rest, ArrowButton, DotDotButton;
-				const float Spacing = 2.0f;
-				const float ButtonWidth = (Button.w - Spacing * 2.0f) / 3.0f;
-				Button.VSplitLeft(ButtonWidth, &DotButton, &Rest);
-				Rest.VSplitLeft(Spacing, nullptr, &Rest);
-				Rest.VSplitLeft(ButtonWidth, &ArrowButton, &Rest);
-				Rest.VSplitLeft(Spacing, nullptr, &Rest);
-				DotDotButton = Rest;
-				DotButton.HMargin(2.0f, &DotButton);
-				ArrowButton.HMargin(2.0f, &ArrowButton);
-				DotDotButton.HMargin(2.0f, &DotDotButton);
-				if(DoButton_Menu(&s_MousePresetDot, BCLocalize("Dot"), g_Config.m_BcKeystrokesMousePreset == 0, &DotButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
-					g_Config.m_BcKeystrokesMousePreset = 0;
-				if(DoButton_Menu(&s_MousePresetArrow, BCLocalize("Arrow"), g_Config.m_BcKeystrokesMousePreset == 1, &ArrowButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
-					g_Config.m_BcKeystrokesMousePreset = 1;
-				if(DoButton_Menu(&s_MousePresetDotDot, BCLocalize("Dot Dot"), g_Config.m_BcKeystrokesMousePreset == 2, &DotDotButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
-					g_Config.m_BcKeystrokesMousePreset = 2;
-			}
-
-			Content.HSplitTop(LineSize, &Button, &Content);
-			{
-				static CButtonContainer s_MousePresetDotNoBox;
-				static CButtonContainer s_MousePresetNoMovement;
-				CUIRect Left, Right;
-				Button.VSplitMid(&Left, &Right, 2.0f);
-				Left.HMargin(2.0f, &Left);
-				Right.HMargin(2.0f, &Right);
-				if(DoButton_Menu(&s_MousePresetDotNoBox, BCLocalize("Dot No Box"), g_Config.m_BcKeystrokesMousePreset == 3, &Left, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
-					g_Config.m_BcKeystrokesMousePreset = 3;
-				if(DoButton_Menu(&s_MousePresetNoMovement, BCLocalize("No movement"), g_Config.m_BcKeystrokesMousePreset == 4, &Right, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
-					g_Config.m_BcKeystrokesMousePreset = 4;
-			}
-			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-		}
-
-		// Camera Drift (right column block)
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_CAMERA_DRIFT))
-		{
-			static float s_CameraDriftPhase = 0.0f;
-			static CButtonContainer s_CameraDriftResetButton;
-			const bool CameraDriftEnabled = g_Config.m_BcCameraDrift != 0;
-			UpdateRevealPhase(s_CameraDriftPhase, CameraDriftEnabled);
-			const float ExtraTargetHeight = 3.0f * LineSize;
-			const float BlockedHintHeight = IsBlockedCameraServer ? (MarginSmall + LineSize) : 0.0f;
-			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraTargetHeight * s_CameraDriftPhase + BlockedHintHeight;
-			CUIRect Content, Label, Row, Visible;
-			BeginBlock(Column, ContentHeight, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			CUIRect TitleLabel, ResetButton, ResetHitbox;
-			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
-			ResetHitbox = ResetButton;
-			const bool CameraDriftResetClicked = Ui()->DoButton_FontIcon(&s_CameraDriftResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
-			GameClient()->m_Tooltips.DoToolTip(&s_CameraDriftResetButton, &ResetHitbox, BCLocalize("Reset to defaults"));
-			if(CameraDriftResetClicked)
-			{
-				g_Config.m_BcCameraDriftAmount = DefaultConfig::BcCameraDriftAmount;
-				g_Config.m_BcCameraDriftSmoothness = DefaultConfig::BcCameraDriftSmoothness;
-				g_Config.m_BcCameraDriftReverse = DefaultConfig::BcCameraDriftReverse;
-			}
-			Ui()->DoLabel(&TitleLabel, BCLocalize("Camera Drift"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcCameraDrift, BCLocalize("Camera Drift"), &g_Config.m_BcCameraDrift, &Content, LineSize);
-
-			const float ExtraHeight = ExtraTargetHeight * s_CameraDriftPhase;
-			if(!CameraDriftResetClicked && ExtraHeight > 0.0f)
-			{
-				Content.HSplitTop(ExtraHeight, &Visible, &Content);
+				CUIRect Visible;
+				Content.HSplitTop(MouseExpandedHeight, &Visible, &Content);
 				Ui()->ClipEnable(&Visible);
-				struct SScopedClip
+				struct SScopedClipMs { CUi *m_pUi; ~SScopedClipMs() { m_pUi->ClipDisable(); } } ClipMs{Ui()};
+				CUIRect Expand = {Visible.x, Visible.y, Visible.w, LineSize * 2.0f + MarginSmall};
+				CUIRect Row1, Row2;
+				Expand.HSplitTop(LineSize, &Row1, &Expand);
+				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
+				Expand.HSplitTop(LineSize, &Row2, &Expand);
 				{
-					CUi *m_pUi;
-					~SScopedClip() { m_pUi->ClipDisable(); }
-				} ClipGuard{Ui()};
-
-				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExtraTargetHeight};
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcCameraDriftAmount, &g_Config.m_BcCameraDriftAmount, &Row, BCLocalize("Camera drift amount"), 1, 200);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcCameraDriftSmoothness, &g_Config.m_BcCameraDriftSmoothness, &Row, BCLocalize("Camera drift smoothness"), 1, 20);
-
-				CUIRect DirectionLabel, DirectionButtons, DirectionForward, DirectionBackward;
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Row.VSplitLeft(150.0f, &DirectionLabel, &DirectionButtons);
-				Ui()->DoLabel(&DirectionLabel, BCLocalize("Drift direction"), 14.0f, TEXTALIGN_ML);
-				DirectionButtons.VSplitMid(&DirectionForward, &DirectionBackward, MarginSmall);
-
-				static int s_CameraDriftForwardButton = 0;
-				static int s_CameraDriftBackwardButton = 0;
-				if(DoButton_CheckBox(&s_CameraDriftForwardButton, BCLocalize("Forward"), !g_Config.m_BcCameraDriftReverse, &DirectionForward))
-					g_Config.m_BcCameraDriftReverse = 0;
-				if(DoButton_CheckBox(&s_CameraDriftBackwardButton, BCLocalize("Backward"), g_Config.m_BcCameraDriftReverse, &DirectionBackward))
-					g_Config.m_BcCameraDriftReverse = 1;
-			}
-			if(IsBlockedCameraServer)
-			{
-				Content.HSplitTop(MarginSmall, nullptr, &Content);
-				Content.HSplitTop(LineSize, &Label, &Content);
-				TextRender()->TextColor(1.0f, 0.4f, 0.4f, 1.0f);
-				Ui()->DoLabel(&Label, BCLocalize("Looks like you're on a server where this feature is forbidden"), 14.0f, TEXTALIGN_ML);
-				TextRender()->TextColor(TextRender()->DefaultTextColor());
+					static CButtonContainer s_MousePresetDot;
+					static CButtonContainer s_MousePresetArrow;
+					static CButtonContainer s_MousePresetDotDot;
+					CUIRect DotButton, Rest, ArrowButton, DotDotButton;
+					const float Spacing = 2.0f;
+					const float ButtonWidth = (Row1.w - Spacing * 2.0f) / 3.0f;
+					Row1.VSplitLeft(ButtonWidth, &DotButton, &Rest);
+					Rest.VSplitLeft(Spacing, nullptr, &Rest);
+					Rest.VSplitLeft(ButtonWidth, &ArrowButton, &Rest);
+					Rest.VSplitLeft(Spacing, nullptr, &Rest);
+					DotDotButton = Rest;
+					DotButton.HMargin(2.0f, &DotButton);
+					ArrowButton.HMargin(2.0f, &ArrowButton);
+					DotDotButton.HMargin(2.0f, &DotDotButton);
+					if(DoButton_Menu(&s_MousePresetDot, BCLocalize("Dot"), g_Config.m_BcKeystrokesMousePreset == 0, &DotButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
+						g_Config.m_BcKeystrokesMousePreset = 0;
+					if(DoButton_Menu(&s_MousePresetArrow, BCLocalize("Arrow"), g_Config.m_BcKeystrokesMousePreset == 1, &ArrowButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
+						g_Config.m_BcKeystrokesMousePreset = 1;
+					if(DoButton_Menu(&s_MousePresetDotDot, BCLocalize("Dot Dot"), g_Config.m_BcKeystrokesMousePreset == 2, &DotDotButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
+						g_Config.m_BcKeystrokesMousePreset = 2;
+				}
+				{
+					static CButtonContainer s_MousePresetDotNoBox;
+					static CButtonContainer s_MousePresetNoMovement;
+					CUIRect Left, Right;
+					Row2.VSplitMid(&Left, &Right, 2.0f);
+					Left.HMargin(2.0f, &Left);
+					Right.HMargin(2.0f, &Right);
+					if(DoButton_Menu(&s_MousePresetDotNoBox, BCLocalize("Dot No Box"), g_Config.m_BcKeystrokesMousePreset == 3, &Left, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
+						g_Config.m_BcKeystrokesMousePreset = 3;
+					if(DoButton_Menu(&s_MousePresetNoMovement, BCLocalize("No movement"), g_Config.m_BcKeystrokesMousePreset == 4, &Right, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
+						g_Config.m_BcKeystrokesMousePreset = 4;
+				}
 			}
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
 
 		// Dynamic FOV (right column block)
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_DYNAMIC_FOV))
-		{
-			static float s_DynamicFovPhase = 0.0f;
-			static CButtonContainer s_DynamicFovResetButton;
-			const bool DynamicFovEnabled = g_Config.m_BcDynamicFov != 0;
-			UpdateRevealPhase(s_DynamicFovPhase, DynamicFovEnabled);
-			const float ExtraTargetHeight = 2.0f * LineSize;
-			const float BlockedHintHeight = IsBlockedCameraServer ? (MarginSmall + LineSize) : 0.0f;
-			const float ContentHeight = LineSize + MarginSmall + LineSize + ExtraTargetHeight * s_DynamicFovPhase + BlockedHintHeight;
-			CUIRect Content, Label, Row, Visible;
-			BeginBlock(Column, ContentHeight, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			CUIRect TitleLabel, ResetButton, ResetHitbox;
-			Label.VSplitRight(LineSize + 8.0f, &TitleLabel, &ResetButton);
-			ResetHitbox = ResetButton;
-			const bool DynamicFovResetClicked = Ui()->DoButton_FontIcon(&s_DynamicFovResetButton, FontIcon::ARROW_ROTATE_LEFT, 0, &ResetHitbox, BUTTONFLAG_LEFT);
-			GameClient()->m_Tooltips.DoToolTip(&s_DynamicFovResetButton, &ResetHitbox, BCLocalize("Reset to defaults"));
-			if(DynamicFovResetClicked)
-			{
-				g_Config.m_BcDynamicFovAmount = DefaultConfig::BcDynamicFovAmount;
-				g_Config.m_BcDynamicFovSmoothness = DefaultConfig::BcDynamicFovSmoothness;
-			}
-			Ui()->DoLabel(&TitleLabel, BCLocalize("Dynamic FOV"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcDynamicFov, BCLocalize("Dynamic FOV"), &g_Config.m_BcDynamicFov, &Content, LineSize);
-
-			const float ExtraHeight = ExtraTargetHeight * s_DynamicFovPhase;
-			if(!DynamicFovResetClicked && ExtraHeight > 0.0f)
-			{
-				Content.HSplitTop(ExtraHeight, &Visible, &Content);
-				Ui()->ClipEnable(&Visible);
-				struct SScopedClip
-				{
-					CUi *m_pUi;
-					~SScopedClip() { m_pUi->ClipDisable(); }
-				} ClipGuard{Ui()};
-
-				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExtraTargetHeight};
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcDynamicFovAmount, &g_Config.m_BcDynamicFovAmount, &Row, BCLocalize("Dynamic FOV amount"), 1, 200);
-
-				Expand.HSplitTop(LineSize, &Row, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcDynamicFovSmoothness, &g_Config.m_BcDynamicFovSmoothness, &Row, BCLocalize("Dynamic FOV smoothness"), 1, 100);
-			}
-			if(IsBlockedCameraServer)
-			{
-				Content.HSplitTop(MarginSmall, nullptr, &Content);
-				Content.HSplitTop(LineSize, &Label, &Content);
-				TextRender()->TextColor(1.0f, 0.4f, 0.4f, 1.0f);
-				Ui()->DoLabel(&Label, BCLocalize("Looks like you're on a server where this feature is forbidden"), 14.0f, TEXTALIGN_ML);
-				TextRender()->TextColor(TextRender()->DefaultTextColor());
-			}
-			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-		}
 
 		// Aspect ratio (right column block)
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_ASPECT_RATIO))
@@ -5132,67 +5026,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		ScrollRegion.h = 0.0f;
 		s_BestClientVisualsScrollRegion.AddRect(ScrollRegion);
 		s_BestClientVisualsScrollRegion.End();
-	}
-	else if(s_CurTab == BESTCLIENT_TAB_EDITORS)
-	{
-		const float LineSize = 20.0f;
-
-		if(m_AssetsEditorState.m_VisualsEditorOpen)
-		{
-			RenderAssetsEditorScreen(MainView);
-			return;
-		}
-
-		CUIRect Label, Button;
-		MainView.HSplitTop(24.0f, &Label, &MainView);
-		Ui()->DoLabel(&Label, BCLocalize("Editors"), 20.0f, TEXTALIGN_ML);
-		MainView.HSplitTop(5.0f, nullptr, &MainView);
-
-		MainView.HSplitTop(LineSize, &Label, &MainView);
-		Ui()->DoLabel(&Label, BCLocalize("Create mixed assets or jump to the name plate editor."), 14.0f, TEXTALIGN_ML);
-		MainView.HSplitTop(5.0f, nullptr, &MainView);
-
-		static CButtonContainer s_OpenAssetsEditorButton;
-		MainView.HSplitTop(LineSize + 4.0f, &Button, &MainView);
-		if(DoButton_Menu(&s_OpenAssetsEditorButton, BCLocalize("Assets editor"), 0, &Button))
-		{
-			m_AssetsEditorState.m_VisualsEditorOpen = true;
-			m_AssetsEditorState.m_FullscreenOpen = true;
-			if(!m_AssetsEditorState.m_VisualsEditorInitialized)
-			{
-				AssetsEditorReloadAssets();
-				AssetsEditorResetPartSlots();
-				AssetsEditorEnsureDefaultExportNames();
-				AssetsEditorSyncExportNameFromType();
-				m_AssetsEditorState.m_VisualsEditorInitialized = true;
-			}
-		}
-
-		MainView.HSplitTop(30.0f, nullptr, &MainView);
-		MainView.HSplitTop(LineSize, &Label, &MainView);
-		Ui()->DoLabel(&Label, BCLocalize("Open a dedicated component toggles page."), 14.0f, TEXTALIGN_ML);
-		MainView.HSplitTop(5.0f, nullptr, &MainView);
-
-		static CButtonContainer s_OpenComponentsEditorButton;
-		MainView.HSplitTop(LineSize + 4.0f, &Button, &MainView);
-		if(DoButton_Menu(&s_OpenComponentsEditorButton, BCLocalize("Components editor"), 0, &Button))
-			ComponentsEditorOpen();
-
-		MainView.HSplitTop(30.0f, nullptr, &MainView);
-		MainView.HSplitTop(LineSize, &Label, &MainView);
-		Ui()->DoLabel(&Label, BCLocalize("Edit HUD positions directly above the live game."), 14.0f, TEXTALIGN_ML);
-		MainView.HSplitTop(5.0f, nullptr, &MainView);
-
-		static CButtonContainer s_OpenHudEditorButton;
-		MainView.HSplitTop(LineSize + 4.0f, &Button, &MainView);
-		const bool CanOpenHudEditor = Client()->State() == IClient::STATE_ONLINE || Client()->State() == IClient::STATE_DEMOPLAYBACK;
-		if(DoButton_Menu(&s_OpenHudEditorButton, BCLocalize("HUD editor"), CanOpenHudEditor ? 0 : -1, &Button) && CanOpenHudEditor)
-		{
-			SetActive(false);
-			GameClient()->m_HudEditor.Activate();
-		}
-		GameClient()->m_Tooltips.DoToolTip(&s_OpenHudEditorButton, &Button, CanOpenHudEditor ? BCLocalize("Open in HUD editor") : BCLocalize("Join a game first"));
-		GameClient()->m_Tooltips.SetFadeTime(&s_OpenHudEditorButton, 0.0f);
 	}
 	else if(s_CurTab == BESTCLIENT_TAB_GAMEPLAY)
 	{
@@ -6034,40 +5867,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			}
 		}
 
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_GAMEPLAY_AUTO_TEAM_LOCK))
-		{
-			static float s_AutoTeamLockPhase = 0.0f;
-			const bool AutoTeamLockExpanded = g_Config.m_BcAutoTeamLock != 0;
-			UpdateRevealPhase(s_AutoTeamLockPhase, AutoTeamLockExpanded);
-			const float ExpandedTargetHeight = MarginSmall + LineSize;
-			const float ExpandedHeight = ExpandedTargetHeight * s_AutoTeamLockPhase;
-			const float ContentHeight = LineSize + MarginSmall + LineSize + ExpandedHeight;
-			CUIRect Content, Label, Button, Visible;
-			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-			BeginBlock(Column, ContentHeight, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, BCLocalize("Auto team lock"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcAutoTeamLock, BCLocalize("Lock team automatically after joining"), &g_Config.m_BcAutoTeamLock, &Content, LineSize);
-			if(ExpandedHeight > 0.0f)
-			{
-				Content.HSplitTop(ExpandedHeight, &Visible, &Content);
-				Ui()->ClipEnable(&Visible);
-				struct SScopedClip
-				{
-					CUi *m_pUi;
-					~SScopedClip() { m_pUi->ClipDisable(); }
-				} ClipGuard{Ui()};
-
-				CUIRect Expand = {Visible.x, Visible.y, Visible.w, ExpandedTargetHeight};
-				Expand.HSplitTop(MarginSmall, nullptr, &Expand);
-				Expand.HSplitTop(LineSize, &Button, &Expand);
-				Ui()->DoScrollbarOption(&g_Config.m_BcAutoTeamLockDelay, &g_Config.m_BcAutoTeamLockDelay, &Button, BCLocalize("Delay"), 0, 30, &CUi::ms_LinearScrollbarScale, 0, "s");
-			}
-		}
-
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_FOCUS_MODE))
 		{
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
@@ -6128,10 +5927,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 #else
 		RenderSettingsBestClientReShadeUnsupported(Ui(), MainView);
 #endif
-	}
-	else if(s_CurTab == BESTCLIENT_TAB_FUN)
-	{
-		RenderSettingsBestClientFun(MainView);
 	}
 	else if(s_CurTab == BESTCLIENT_TAB_OTHERS)
 	{
@@ -6204,7 +5999,8 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			const float ColorPickerLineSpacing = 5.0f;
 			const bool ShowRealHitboxEnabled = g_Config.m_BcShowRealHitbox != 0;
 			const float ColorPickerHeight = ShowRealHitboxEnabled ? (ColorPickerLineSize + ColorPickerLineSpacing) : 0.0f;
-			const float ContentHeight = LineSize + MarginSmall + 12.0f * LineSize + ColorPickerHeight;
+			const float AutoLockDelayHeight = g_Config.m_BcAutoTeamLock ? LineSize : 0.0f;
+			const float ContentHeight = LineSize + MarginSmall + 13.0f * LineSize + ColorPickerHeight + AutoLockDelayHeight;
 			CUIRect Content, Label, Row;
 			BeginBlock(Column, ContentHeight, Content);
 
@@ -6220,7 +6016,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcEscPlayerList, BCLocalize("Show ESC players list"), &g_Config.m_BcEscPlayerList, &Content, LineSize);
 			Content.HSplitTop(LineSize, &Row, &Content);
 			{
-				CUIRect CheckBox, LabelRow, LabelText, BadgeSlot, Badge;
+				CUIRect CheckBox, LabelRow;
 				Row.VSplitLeft(Row.h, &CheckBox, &LabelRow);
 				LabelRow.VSplitLeft(5.0f, nullptr, &LabelRow);
 
@@ -6236,20 +6032,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 				}
 
 				TextRender()->SetRenderFlags(0);
-				LabelRow.VSplitRight(40.0f, &LabelText, &BadgeSlot);
-				Ui()->DoLabel(&LabelText, BCLocalize("Show points in tab"), CheckBox.h * CUi::ms_FontmodHeight, TEXTALIGN_ML);
-
-				BadgeSlot.HMargin(3.0f, &Badge);
-				Badge.x += 4.0f;
-				Badge.w -= 4.0f;
-				Graphics()->DrawRect4(
-					Badge.x, Badge.y, Badge.w, Badge.h,
-					ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f),
-					ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
-					ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f),
-					ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
-					IGraphics::CORNER_ALL, 4.0f);
-				Ui()->DoLabel(&Badge, "NEW", 9.5f, TEXTALIGN_MC);
+				Ui()->DoLabel(&LabelRow, BCLocalize("Show points in tab"), CheckBox.h * CUi::ms_FontmodHeight, TEXTALIGN_ML);
 
 				if(Ui()->DoButtonLogic(&g_Config.m_BcShowPointsInTab, g_Config.m_BcShowPointsInTab != 0 ? 1 : 0, &Row, BUTTONFLAG_LEFT, CUi::EButtonSoundType::CHECKBOX))
 					g_Config.m_BcShowPointsInTab ^= 1;
@@ -6262,6 +6045,12 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMastersrv, BCLocalize("Use BestClient MasterServer"), &g_Config.m_BcMastersrv, &Content, LineSize);
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcShowhudDummyCoordIndicator, BCLocalize("Show player below indicator"), &g_Config.m_BcShowhudDummyCoordIndicator, &Content, LineSize);
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcShowRealHitbox, BCLocalize("Show real hitbox"), &g_Config.m_BcShowRealHitbox, &Content, LineSize);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcAutoTeamLock, BCLocalize("Lock team automatically after joining"), &g_Config.m_BcAutoTeamLock, &Content, LineSize);
+			if(g_Config.m_BcAutoTeamLock)
+			{
+				Content.HSplitTop(LineSize, &Row, &Content);
+				Ui()->DoScrollbarOption(&g_Config.m_BcAutoTeamLockDelay, &g_Config.m_BcAutoTeamLockDelay, &Row, BCLocalize("Auto lock delay"), 0, 30, &CUi::ms_LinearScrollbarScale, 0, "s");
+			}
 			Content.HSplitTop(LineSize, &Row, &Content);
 			Ui()->DoScrollbarOption(&g_Config.m_UiScale, &g_Config.m_UiScale, &Row, BCLocalize("UI scale"), 50, 200, &CUi::ms_LinearScrollbarScale, CUi::SCROLLBAR_OPTION_DELAYUPDATE, "%");
 			if(g_Config.m_BcShowRealHitbox)
@@ -6284,20 +6073,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			BeginBlock(Column, ContentHeight, Content);
 
 			Content.HSplitTop(LineSize, &Label, &Content);
-			CUIRect TitleLabel, BadgeSlot, Badge;
-			Label.VSplitRight(56.0f, &TitleLabel, &BadgeSlot);
-			Ui()->DoLabel(&TitleLabel, BCLocalize("Rollback Demo"), HeadlineFontSize, TEXTALIGN_ML);
-			BadgeSlot.HMargin(1.5f, &Badge);
-			Badge.x += 6.0f;
-			Badge.w -= 6.0f;
-			Graphics()->DrawRect4(
-				Badge.x, Badge.y, Badge.w, Badge.h,
-				ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f),
-				ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
-				ColorRGBA(1.00f, 0.76f, 0.16f, 1.0f),
-				ColorRGBA(0.92f, 0.56f, 0.02f, 1.0f),
-				IGraphics::CORNER_ALL, 5.0f);
-			Ui()->DoLabel(&Badge, "NEW", 11.0f, TEXTALIGN_MC);
+			Ui()->DoLabel(&Label, BCLocalize("Rollback Demo"), HeadlineFontSize, TEXTALIGN_ML);
 			Content.HSplitTop(MarginSmall, nullptr, &Content);
 
 			if(DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClReplays, BCLocalize("Enable rollback demo recording"), &g_Config.m_ClReplays, &Content, LineSize))
@@ -6502,10 +6278,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		s_BestClientOthersScrollRegion.AddRect(ScrollRegion);
 		s_BestClientOthersScrollRegion.End();
 	}
-	else if(s_CurTab == BESTCLIENT_TAB_SHOP)
-	{
-		RenderSettingsBestClientShop(MainView);
-	}
 	else if(s_CurTab == BESTCLIENT_TAB_INFO)
 	{
 		RenderSettingsBestClientInfo(MainView);
@@ -6679,12 +6451,12 @@ void CMenus::RenderComponentsEditorScreen(CUIRect MainView)
 
 	CUIRect HeaderText = Header;
 	CUIRect CloseButtonArea, HeaderSpacer;
-	HeaderText.VSplitLeft(14.0f, &CloseButtonArea, &HeaderText);
+	HeaderText.VSplitLeft(18.0f, &CloseButtonArea, &HeaderText);
 	HeaderText.VSplitLeft(6.0f, &HeaderSpacer, &HeaderText);
 	(void)HeaderSpacer;
 
 	CUIRect CloseButton;
-	CloseButtonArea.HMargin(5.0f, &CloseButton);
+	CloseButtonArea.HMargin(3.0f, &CloseButton);
 
 	static CButtonContainer s_CloseButton;
 	if(Ui()->DoButton_FontIcon(&s_CloseButton, FontIcon::XMARK, 0, &CloseButton, IGraphics::CORNER_ALL))
@@ -6798,18 +6570,57 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
 		BESTCLIENT_TAB_RESHADE,
-		BESTCLIENT_TAB_FUN,
-		BESTCLIENT_TAB_SHOP,
-		BESTCLIENT_TAB_EDITORS,
 		BESTCLIENT_TAB_INFO,
 		NUM_BESTCLIENT_TABS,
 	};
+
+	enum
+	{
+		INFO_SUBTAB_FUN = 0,
+		INFO_SUBTAB_SHOP,
+		INFO_SUBTAB_INFO,
+		NUM_INFO_SUBTABS,
+	};
+
+	static int s_CurSubTab = INFO_SUBTAB_INFO;
+	static CButtonContainer s_aSubTabButtons[NUM_INFO_SUBTABS] = {};
 
 	const float LineSize = 20.0f;
 	const float MarginSmall = 5.0f;
 	const float MarginBetweenViews = 30.0f;
 	const float HeadlineFontSize = 20.0f;
 	const float HeadlineHeight = HeadlineFontSize;
+
+	// Sub-tab bar
+	CUIRect SubTabBar, SubTabButton;
+	MainView.HSplitTop(24.0f, &SubTabBar, &MainView);
+	const char *apSubTabNames[NUM_INFO_SUBTABS] = {
+		BCLocalize("Fun"),
+		BCLocalize("Shop"),
+		BCLocalize("Info"),
+	};
+	const float SubTabWidth = SubTabBar.w / (float)NUM_INFO_SUBTABS;
+	for(int i = 0; i < NUM_INFO_SUBTABS; i++)
+	{
+		SubTabBar.VSplitLeft(SubTabWidth, &SubTabButton, &SubTabBar);
+		const int Corners = i == 0 ? IGraphics::CORNER_L : (i == NUM_INFO_SUBTABS - 1 ? IGraphics::CORNER_R : IGraphics::CORNER_NONE);
+		if(DoButton_MenuTab(&s_aSubTabButtons[i], apSubTabNames[i], s_CurSubTab == i, &SubTabButton, Corners, nullptr, nullptr, nullptr, nullptr, 4.0f))
+			s_CurSubTab = i;
+	}
+	MainView.HSplitTop(10.0f, nullptr, &MainView);
+
+	SetBestClientShopVisible(s_CurSubTab == INFO_SUBTAB_SHOP);
+
+	if(s_CurSubTab == INFO_SUBTAB_FUN)
+	{
+		RenderSettingsBestClientFun(MainView);
+		return;
+	}
+	if(s_CurSubTab == INFO_SUBTAB_SHOP)
+	{
+		RenderSettingsBestClientShop(MainView);
+		return;
+	}
 
 	CUIRect LeftView, RightView, Button, Label, LowerLeftView;
 	MainView.HSplitTop(MarginSmall, nullptr, &MainView);
@@ -6894,6 +6705,41 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 	}
 #endif
 
+	LeftView.HSplitTop(MarginSmall, nullptr, &LeftView);
+	LeftView.HSplitTop(HeadlineHeight, &Label, &LeftView);
+	Ui()->DoLabel(&Label, BCLocalize("Editors"), HeadlineFontSize, TEXTALIGN_ML);
+	LeftView.HSplitTop(MarginSmall, nullptr, &LeftView);
+	{
+		const float LSize = 20.0f;
+		CUIRect EditorLabel, EditorButton;
+		LeftView.HSplitTop(LSize, &EditorLabel, &LeftView);
+		Ui()->DoLabel(&EditorLabel, BCLocalize("Create mixed assets or jump to the name plate editor."), 14.0f, TEXTALIGN_ML);
+		LeftView.HSplitTop(5.0f, nullptr, &LeftView);
+		static CButtonContainer s_AssetsEditorButton2;
+		LeftView.HSplitTop(LSize + 4.0f, &EditorButton, &LeftView);
+		if(DoButton_Menu(&s_AssetsEditorButton2, BCLocalize("Assets editor"), 0, &EditorButton))
+		{
+			m_AssetsEditorState.m_VisualsEditorOpen = true;
+			m_AssetsEditorState.m_FullscreenOpen = true;
+			if(!m_AssetsEditorState.m_VisualsEditorInitialized)
+			{
+				AssetsEditorReloadAssets();
+				AssetsEditorResetPartSlots();
+				AssetsEditorEnsureDefaultExportNames();
+				AssetsEditorSyncExportNameFromType();
+				m_AssetsEditorState.m_VisualsEditorInitialized = true;
+			}
+		}
+		LeftView.HSplitTop(MarginSmall, nullptr, &LeftView);
+		LeftView.HSplitTop(LSize, &EditorLabel, &LeftView);
+		Ui()->DoLabel(&EditorLabel, BCLocalize("Open a dedicated component toggles page."), 14.0f, TEXTALIGN_ML);
+		LeftView.HSplitTop(5.0f, nullptr, &LeftView);
+		static CButtonContainer s_ComponentsEditorButton2;
+		LeftView.HSplitTop(LSize + 4.0f, &EditorButton, &LeftView);
+		if(DoButton_Menu(&s_ComponentsEditorButton2, BCLocalize("Components editor"), 0, &EditorButton))
+			ComponentsEditorOpen();
+	}
+
 	LeftView = LowerLeftView;
 	LeftView.HSplitBottom(LineSize * 2.0f + MarginSmall * 2.0f + HeadlineFontSize, nullptr, &LeftView);
 	LeftView.HSplitTop(HeadlineHeight, &Label, &LeftView);
@@ -6974,10 +6820,7 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 		BCLocalize("Visuals"),
 		BCLocalize("Gameplay"),
 		BCLocalize("Others"),
-		BCLocalize("ReShade"),
-		BCLocalize("Fun"),
-		BCLocalize("Shop"),
-		BCLocalize("Editors"),
+		BCLocalize("Live-Shaders"),
 		BCLocalize("Info"),
 	};
 	const int aTabOrder[NUM_BESTCLIENT_TABS] = {
@@ -6986,9 +6829,6 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
 		BESTCLIENT_TAB_RESHADE,
-		BESTCLIENT_TAB_EDITORS,
-		BESTCLIENT_TAB_FUN,
-		BESTCLIENT_TAB_SHOP,
 		BESTCLIENT_TAB_INFO,
 	};
 

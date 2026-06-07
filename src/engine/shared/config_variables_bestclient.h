@@ -7,14 +7,6 @@
 #define MACRO_CONFIG_STR(Name, ScriptName, Len, Def, Flags, Desc) ;
 #endif
 
-// Camera drift
-MACRO_CONFIG_INT(BcCameraDrift, bc_camera_drift, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable smooth camera drift that lags behind player movement")
-MACRO_CONFIG_INT(BcCameraDriftAmount, bc_camera_drift_amount, 50, 1, 200, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Amount of camera drift (1 = minimal drift, 200 = maximum drift)")
-MACRO_CONFIG_INT(BcCameraDriftSmoothness, bc_camera_drift_smoothness, 20, 1, 20, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Smoothness of camera drift (1 = near instant, 20 = very smooth)")
-MACRO_CONFIG_INT(BcCameraDriftReverse, bc_camera_drift_reverse, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Reverse camera drift direction (camera drifts opposite to movement)")
-MACRO_CONFIG_INT(BcDynamicFov, bc_dynamic_fov, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Increase FOV dynamically based on movement speed")
-MACRO_CONFIG_INT(BcDynamicFovAmount, bc_dynamic_fov_amount, 50, 1, 200, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Amount of dynamic FOV boost (1 = minimal boost, 200 = maximum boost)")
-MACRO_CONFIG_INT(BcDynamicFovSmoothness, bc_dynamic_fov_smoothness, 20, 1, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Smoothness of dynamic FOV boost (1 = near instant, 100 = very smooth)")
 MACRO_CONFIG_INT(BcCustomAspectRatioMode, bc_custom_aspect_ratio_mode, -1, -1, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Aspect ratio mode (-1=legacy auto, 0=off, 1=preset, 2=custom)")
 MACRO_CONFIG_INT(BcCustomAspectRatioApplyMode, bc_custom_aspect_ratio_apply_mode, 1, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Aspect ratio apply mode (0=game only, 1=full, 2=game no hud)")
 MACRO_CONFIG_INT(BcCustomAspectRatio, bc_custom_aspect_ratio, 0, 0, 300, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Aspect ratio value x100 (0=off, presets: 125=5:4, 133=4:3, 150=3:2, custom: 100-300)")
@@ -29,7 +21,6 @@ MACRO_CONFIG_INT(BcChatMediaPreviewMaxWidth, bc_chat_media_preview_max_width, 22
 MACRO_CONFIG_INT(BcChatMediaViewer, bc_chat_media_viewer, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable fullscreen media viewer for chat previews")
 MACRO_CONFIG_INT(BcChatMediaViewerMaxZoom, bc_chat_media_viewer_max_zoom, 800, 100, 2000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Maximum zoom of the chat media viewer in percent")
 
-MACRO_CONFIG_INT(BcCrystalLaser, bc_crystal_laser, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Render rifle and shotgun lasers with crystal shards and icy glow")
 MACRO_CONFIG_INT(BcPrevMouseMaxDistance45Degrees, bc_prev_mouse_max_distance_45_degrees, 400, 0, 5000, CFGFLAG_CLIENT | CFGFLAG_SAVE | CFGFLAG_INSENSITIVE, "Previous maximum cursor distance for 45 degrees")
 MACRO_CONFIG_INT(BcPrevInpMousesens45Degrees, bc_prev_inp_mousesens_45_degrees, 200, 1, 1000000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Previous mouse sensitivity for 45 degrees")
 MACRO_CONFIG_INT(BcToggle45Degrees, bc_toggle_45_degrees, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Use toggle mode for 45 degrees bind")
@@ -155,23 +146,23 @@ MACRO_CONFIG_STR(BcAdminFastAction9, bc_admin_fast_action9, 96, "", CFGFLAG_CLIE
 MACRO_CONFIG_INT(BcMusicPlayer, bc_music_player, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable Music Player HUD element")
 MACRO_CONFIG_INT(BcMusicPlayerShowWhenPaused, bc_music_player_show_when_paused, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Keep Music Player visible while playback is paused")
 MACRO_CONFIG_INT(BcMusicPlayerVisualizer, bc_music_player_visualizer, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable music player visualizer")
-MACRO_CONFIG_INT(BcMusicPlayerVisualizerMode, bc_music_player_visualizer_mode, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player visualizer mode (0=bottom, 1=center)")
+MACRO_CONFIG_INT(BcMusicPlayerVisualizerMode, bc_music_player_visualizer_mode, 1, 0, 2, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player visualizer mode (0=bottom, 1=center, 2=up)")
 MACRO_CONFIG_INT(BcMusicPlayerVisualizerSensitivity, bc_music_player_visualizer_sensitivity, 300, 50, 300, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player visualizer sensitivity in percent (higher catches quieter audio)")
 MACRO_CONFIG_INT(BcMusicPlayerVisualizerSmoothing, bc_music_player_visualizer_smoothing, 50, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player visualizer smoothing (0-100)")
-MACRO_CONFIG_INT(BcMusicPlayerVisualizerRounding, bc_music_player_visualizer_rounding, 100, 0, 400, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player visualizer rounding in percent")
-MACRO_CONFIG_INT(BcMusicPlayerVisualizerColumns, bc_music_player_visualizer_columns, 5, 2, 12, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player visualizer bar count")
+MACRO_CONFIG_INT(BcMusicPlayerVisualizerRounding, bc_music_player_visualizer_rounding, 0, 0, 400, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player visualizer rounding in percent")
+MACRO_CONFIG_INT(BcMusicPlayerVisualizerColumns, bc_music_player_visualizer_columns, 5, 5, 10, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player visualizer bar count")
 MACRO_CONFIG_INT(BcMusicPlayerVisualizerColumnWidth, bc_music_player_visualizer_column_width, 100, 50, 250, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player visualizer column width in percent")
 MACRO_CONFIG_INT(BcMusicPlayerVisualizerGap, bc_music_player_visualizer_gap, 100, 0, 250, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player visualizer gap in percent")
 MACRO_CONFIG_INT(BcMusicPlayerColorMode, bc_music_player_color_mode, 3, 0, 3, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player color mode (0=static color, 1=cover accent color, 2=dominant cover color, 3=translucent)")
 MACRO_CONFIG_COL(BcMusicPlayerStaticColor, bc_music_player_static_color, 128, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Static color for the music player when static color mode is selected")
-MACRO_CONFIG_INT(BcMusicPlayerSizeMode, bc_music_player_size_mode, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player size mode (0=normal, 1=mini)")
+MACRO_CONFIG_INT(BcMusicPlayerSizeMode, bc_music_player_size_mode, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player size mode (0=normal, 1=mini)")
 MACRO_CONFIG_INT(BcMusicPlayerTextScale, bc_music_player_text_scale, 100, 70, 150, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player text scale in percent")
 MACRO_CONFIG_INT(BcMusicPlayerAnimationMs, bc_music_player_animation_ms, 180, 50, 1000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Music player animation duration in milliseconds")
 MACRO_CONFIG_INT(BcMusicPlayerShowCover, bc_music_player_show_cover, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show cover art in the music player")
 MACRO_CONFIG_INT(BcMusicPlayerUseColorForHud, bc_music_player_use_color_for_hud, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Use the Music Player color for HUD rectangles in hud.cpp")
 MACRO_CONFIG_INT(BcMusicPlayerHudColorAlpha, bc_music_player_hud_color_alpha, 100, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Alpha multiplier for the Music Player and HUD colors")
 MACRO_CONFIG_INT(BcHudMusicPlayerX, bc_hud_music_player_x, 198, -1000, 1000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "HUD editor X position for music player")
-MACRO_CONFIG_INT(BcHudMusicPlayerY, bc_hud_music_player_y, 2, -1000, 1000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "HUD editor Y position for music player")
+MACRO_CONFIG_INT(BcHudMusicPlayerY, bc_hud_music_player_y, 0, -1000, 1000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "HUD editor Y position for music player")
 MACRO_CONFIG_INT(BcHudMusicPlayerScale, bc_hud_music_player_scale, 100, 25, 300, CFGFLAG_CLIENT | CFGFLAG_SAVE, "HUD editor scale for music player")
 MACRO_CONFIG_INT(BcHudVoiceHudX, bc_hud_voice_hud_x, 4, -1000, 1000, CFGFLAG_CLIENT, "HUD editor X position for voice HUD")
 MACRO_CONFIG_INT(BcHudVoiceHudY, bc_hud_voice_hud_y, 122, -1000, 1000, CFGFLAG_CLIENT, "HUD editor Y position for voice HUD")
@@ -213,6 +204,10 @@ MACRO_CONFIG_STR(BcVoiceChatNameVolumes, bc_voice_chat_name_volumes, 512, "", CF
 
 MACRO_CONFIG_INT(BcMenuSfx, bc_menu_sfx, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable BestClient menu sound effects")
 MACRO_CONFIG_INT(BcMenuSfxVolume, bc_menu_sfx_volume, 70, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "BestClient menu sound effects volume")
+MACRO_CONFIG_INT(BcGraffityEnabled, bc_graffity_enabled, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable graffiti rendering and placement")
+MACRO_CONFIG_INT(BcGraffitySize, bc_graffity_size, 1, 1, 6, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Graffiti size multiplier")
+MACRO_CONFIG_INT(BcGraffitySoundVolume, bc_graffity_sound_volume, 130, 0, 200, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Graffiti spray sound volume")
+MACRO_CONFIG_INT(BcGraffityHoldWheel, bc_graffity_hold_wheel, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Open graffiti wheel only while the key is held")
 
 // Media background
 MACRO_CONFIG_INT(BcMenuMediaBackground, bc_menu_media_background, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable custom media background in offline menus")
@@ -279,24 +274,8 @@ MACRO_CONFIG_STR(BcClientIndicatorBrowserUrl, bc_client_indicator_browser_url, 2
 MACRO_CONFIG_STR(BcClientIndicatorTokenUrl, bc_client_indicator_token_url, 256, "https://150.241.70.188:8779/token.json", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Client indicator token bootstrap URL")
 MACRO_CONFIG_STR(BcClientIndicatorSharedToken, bc_client_indicator_shared_token, 256, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Client indicator shared token for signed UDP packets")
 MACRO_CONFIG_STR(BcClientIndicatorSecretKey, bc_client_indicator_secret_key, 256, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Client indicator developer secret key")
+MACRO_CONFIG_STR(BcGraffityServerAddress, bc_graffity_server_address, 256, "", CFGFLAG_CLIENT | CFGFLAG_SAVE, "Graffity TCP server address override")
 MACRO_CONFIG_INT(BrFilterBestclient, br_filter_bestclient, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Filter out servers with no BestClient users")
-
-// Magic particles
-MACRO_CONFIG_INT(BcMagicParticles, bc_magic_particles, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Toggle magic particles")
-MACRO_CONFIG_INT(BcMagicParticlesRadius, bc_magic_particles_radius, 10, 1, 1000, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Radius of magic particles")
-MACRO_CONFIG_INT(BcMagicParticlesSize, bc_magic_particles_size, 8, 1, 50, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Size of magic particles")
-MACRO_CONFIG_INT(BcMagicParticlesAlphaDelay, bc_magic_particles_alpha_delay, 3, 1, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Alpha delay of magic particles")
-MACRO_CONFIG_INT(BcMagicParticlesType, bc_magic_particles_type, 1, 1, 4, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Type of magic particles. 1 = Slice, 2 = Ball, 3 = Smoke, 4 = Shell")
-MACRO_CONFIG_INT(BcMagicParticlesCount, bc_magic_particles_count, 10, 1, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Count of magic particles")
-
-// Orbit aura
-MACRO_CONFIG_INT(BcOrbitAura, bc_orbit_aura, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Toggle orbit aura around the local player")
-MACRO_CONFIG_INT(BcOrbitAuraRadius, bc_orbit_aura_radius, 32, 8, 200, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Orbit aura radius")
-MACRO_CONFIG_INT(BcOrbitAuraParticles, bc_orbit_aura_particles, 14, 2, 120, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Orbit aura particle count")
-MACRO_CONFIG_INT(BcOrbitAuraAlpha, bc_orbit_aura_alpha, 70, 0, 100, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Orbit aura alpha")
-MACRO_CONFIG_INT(BcOrbitAuraSpeed, bc_orbit_aura_speed, 100, 10, 200, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Orbit aura speed")
-MACRO_CONFIG_INT(BcOrbitAuraIdle, bc_orbit_aura_idle, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Only show orbit aura after standing idle")
-MACRO_CONFIG_INT(BcOrbitAuraIdleTimer, bc_orbit_aura_idle_timer, 2, 1, 30, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Idle delay before orbit aura appears in seconds")
 
 // Optimizer
 MACRO_CONFIG_INT(BcOptimizer, bc_optimizer, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Enable optimizer features")

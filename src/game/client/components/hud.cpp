@@ -1602,6 +1602,7 @@ void CHud::RenderTextInfo()
 
 		int NumInTeam = 0;
 		int NumFrozen = 0;
+		int NumUnfreezing = 0;
 		int LocalTeamID = 0;
 		if(GameClient()->m_Snap.m_LocalClientId >= 0 && GameClient()->m_Snap.m_SpecInfo.m_SpectatorId >= 0)
 		{
@@ -1619,14 +1620,18 @@ void CHud::RenderTextInfo()
 			{
 				NumInTeam++;
 				if(GameClient()->m_aClients[i].m_FreezeEnd > 0 || GameClient()->m_aClients[i].m_DeepFrozen)
+				{
 					NumFrozen++;
+					if(!GameClient()->m_aClients[i].m_RegularPredicted.m_IsInFreeze)
+						NumUnfreezing++;
+				}
 			}
 		}
 
 		// Notify when last
 		if(g_Config.m_TcNotifyWhenLast)
 		{
-			if(NumInTeam > 1 && NumInTeam - NumFrozen == 1)
+			if(NumInTeam > 1 && NumInTeam - NumFrozen == 1 && NumUnfreezing == 0)
 			{
 				TextRender()->TextColor(color_cast<ColorRGBA>(ColorHSLA(g_Config.m_TcNotifyWhenLastColor)));
 				float FontSize = g_Config.m_TcNotifyWhenLastSize;
@@ -1700,6 +1705,9 @@ void CHud::RenderTeambalanceWarning()
 
 void CHud::RenderCursor()
 {
+	if(GameClient()->m_Graffity.IsWheelActive())
+		return;
+
 	const float Scale = (float)g_Config.m_TcCursorScale / 100.0f;
 	if(Scale <= 0.0f)
 		return;
@@ -3278,7 +3286,7 @@ CUIRect CHud::GetLocalTimeRect(bool ForcePreview) const
 	const bool Seconds = g_Config.m_TcShowLocalTimeSeconds; // TClient
 
 	char aTimeStr[16];
-	str_timestamp_format(aTimeStr, sizeof(aTimeStr), Seconds ? "%H:%M.%S" : "%H:%M");
+	str_timestamp_format(aTimeStr, sizeof(aTimeStr), Seconds ? "%H:%M:%S" : "%H:%M");
 	const float FontSize = 5.0f * Scale;
 	const float Padding = 5.0f * Scale;
 	const float Width = std::round(TextRender()->TextBoundingBox(FontSize, aTimeStr).m_W);
@@ -3312,7 +3320,7 @@ void CHud::RenderLocalTime(bool ForcePreview)
 	const bool Seconds = g_Config.m_TcShowLocalTimeSeconds; // TClient
 
 	char aTimeStr[16];
-	str_timestamp_format(aTimeStr, sizeof(aTimeStr), Seconds ? "%H:%M.%S" : "%H:%M");
+	str_timestamp_format(aTimeStr, sizeof(aTimeStr), Seconds ? "%H:%M:%S" : "%H:%M");
 	const float FontSize = 5.0f * Scale;
 	const float Padding = 5.0f * Scale;
 	const float RectX = Rect.x;
@@ -4096,6 +4104,7 @@ void CHud::OnRender()
 		GameClient()->m_VoiceChat.RenderHudTalkingIndicator(m_Width, m_Height);
 		GameClient()->m_BestClient.RenderHookCombo();
 	}
+	GameClient()->m_Graffity.RenderOverlayUi();
 	RenderCursor();
 }
 

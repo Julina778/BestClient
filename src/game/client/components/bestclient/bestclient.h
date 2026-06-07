@@ -44,6 +44,7 @@ class CBestClient : public CComponent
 	static void ConToggleDeepfly(IConsole::IResult *pResult, void *pUserData);
 	static void ConToggleCinematicCamera(IConsole::IResult *pResult, void *pUserData);
 	static void ConSaveRollback(IConsole::IResult *pResult, void *pUserData);
+	static void ConToggleReShadeEffects(IConsole::IResult *pResult, void *pUserData);
 
 	int m_45degreestoggle = 0;
 	int m_45degreestogglelastinput = 0;
@@ -75,15 +76,11 @@ public:
 	enum EBestClientComponent
 	{
 		COMPONENT_VISUALS_MUSIC_PLAYER = 0,
+		COMPONENT_VISUALS_GRAFFITI,
 		COMPONENT_VISUALS_LEGACY_RESERVED_1,
-		COMPONENT_VISUALS_CRYSTAL_LASER,
 		COMPONENT_VISUALS_MEDIA_BACKGROUND,
-		COMPONENT_VISUALS_MAGIC_PARTICLES,
-		COMPONENT_VISUALS_ORBIT_AURA,
 		COMPONENT_VISUALS_OPTIMIZER,
 		COMPONENT_VISUALS_ANIMATIONS,
-		COMPONENT_VISUALS_CAMERA_DRIFT,
-		COMPONENT_VISUALS_DYNAMIC_FOV,
 		COMPONENT_VISUALS_AFTERIMAGE,
 		COMPONENT_VISUALS_FOCUS_MODE,
 		COMPONENT_VISUALS_CHAT_BUBBLES,
@@ -133,6 +130,8 @@ public:
 		COMPONENT_OTHERS_STREAMER,
 		COMPONENT_VISUALS_JELLY_TEE,
 		COMPONENT_VISUALS_PLAYER_TRAIL,
+		COMPONENT_VISUALS_MOTION_BLUR,
+		COMPONENT_VISUALS_FLYING_NAMEPLATES,
 		COMPONENT_VISUALS_KEYSTROKES,
 		COMPONENT_VISUALS_EYE_COMFORT,
 		NUM_COMPONENTS_EDITOR_COMPONENTS,
@@ -145,6 +144,7 @@ public:
 	void OnReset() override;
 	void OnStateChange(int NewState, int OldState) override;
 	void OnRender() override;
+	bool OnInput(const IInput::CEvent &Event) override;
 	void OnConsoleInit() override;
 	bool IsStreamerModeEnabled() const;
 	bool HasStreamerFlag(int Flag) const;

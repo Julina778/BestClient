@@ -1187,6 +1187,13 @@ set(EXPECTED_DATA
   BestClient/fonts/Nunito-Black.ttf
   BestClient/fonts/Rubik-Regular.ttf
   BestClient/fonts/minecraft_font.ttf
+  BestClient/graffity/best_client_graffity.png
+  BestClient/graffity/cats_with_drool_graffity.png
+  BestClient/graffity/ego_graffity.png
+  BestClient/graffity/spray-apply.wv
+  BestClient/graffity/spray-open.wv
+  BestClient/graffity/spray-select.wv
+  BestClient/graffity/spray-sound-from-gta.wv
   BestClient/gui_logo.png
   BestClient/keystrokes/mouse.png
   BestClient/keystrokes/wasd.png
@@ -2809,16 +2816,14 @@ if(CLIENT)
     components/bestclient/fast_actions.h
     components/bestclient/fast_practice.cpp
     components/bestclient/fast_practice.h
+    components/bestclient/graffity/graffity.cpp
+    components/bestclient/graffity/graffity.h
     components/bestclient/hud_editor.cpp
     components/bestclient/hud_editor.h
-    components/bestclient/magic_particles.cpp
-    components/bestclient/magic_particles.h
     components/bestclient/menus_bestclient.cpp
     components/bestclient/menus_bestclient_shop.cpp
     components/bestclient/music_player.cpp
     components/bestclient/music_player.h
-    components/bestclient/orbit_aura.cpp
-    components/bestclient/orbit_aura.h
     components/bestclient/r_jelly.cpp
     components/bestclient/r_jelly.h
     components/bestclient/r_trail.cpp
@@ -3046,6 +3051,9 @@ if(CLIENT)
     auto_map.h
     component.cpp
     component.h
+    duo/duo_protocol.h
+    duo/duo_session.cpp
+    duo/duo_session.h
     editor.cpp
     editor.h
     editor_action.h
