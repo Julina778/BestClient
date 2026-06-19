@@ -369,18 +369,6 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClScoreboardPoints, BCLocalize("Show player points on the scoreboard"), &g_Config.m_ClScoreboardPoints, &Content, LineSize);
 			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
 		}
-		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_ALESSTYA_SCOREBOARD_POINTS))
-		{
-			// Left Side --- Hide Chat Bubbles ---
-			CUIRect Content, Label;
-			BeginBlock(Column, LineSize + MarginSmall + LineSize, Content);
-
-			Content.HSplitTop(LineSize, &Label, &Content);
-			Ui()->DoLabel(&Label, BCLocalize("Hide Chat Bubbles"), HeadlineFontSize, TEXTALIGN_ML);
-			Content.HSplitTop(MarginSmall, nullptr, &Content);
-			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClHideChatBubbles, BCLocalize("Hide chat bubbles while typing"), &g_Config.m_ClHideChatBubbles, &Content, LineSize);
-			Column.HSplitTop(MarginBetweenSections, nullptr, &Column);
-		}
 		// Left Side --- Pie Menu ---
 		if(!GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_ALESSTYA_PIE_MENU))
 		{
