@@ -1421,6 +1421,14 @@ void CMenus::RenderSettingsSound(CUIRect MainView)
 		g_Config.m_SndGame ^= 1;
 
 	MainView.HSplitTop(20.0f, &Button, &MainView);
+	if(DoButton_CheckBox(&g_Config.m_BcMuteOthersHook, Localize("Mute hook sounds of other players"), g_Config.m_BcMuteOthersHook, &Button))
+		g_Config.m_BcMuteOthersHook ^= 1;
+
+	MainView.HSplitTop(20.0f, &Button, &MainView);
+	if(DoButton_CheckBox(&g_Config.m_BcMuteOthersHammer, Localize("Mute hammer sounds of other players"), g_Config.m_BcMuteOthersHammer, &Button))
+		g_Config.m_BcMuteOthersHammer ^= 1;
+
+	MainView.HSplitTop(20.0f, &Button, &MainView);
 	if(DoButton_CheckBox(&g_Config.m_SndGun, Localize("Enable gun sound"), g_Config.m_SndGun, &Button))
 		g_Config.m_SndGun ^= 1;
 
@@ -1584,8 +1592,6 @@ bool CMenus::RenderLanguageSelection(CUIRect MainView)
 void CMenus::RenderSettings(CUIRect MainView)
 {
 	const bool BestClientPageVisible = g_Config.m_UiSettingsPage == SETTINGS_BESTCLIENT;
-	if(!BestClientPageVisible)
-		SetBestClientShopVisible(false);
 	if(!BestClientPageVisible && (m_AssetsEditorState.m_VisualsEditorOpen || m_AssetsEditorState.m_VisualsEditorInitialized))
 		m_AssetsEditorState.m_VisualsEditorOpen = false;
 	if(!BestClientPageVisible && m_ComponentsEditorState.m_Open)
@@ -1593,13 +1599,11 @@ void CMenus::RenderSettings(CUIRect MainView)
 
 	if(g_Config.m_UiSettingsPage == SETTINGS_BESTCLIENT && m_AssetsEditorState.m_VisualsEditorOpen && m_AssetsEditorState.m_FullscreenOpen)
 	{
-		SetBestClientShopVisible(false);
 		RenderSettingsBestClient(MainView);
 		return;
 	}
 	if(g_Config.m_UiSettingsPage == SETTINGS_BESTCLIENT && m_ComponentsEditorState.m_Open && m_ComponentsEditorState.m_FullscreenOpen)
 	{
-		SetBestClientShopVisible(false);
 		RenderSettingsBestClient(MainView);
 		return;
 	}
@@ -1973,7 +1977,7 @@ bool CMenus::RenderHslaScrollbars(CUIRect *pRect, unsigned int *pColor, bool Alp
 
 	Preview.Draw(ColorRGBA(0.15f, 0.15f, 0.15f, 1.0f), IGraphics::CORNER_ALL, 4.0f + PreviewMargin);
 	Preview.Margin(PreviewMargin, &Preview);
-	Preview.Draw(color_cast<ColorRGBA>(Color.UnclampLighting(DarkestLight)), IGraphics::CORNER_ALL, 4.0f + PreviewMargin);
+	DoButton_ColorPicker(&Preview, pColor, Alpha);
 
 	auto &&RenderHueRect = [&](CUIRect *pColorRect) {
 		float CurXOff = pColorRect->x;

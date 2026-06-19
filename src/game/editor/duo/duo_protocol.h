@@ -71,6 +71,8 @@ enum EPacketType : uint8_t
 	PACKET_STRUCT_EDIT_SOUND_SOURCE = 50, // GroupIdx(4)+LayerIdx(4)+SourceIdx(4)+PropId(1)+Value(4)
 	// PropId values for EDIT_SOUND_SOURCE beyond ESoundProp:
 	// 20 = shape type, 21 = shape width/radius, 22 = shape height
+	PACKET_PING = 51, // no payload — forwarded to partner by server
+	PACKET_PONG = 52, // no payload — reply to PING
 };
 
 enum EActivity : uint8_t
@@ -149,7 +151,7 @@ public:
 	CPacketReader(const uint8_t *pData, int Size) :
 		m_pData(pData), m_Size(Size), m_Offset(0) {}
 
-	bool HasBytes(int n) const { return m_Offset + n <= m_Size; }
+	bool HasBytes(int n) const { return n >= 0 && (uint32_t)m_Offset + (uint32_t)n <= (uint32_t)m_Size; }
 	int Remaining() const { return m_Size - m_Offset; }
 
 	uint8_t ReadU8()

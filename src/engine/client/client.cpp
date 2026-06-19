@@ -81,6 +81,7 @@
 
 #if defined(CONF_FAMILY_WINDOWS)
 #include <windows.h>
+#include <shellapi.h>
 #endif
 
 #include <chrono>
@@ -99,226 +100,69 @@ static constexpr ColorRGBA CLIENT_NETWORK_PRINT_COLOR = ColorRGBA(0.7f, 1, 0.7f,
 static constexpr ColorRGBA CLIENT_NETWORK_PRINT_ERROR_COLOR = ColorRGBA(1.0f, 0.25f, 0.25f, 1.0f);
 
 #if defined(CONF_FAMILY_WINDOWS)
-static constexpr const char *gs_pPortableReShadeLayerDllFilename = "ReShade64.dll";
-static constexpr const char *gs_pPortableReShadeLayerManifestFilename = "ReShade64.json";
-static constexpr const char *gs_pPortableReShadeLayerDisabledManifestFilename = "ReShade64.reshade-disabled.json";
-static constexpr const char *gs_pPortableReShadeLayerDisableEnv = "DISABLE_VK_LAYER_reshade_1";
-static constexpr const char *gs_pPortableReShadeAppsFilename = "ReShadeApps.ini";
-static constexpr const char *gs_pPortableReShadeConfigFilename = "settings_BestClient.cfg";
-static constexpr const char *gs_pPortableReShadeEnabledConfigName = "bc_reshade_enabled";
-
-static bool QueryPortableReShadeConfigPath(char *pConfigPath, int ConfigPathSize)
+static void CleanupLegacyReShadeFiles()
 {
-	static constexpr const char *s_apUserDirs[] = {
-		"DDNet",
-		"Teeworlds",
-		"BestClient",
-	};
-
-	for(const char *pUserDirName : s_apUserDirs)
-	{
-		char aUserDir[IO_MAX_PATH_LENGTH];
-		if(fs_storage_path(pUserDirName, aUserDir, sizeof(aUserDir)) != 0)
-			continue;
-
-		str_format(pConfigPath, ConfigPathSize, "%s/%s", aUserDir, gs_pPortableReShadeConfigFilename);
-		if(fs_is_file(pConfigPath))
-			return true;
-	}
-
-	return false;
-}
-
-static bool QueryPortableReShadeConfigEnabled(bool &Enabled)
-{
-	char aConfigPath[IO_MAX_PATH_LENGTH];
-	if(!QueryPortableReShadeConfigPath(aConfigPath, sizeof(aConfigPath)))
-		return false;
-
-	CLineReader LineReader;
-	if(!LineReader.OpenFile(io_open(aConfigPath, IOFLAG_READ)))
-		return false;
-
-	while(const char *pLine = LineReader.Get())
-	{
-		const char *pValue = str_startswith_nocase(pLine, gs_pPortableReShadeEnabledConfigName);
-		if(pValue == nullptr)
-			continue;
-
-		pValue = str_skip_whitespaces_const(pValue);
-		char aValue[16];
-		int ValueLength = 0;
-		while(*pValue != '\0' && !str_isspace(*pValue) && ValueLength < (int)sizeof(aValue) - 1)
-			aValue[ValueLength++] = *pValue++;
-		aValue[ValueLength] = '\0';
-
-		int ParsedValue = 0;
-		if(str_toint(aValue, &ParsedValue))
-			Enabled = ParsedValue != 0;
-		return true;
-	}
-
-	return false;
-}
-
-static void WindowsUseBackslashes(char *pPath)
-{
-	for(char *pChr = pPath; *pChr != '\0'; ++pChr)
-	{
-		if(*pChr == '/')
-			*pChr = '\\';
-	}
-}
-
-static bool CopyFileUtf8(const char *pSource, const char *pDest)
-{
-	if(CopyFileW(windows_utf8_to_wide(pSource).c_str(), windows_utf8_to_wide(pDest).c_str(), FALSE) != 0)
-		return true;
-
-	const DWORD Error = GetLastError();
-	log_error("reshade", "Failed to copy '%s' to '%s' (%lu '%s')", pSource, pDest, Error, windows_format_system_message(Error).c_str());
-	return false;
-}
-
-static bool RegistryKeyHasReShadeImplicitLayer(HKEY RootKey)
-{
-	HKEY LayerKey;
-	const LRESULT OpenResult = RegOpenKeyExW(RootKey, L"SOFTWARE\\Khronos\\Vulkan\\ImplicitLayers", 0, KEY_QUERY_VALUE, &LayerKey);
-	if(OpenResult != ERROR_SUCCESS)
-		return false;
-
-	bool Found = false;
-	for(DWORD Index = 0; !Found; ++Index)
-	{
-		wchar_t aValueName[IO_MAX_PATH_LENGTH];
-		DWORD ValueNameSize = std::size(aValueName);
-		const LRESULT EnumResult = RegEnumValueW(LayerKey, Index, aValueName, &ValueNameSize, nullptr, nullptr, nullptr, nullptr);
-		if(EnumResult == ERROR_NO_MORE_ITEMS)
-			break;
-		if(EnumResult != ERROR_SUCCESS)
-			continue;
-
-		std::wstring ValueName(aValueName, ValueNameSize);
-		std::transform(ValueName.begin(), ValueName.end(), ValueName.begin(), towlower);
-		if(ValueName.find(L"reshade64.json") != std::wstring::npos)
-			Found = true;
-	}
-
-	RegCloseKey(LayerKey);
-	return Found;
-}
-
-static void EnsurePortableReShadeUserLayerRegistration(const char *pBinaryDir, bool HasLayerDll, bool HasLayerManifest, bool HasDisabledLayerManifest)
-{
-	if(!HasLayerDll || (!HasLayerManifest && !HasDisabledLayerManifest))
-		return;
-
-	if(RegistryKeyHasReShadeImplicitLayer(HKEY_LOCAL_MACHINE))
-		return;
-
 	char aUserDir[IO_MAX_PATH_LENGTH];
 	if(fs_storage_path("BestClient", aUserDir, sizeof(aUserDir)) != 0)
 		return;
 
-	char aRuntimeDir[IO_MAX_PATH_LENGTH];
-	str_format(aRuntimeDir, sizeof(aRuntimeDir), "%s/reshade-runtime", aUserDir);
-	char aTargetDllPath[IO_MAX_PATH_LENGTH];
-	char aTargetManifestPath[IO_MAX_PATH_LENGTH];
-	char aTargetAppsPath[IO_MAX_PATH_LENGTH];
-	str_format(aTargetDllPath, sizeof(aTargetDllPath), "%s/%s", aRuntimeDir, gs_pPortableReShadeLayerDllFilename);
-	str_format(aTargetManifestPath, sizeof(aTargetManifestPath), "%s/%s", aRuntimeDir, gs_pPortableReShadeLayerManifestFilename);
-	str_format(aTargetAppsPath, sizeof(aTargetAppsPath), "%s/%s", aRuntimeDir, gs_pPortableReShadeAppsFilename);
-
-	if(fs_makedir_rec_for(aTargetDllPath) != 0)
-	{
-		log_error("reshade", "Failed to create parent directories for '%s'.", aTargetDllPath);
-		return;
-	}
-	if(fs_is_dir(aRuntimeDir) == 0 && fs_makedir(aRuntimeDir) != 0)
-	{
-		log_error("reshade", "Failed to create portable ReShade runtime directory '%s'.", aRuntimeDir);
-		return;
-	}
-
-	char aSourceDllPath[IO_MAX_PATH_LENGTH];
-	char aSourceManifestPath[IO_MAX_PATH_LENGTH];
-	str_format(aSourceDllPath, sizeof(aSourceDllPath), "%s/%s", pBinaryDir, gs_pPortableReShadeLayerDllFilename);
-	str_format(aSourceManifestPath, sizeof(aSourceManifestPath), "%s/%s", pBinaryDir, HasLayerManifest ? gs_pPortableReShadeLayerManifestFilename : gs_pPortableReShadeLayerDisabledManifestFilename);
-
-	if(!CopyFileUtf8(aSourceDllPath, aTargetDllPath) || !CopyFileUtf8(aSourceManifestPath, aTargetManifestPath))
+	char aMarkerPath[IO_MAX_PATH_LENGTH];
+	str_format(aMarkerPath, sizeof(aMarkerPath), "%s/.reshade_cleaned", aUserDir);
+	if(fs_is_file(aMarkerPath))
 		return;
 
-	char aExecutablePath[IO_MAX_PATH_LENGTH];
-	if(fs_executable_path(aExecutablePath, sizeof(aExecutablePath)) != 0)
-	{
-		log_error("reshade", "Failed to determine executable path for ReShadeApps.ini registration.");
-		return;
-	}
-	WindowsUseBackslashes(aExecutablePath);
-
-	char aAppsFile[IO_MAX_PATH_LENGTH + 16];
-	str_format(aAppsFile, sizeof(aAppsFile), "Apps=%s\n", aExecutablePath);
-	IOHANDLE AppsFile = io_open(aTargetAppsPath, IOFLAG_WRITE);
-	if(!AppsFile)
-	{
-		log_error("reshade", "Failed to open '%s' for writing.", aTargetAppsPath);
-		return;
-	}
-	const bool WroteAppsFile = io_write(AppsFile, aAppsFile, str_length(aAppsFile)) == static_cast<unsigned>(str_length(aAppsFile));
-	io_close(AppsFile);
-	if(!WroteAppsFile)
-	{
-		log_error("reshade", "Failed to write '%s'.", aTargetAppsPath);
-		return;
-	}
-
-	WindowsUseBackslashes(aTargetManifestPath);
-	HKEY LayerKey;
-	const LRESULT OpenResult = RegCreateKeyExW(HKEY_CURRENT_USER, L"SOFTWARE\\Khronos\\Vulkan\\ImplicitLayers", 0, nullptr, 0, KEY_ALL_ACCESS, nullptr, &LayerKey, nullptr);
-	if(OpenResult != ERROR_SUCCESS)
-	{
-		log_error("reshade", "Failed to open Vulkan implicit layers registry key (%" PRId64 " '%s').", static_cast<int64_t>(OpenResult), windows_format_system_message(OpenResult).c_str());
-		return;
-	}
-
-	const DWORD Enabled = 0;
-	const std::wstring WideManifestPath = windows_utf8_to_wide(aTargetManifestPath);
-	const LRESULT SetResult = RegSetValueExW(LayerKey, WideManifestPath.c_str(), 0, REG_DWORD, reinterpret_cast<const BYTE *>(&Enabled), sizeof(Enabled));
-	RegCloseKey(LayerKey);
-	if(SetResult != ERROR_SUCCESS)
-	{
-		log_error("reshade", "Failed to register portable ReShade Vulkan layer '%s' (%" PRId64 " '%s').", aTargetManifestPath, static_cast<int64_t>(SetResult), windows_format_system_message(SetResult).c_str());
-		return;
-	}
-
-	log_info("reshade", "Registered portable user-level ReShade Vulkan layer at '%s'.", aTargetManifestPath);
-}
-
-static void ConfigurePortableReShadeLayerEnvironmentEarly()
-{
 	char aBinaryDir[IO_MAX_PATH_LENGTH];
 	if(fs_executable_path(aBinaryDir, sizeof(aBinaryDir)) != 0 || fs_parent_dir(aBinaryDir) != 0)
 		return;
 
-	char aLayerDllPath[IO_MAX_PATH_LENGTH];
-	char aLayerManifestPath[IO_MAX_PATH_LENGTH];
-	char aDisabledLayerManifestPath[IO_MAX_PATH_LENGTH];
-	str_format(aLayerDllPath, sizeof(aLayerDllPath), "%s/%s", aBinaryDir, gs_pPortableReShadeLayerDllFilename);
-	str_format(aLayerManifestPath, sizeof(aLayerManifestPath), "%s/%s", aBinaryDir, gs_pPortableReShadeLayerManifestFilename);
-	str_format(aDisabledLayerManifestPath, sizeof(aDisabledLayerManifestPath), "%s/%s", aBinaryDir, gs_pPortableReShadeLayerDisabledManifestFilename);
+	static constexpr const char *s_apFilesToRemove[] = {
+		"ReShade.ini",
+		"ReShadePreset.ini",
+		"ReShade64.dll",
+		"ReShade64.json",
+		"ReShade64.reshade-disabled.json",
+		"BestClientReShadeBridge.ini",
+		"bestclient_reshade_live.addon",
+		"bestclient_reshade_bridge.addon",
+	};
 
-	const bool HasLayerDll = fs_is_file(aLayerDllPath) != 0;
-	const bool HasLayerManifest = fs_is_file(aLayerManifestPath) != 0;
-	const bool HasDisabledLayerManifest = fs_is_file(aDisabledLayerManifestPath) != 0;
-	if(!HasLayerDll || (!HasLayerManifest && !HasDisabledLayerManifest))
-		return;
+	for(const char *pFilename : s_apFilesToRemove)
+	{
+		char aFilePath[IO_MAX_PATH_LENGTH];
+		str_format(aFilePath, sizeof(aFilePath), "%s/%s", aBinaryDir, pFilename);
+		if(fs_is_file(aFilePath))
+			fs_remove(aFilePath);
+	}
 
-	bool ReShadeEnabled = false;
-	QueryPortableReShadeConfigEnabled(ReShadeEnabled);
+	char aReShadeDataDir[IO_MAX_PATH_LENGTH];
+	str_format(aReShadeDataDir, sizeof(aReShadeDataDir), "%s/data/reshade", aBinaryDir);
+	if(fs_is_dir(aReShadeDataDir))
+	{
+		std::wstring WidePath = windows_utf8_to_wide(aReShadeDataDir);
+		WidePath.push_back(L'\0');
+		SHFILEOPSTRUCTW FileOp = {};
+		FileOp.wFunc = FO_DELETE;
+		FileOp.pFrom = WidePath.c_str();
+		FileOp.fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
+		SHFileOperationW(&FileOp);
+	}
 
-	EnsurePortableReShadeUserLayerRegistration(aBinaryDir, HasLayerDll, HasLayerManifest, HasDisabledLayerManifest);
-	_putenv_s("VK_IMPLICIT_LAYER_PATH", aBinaryDir);
-	_putenv_s(gs_pPortableReShadeLayerDisableEnv, ReShadeEnabled ? "" : "1");
+	char aRuntimeDir[IO_MAX_PATH_LENGTH];
+	str_format(aRuntimeDir, sizeof(aRuntimeDir), "%s/reshade-runtime", aUserDir);
+	if(fs_is_dir(aRuntimeDir))
+	{
+		std::wstring WideRuntimePath = windows_utf8_to_wide(aRuntimeDir);
+		WideRuntimePath.push_back(L'\0');
+		SHFILEOPSTRUCTW RuntimeOp = {};
+		RuntimeOp.wFunc = FO_DELETE;
+		RuntimeOp.pFrom = WideRuntimePath.c_str();
+		RuntimeOp.fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
+		SHFileOperationW(&RuntimeOp);
+	}
+
+	IOHANDLE Marker = io_open(aMarkerPath, IOFLAG_WRITE);
+	if(Marker)
+		io_close(Marker);
 }
 #endif
 
@@ -968,13 +812,12 @@ void CClient::Connect(const char *pAddress, const char *pPassword)
 	ServerInfoRequest();
 
 	// TClient
+	m_pGameClient->SetConnectInfo(&aConnectAddrs[0]);
 	// If user has manually specified password don't run autoexec
 	if(!m_SendPassword)
 	{
-		m_pGameClient->SetConnectInfo(&aConnectAddrs[0]);
 		m_pConsole->ExecuteLine(g_Config.m_TcExecuteOnConnect, IConsole::CLIENT_ID_UNSPECIFIED);
 	}
-	m_pGameClient->SetConnectInfo(nullptr);
 
 	if(m_SendPassword)
 	{
@@ -3749,12 +3592,33 @@ void CClient::Run()
 			SleepTimeInNanoSeconds = (std::chrono::nanoseconds(1s) / (int64_t)g_Config.m_ClRefreshRate) - (Now - LastTime);
 			auto SleepTimeInNanoSecondsInner = SleepTimeInNanoSeconds;
 			auto NowInner = Now;
+			// Busy-wait guard: only spin the last 200us for frame precision; sleep the rest.
+			// This prevents near-100% CPU usage when net_socket_read_wait returns early
+			// due to incoming packets, which causes rapid re-entry into the loop.
+			static constexpr std::chrono::nanoseconds BusyWaitThreshold = std::chrono::microseconds(200);
 			while(std::chrono::duration_cast<std::chrono::microseconds>(SleepTimeInNanoSecondsInner) > 0us)
 			{
-				net_socket_read_wait(m_aNetClient[CONN_MAIN].m_Socket, SleepTimeInNanoSecondsInner);
-				auto NowInnerCalc = time_get_nanoseconds();
-				SleepTimeInNanoSecondsInner -= (NowInnerCalc - NowInner);
-				NowInner = NowInnerCalc;
+				if(SleepTimeInNanoSecondsInner > BusyWaitThreshold)
+				{
+					// Sleep most of the remaining time, keeping BusyWaitThreshold for precise spin-finish.
+					auto SleepDuration = SleepTimeInNanoSecondsInner - BusyWaitThreshold;
+					int GotData = net_socket_read_wait(m_aNetClient[CONN_MAIN].m_Socket, SleepDuration);
+					auto NowInnerCalc = time_get_nanoseconds();
+					SleepTimeInNanoSecondsInner -= (NowInnerCalc - NowInner);
+					NowInner = NowInnerCalc;
+					// If socket had data but significant time remains, yield to avoid
+					// tight spin on high-traffic connections.
+					if(GotData && SleepTimeInNanoSecondsInner > BusyWaitThreshold)
+						std::this_thread::yield();
+				}
+				else
+				{
+					// Final busy-wait window: spin without yielding for accurate frame timing.
+					net_socket_read_wait(m_aNetClient[CONN_MAIN].m_Socket, SleepTimeInNanoSecondsInner);
+					auto NowInnerCalc = time_get_nanoseconds();
+					SleepTimeInNanoSecondsInner -= (NowInnerCalc - NowInner);
+					NowInner = NowInnerCalc;
+				}
 			}
 			Slept = true;
 		}
@@ -5314,7 +5178,7 @@ int main(int argc, const char **argv)
 	gs_AndroidStarted = true;
 #elif defined(CONF_FAMILY_WINDOWS)
 	CWindowsComLifecycle WindowsComLifecycle(true);
-	ConfigurePortableReShadeLayerEnvironmentEarly();
+	CleanupLegacyReShadeFiles();
 #endif
 	CCmdlineFix CmdlineFix(&argc, &argv);
 

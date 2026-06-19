@@ -26,6 +26,7 @@
 #include <condition_variable>
 #include <cstddef>
 #include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <limits>
 #include <map>
@@ -47,107 +48,6 @@
 
 using namespace std::chrono_literals;
 
-#if defined(CONF_FAMILY_WINDOWS)
-static constexpr const char *gs_pPortableReShadeLayerName = "VK_LAYER_reshade";
-static constexpr const char *gs_pPortableReShadeLayerDllFilename = "ReShade64.dll";
-static constexpr const char *gs_pPortableReShadeLayerManifestFilename = "ReShade64.json";
-static constexpr const char *gs_pPortableReShadeLayerDisabledManifestFilename = "ReShade64.reshade-disabled.json";
-static constexpr const char *gs_pPortableReShadeLayerDisableEnv = "DISABLE_VK_LAYER_reshade_1";
-static constexpr const char *gs_pPortableReShadeConfigFilename = "settings_BestClient.cfg";
-static constexpr const char *gs_pPortableReShadeEnabledConfigName = "bc_reshade_enabled";
-
-static bool QueryPortableReShadeConfigPath(char *pConfigPath, int ConfigPathSize)
-{
-	static constexpr const char *s_apUserDirs[] = {
-		"DDNet",
-		"Teeworlds",
-		"BestClient",
-	};
-
-	for(const char *pUserDirName : s_apUserDirs)
-	{
-		char aUserDir[IO_MAX_PATH_LENGTH];
-		if(fs_storage_path(pUserDirName, aUserDir, sizeof(aUserDir)) != 0)
-			continue;
-
-		str_format(pConfigPath, ConfigPathSize, "%s/%s", aUserDir, gs_pPortableReShadeConfigFilename);
-		if(fs_is_file(pConfigPath))
-			return true;
-	}
-
-	return false;
-}
-
-static bool QueryPortableReShadeConfigEnabled(bool &Enabled)
-{
-	char aConfigPath[IO_MAX_PATH_LENGTH];
-	if(!QueryPortableReShadeConfigPath(aConfigPath, sizeof(aConfigPath)))
-		return false;
-
-	CLineReader LineReader;
-	if(!LineReader.OpenFile(io_open(aConfigPath, IOFLAG_READ)))
-		return false;
-
-	while(const char *pLine = LineReader.Get())
-	{
-		const char *pValue = str_startswith_nocase(pLine, gs_pPortableReShadeEnabledConfigName);
-		if(pValue == nullptr)
-			continue;
-
-		pValue = str_skip_whitespaces_const(pValue);
-		char aValue[16];
-		int ValueLength = 0;
-		while(*pValue != '\0' && !str_isspace(*pValue) && ValueLength < (int)sizeof(aValue) - 1)
-			aValue[ValueLength++] = *pValue++;
-		aValue[ValueLength] = '\0';
-
-		int ParsedValue = 0;
-		if(str_toint(aValue, &ParsedValue))
-			Enabled = ParsedValue != 0;
-		return true;
-	}
-
-	return false;
-}
-
-static bool QueryPortableReShadeLayerFiles(char *pBinaryDir, int BinaryDirSize, bool &HasLayerDll, bool &HasLayerManifest, bool &HasDisabledLayerManifest)
-{
-	if(fs_executable_path(pBinaryDir, BinaryDirSize) != 0 || fs_parent_dir(pBinaryDir) != 0)
-		return false;
-
-	char aLayerDllPath[IO_MAX_PATH_LENGTH];
-	char aLayerManifestPath[IO_MAX_PATH_LENGTH];
-	char aDisabledLayerManifestPath[IO_MAX_PATH_LENGTH];
-	str_format(aLayerDllPath, sizeof(aLayerDllPath), "%s/%s", pBinaryDir, gs_pPortableReShadeLayerDllFilename);
-	str_format(aLayerManifestPath, sizeof(aLayerManifestPath), "%s/%s", pBinaryDir, gs_pPortableReShadeLayerManifestFilename);
-	str_format(aDisabledLayerManifestPath, sizeof(aDisabledLayerManifestPath), "%s/%s", pBinaryDir, gs_pPortableReShadeLayerDisabledManifestFilename);
-
-	HasLayerDll = fs_is_file(aLayerDllPath) != 0;
-	HasLayerManifest = fs_is_file(aLayerManifestPath) != 0;
-	HasDisabledLayerManifest = fs_is_file(aDisabledLayerManifestPath) != 0;
-	return true;
-}
-
-static void ConfigurePortableReShadeVulkanLayerEnvironment()
-{
-	char aBinaryDir[IO_MAX_PATH_LENGTH];
-	bool HasLayerDll = false;
-	bool HasLayerManifest = false;
-	bool HasDisabledLayerManifest = false;
-	if(!QueryPortableReShadeLayerFiles(aBinaryDir, sizeof(aBinaryDir), HasLayerDll, HasLayerManifest, HasDisabledLayerManifest))
-		return;
-
-	if(!HasLayerDll || (!HasLayerManifest && !HasDisabledLayerManifest))
-		return;
-
-	bool ReShadeEnabled = false;
-	QueryPortableReShadeConfigEnabled(ReShadeEnabled);
-
-	_putenv_s("VK_IMPLICIT_LAYER_PATH", aBinaryDir);
-	_putenv_s(gs_pPortableReShadeLayerDisableEnv, ReShadeEnabled ? "" : "1");
-	log_info("gfx/vulkan", "Configured portable ReShade Vulkan layer from '%s' (%s).", aBinaryDir, ReShadeEnabled ? "enabled" : "disabled");
-}
-#endif
 
 class CCommandProcessorFragment_Vulkan : public CCommandProcessorFragment_GLBase
 {
@@ -169,20 +69,7 @@ class CCommandProcessorFragment_Vulkan : public CCommandProcessorFragment_GLBase
 
 	[[nodiscard]] bool IsFrameBlendEnabled()
 	{
-		if(g_Config.m_BcMotionBlur == 0 || g_Config.m_BcMotionBlurStrength <= 0)
-			return false;
-
-#if defined(CONF_PLATFORM_LINUX)
-		static bool s_FrameBlendUnsupportedWarningShown = false;
-		if(!s_FrameBlendUnsupportedWarningShown)
-		{
-			log_warn("gfx/vulkan", "BestClient motion blur is temporarily disabled on Linux because it can crash the client.");
-			s_FrameBlendUnsupportedWarningShown = true;
-		}
-		return false;
-#else
-		return true;
-#endif
+		return g_Config.m_BcMotionBlur != 0 && g_Config.m_BcMotionBlurStrength > 0;
 	}
 
 	static const char *MemoryUsageName(EMemoryBlockUsage MemUsage)
@@ -399,7 +286,12 @@ class CCommandProcessorFragment_Vulkan : public CCommandProcessorFragment_GLBase
 				else if(pThisParent != nullptr)
 					pOtherHeapObj = pThisHeapObj->m_pParent->m_pLeft.get();
 
-				if((pThisParent != nullptr && pOtherHeapObj == nullptr) || (pOtherHeapObj != nullptr && !pOtherHeapObj->m_InUse))
+				// Coalesce: merge with sibling only when it is a free leaf node (no children).
+				// A sibling with children was further subdivided and may still have active
+				// sub-allocations, so m_InUse alone is not sufficient — we must also confirm
+				// it has no children before merging, to avoid touching live allocations.
+				const bool SiblingIsFreeLeaf = pOtherHeapObj != nullptr && !pOtherHeapObj->m_InUse && pOtherHeapObj->m_pLeft == nullptr;
+				if((pThisParent != nullptr && pOtherHeapObj == nullptr) || SiblingIsFreeLeaf)
 				{
 					// merge them
 					if(pOtherHeapObj != nullptr)
@@ -475,6 +367,9 @@ class CCommandProcessorFragment_Vulkan : public CCommandProcessorFragment_GLBase
 		std::vector<std::vector<SMemoryBlock<Id>>> m_vvFrameDelayedCachedBufferCleanup;
 
 		bool m_CanShrink = false;
+		// Cached pointer to the last heap that had a successful allocation.
+		// Avoids linear scan on the hot path; invalidated when that heap is freed.
+		SMemoryCacheType::SMemoryCacheHeap *m_pLastUsedHeap = nullptr;
 
 		void Init(size_t SwapChainImageCount)
 		{
@@ -499,10 +394,13 @@ class CCommandProcessorFragment_Vulkan : public CCommandProcessorFragment_GLBase
 					vkDestroyBuffer(Device, pHeap->m_Buffer, nullptr);
 				vkFreeMemory(Device, pHeap->m_BufferMem.m_Mem, nullptr);
 
+				if(m_pLastUsedHeap == pHeap)
+					m_pLastUsedHeap = nullptr;
 				delete pHeap;
 				HeapIterator = m_MemoryCaches.m_vpMemoryHeaps.erase(HeapIterator);
 			}
 
+			m_pLastUsedHeap = nullptr;
 			m_MemoryCaches.m_vpMemoryHeaps.clear();
 			m_vvFrameDelayedCachedBufferCleanup.clear();
 		}
@@ -545,6 +443,8 @@ class CCommandProcessorFragment_Vulkan : public CCommandProcessorFragment_GLBase
 							vkFreeMemory(Device, pHeap->m_BufferMem.m_Mem, nullptr);
 							FreedMemory += pHeap->m_BufferMem.m_Size;
 
+							if(m_pLastUsedHeap == pHeap)
+								m_pLastUsedHeap = nullptr;
 							delete pHeap;
 							HeapIterator = m_MemoryCaches.m_vpMemoryHeaps.erase(HeapIterator);
 							if(m_MemoryCaches.m_vpMemoryHeaps.size() == 1)
@@ -1057,6 +957,8 @@ class CCommandProcessorFragment_Vulkan : public CCommandProcessorFragment_GLBase
 
 	std::vector<uint8_t> m_vReadPixelHelper;
 	std::vector<uint8_t> m_vScreenshotHelper;
+	// Reusable staging buffer for 2D-to-array texture conversion; grows as needed, never reallocated downward
+	std::vector<uint8_t> m_vTextureConvertBuffer;
 
 	SDeviceMemoryBlock m_GetPresentedImgDataHelperMem;
 	VkImage m_GetPresentedImgDataHelperImage = VK_NULL_HANDLE;
@@ -1167,6 +1069,10 @@ private:
 	SPipelineContainer m_QuadGroupedPipeline;
 
 	std::vector<VkPipeline> m_vLastPipeline;
+	std::vector<VkViewport> m_vLastViewport;
+	std::vector<VkRect2D> m_vLastScissor;
+	// Per-thread cache of last bound descriptor set handles (indexed by set slot 0 and 1)
+	std::vector<std::array<VkDescriptorSet, 2>> m_vvLastDescriptorSets;
 
 	std::vector<VkCommandPool> m_vCommandPools;
 
@@ -1721,6 +1627,24 @@ protected:
 		return CreateBuffer(RequiredSize, MemUsage, BufferUsage, BufferProperties, Buffer, BufferMemory);
 	}
 
+	// Non-blocking fence check before vkMapMemory on the staging upload path.
+	// Some drivers serialize vkMapMemory with GPU work on the same memory type heap
+	// under pressure/fragmentation, causing indefinite blocking.
+	// vkGetFenceStatus is polled first (timeout=0); only if the fence is not yet
+	// signaled do we fall back to a bounded 100ms wait instead of blocking forever.
+	void EnsureFrameFenceSignaledBeforeMap()
+	{
+		if(m_vQueueSubmitFences.empty())
+			return;
+		VkFence Fence = m_vQueueSubmitFences[m_CurImageIndex];
+		VkResult FenceStatus = vkGetFenceStatus(m_VKDevice, Fence);
+		if(FenceStatus == VK_NOT_READY)
+		{
+			log_warn("gfx/vulkan", "vkMapMemory upload path: fence for image index %" PRIu32 " not signaled, bounded wait.", m_CurImageIndex);
+			vkWaitForFences(m_VKDevice, 1, &Fence, VK_TRUE, 100000000ULL); // 100 ms
+		}
+	}
+
 	template<size_t Id,
 		int64_t MemoryBlockSize, size_t BlockCount,
 		bool RequiresMapping>
@@ -1734,15 +1658,32 @@ protected:
 			SDeviceMemoryBlock TmpBufferMemory;
 			typename SMemoryBlockCache<Id>::SMemoryCacheType::SMemoryCacheHeap *pCacheHeap = nullptr;
 			auto &Heaps = MemoryCache.m_MemoryCaches.m_vpMemoryHeaps;
-			for(size_t i = 0; i < Heaps.size(); ++i)
+
+			// Fast path: try the last-used heap first to avoid linear scan.
+			if(MemoryCache.m_pLastUsedHeap != nullptr)
 			{
-				auto *pHeap = Heaps[i];
-				if(pHeap->m_Heap.Allocate(RequiredSize, TargetAlignment, AllocatedMem))
+				if(MemoryCache.m_pLastUsedHeap->m_Heap.Allocate(RequiredSize, TargetAlignment, AllocatedMem))
 				{
-					TmpBufferMemory = pHeap->m_BufferMem;
+					TmpBufferMemory = MemoryCache.m_pLastUsedHeap->m_BufferMem;
 					FoundAllocation = true;
-					pCacheHeap = pHeap;
-					break;
+					pCacheHeap = MemoryCache.m_pLastUsedHeap;
+				}
+			}
+
+			// Slow path: linear scan when the cached heap is full or unset.
+			if(!FoundAllocation)
+			{
+				for(size_t i = 0; i < Heaps.size(); ++i)
+				{
+					auto *pHeap = Heaps[i];
+					if(pHeap->m_Heap.Allocate(RequiredSize, TargetAlignment, AllocatedMem))
+					{
+						TmpBufferMemory = pHeap->m_BufferMem;
+						FoundAllocation = true;
+						pCacheHeap = pHeap;
+						MemoryCache.m_pLastUsedHeap = pHeap;
+						break;
+					}
 				}
 			}
 			if(!FoundAllocation)
@@ -1758,6 +1699,7 @@ protected:
 
 				void *pMapData = nullptr;
 
+				EnsureFrameFenceSignaledBeforeMap();
 				if(RequiresMapping)
 				{
 					if(vkMapMemory(m_VKDevice, TmpBufferMemory.m_Mem, 0, VK_WHOLE_SIZE, 0, &pMapData) != VK_SUCCESS)
@@ -1774,6 +1716,7 @@ protected:
 				pNewHeap->m_pMappedBuffer = pMapData;
 
 				pCacheHeap = pNewHeap;
+				MemoryCache.m_pLastUsedHeap = pNewHeap;
 				Heaps.emplace_back(pNewHeap);
 				Heaps.back()->m_Heap.Init(MemoryBlockSize * BlockCount, 0);
 				if(!Heaps.back()->m_Heap.Allocate(RequiredSize, TargetAlignment, AllocatedMem))
@@ -1812,6 +1755,7 @@ protected:
 				return false;
 
 			void *pMapData = nullptr;
+			EnsureFrameFenceSignaledBeforeMap();
 			if(RequiresMapping)
 			{
 				if(vkMapMemory(m_VKDevice, TmpBufferMemory.m_Mem, 0, VK_WHOLE_SIZE, 0, &pMapData) != VK_SUCCESS)
@@ -2314,6 +2258,9 @@ protected:
 					std::unique_lock<std::mutex> Lock(pRenderThread->m_Mutex);
 					pRenderThread->m_Cond.wait(Lock, [&pRenderThread] { return !pRenderThread->m_IsRendering; });
 					m_vLastPipeline[ThreadIndex + 1] = VK_NULL_HANDLE;
+					m_vLastViewport[ThreadIndex + 1] = VkViewport{};
+					m_vLastScissor[ThreadIndex + 1] = VkRect2D{};
+					m_vvLastDescriptorSets[ThreadIndex + 1] = {VK_NULL_HANDLE, VK_NULL_HANDLE};
 				}
 			}
 		}
@@ -2523,11 +2470,6 @@ protected:
 
 		vkWaitForFences(m_VKDevice, 1, &m_vQueueSubmitFences[m_CurImageIndex], VK_TRUE, std::numeric_limits<uint64_t>::max());
 
-		if(IsFrameBlendEnabled() && m_LastPresentedSwapChainImageIndex != std::numeric_limits<decltype(m_LastPresentedSwapChainImageIndex)>::max() && m_LastPresentedSwapChainImageIndex != m_CurImageIndex)
-		{
-			vkWaitForFences(m_VKDevice, 1, &m_vQueueSubmitFences[m_LastPresentedSwapChainImageIndex], VK_TRUE, std::numeric_limits<uint64_t>::max());
-		}
-
 		// next frame
 		m_CurFrame++;
 		m_vImageLastFrameCheck[m_CurImageIndex] = m_CurFrame;
@@ -2561,6 +2503,18 @@ protected:
 			return false;
 		}
 
+		// Frame blend reads the previous presented frame's history image as a texture during the
+		// render pass. That image was written by vkCmdCopyImage in a previous submission on this same
+		// queue. A plain barrier here (GPU-side) makes that copy visible to this frame's blend sampling
+		// without stalling the CPU like vkWaitForFences did. When LastPresented == CurImageIndex the
+		// fence wait above already covers it.
+		if(IsFrameBlendEnabled() && m_LastPresentedSwapChainImageIndex != std::numeric_limits<decltype(m_LastPresentedSwapChainImageIndex)>::max() && m_LastPresentedSwapChainImageIndex != m_CurImageIndex)
+		{
+			auto &HistoryImage = m_vFrameBlendImages[m_LastPresentedSwapChainImageIndex];
+			if(HistoryImage.m_Valid)
+				FrameBlendImageBarrier(CommandBuffer, HistoryImage.m_Image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		}
+
 		VkRenderPassBeginInfo RenderPassInfo{};
 		RenderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 		RenderPassInfo.renderPass = m_VKRenderPass;
@@ -2576,18 +2530,26 @@ protected:
 
 		for(auto &LastPipe : m_vLastPipeline)
 			LastPipe = VK_NULL_HANDLE;
+		for(auto &LastVp : m_vLastViewport)
+			LastVp = VkViewport{};
+		for(auto &LastSc : m_vLastScissor)
+			LastSc = VkRect2D{};
+		for(auto &LastDs : m_vvLastDescriptorSets)
+			LastDs = {VK_NULL_HANDLE, VK_NULL_HANDLE};
 
 		return true;
 	}
 
 	void UploadStagingBuffers()
 	{
-		if(!m_vNonFlushedStagingBufferRange.empty())
+		static constexpr uint32_t FlushBatchSize = 32;
+		const size_t TotalRanges = m_vNonFlushedStagingBufferRange.size();
+		for(size_t Offset = 0; Offset < TotalRanges; Offset += FlushBatchSize)
 		{
-			vkFlushMappedMemoryRanges(m_VKDevice, m_vNonFlushedStagingBufferRange.size(), m_vNonFlushedStagingBufferRange.data());
-
-			m_vNonFlushedStagingBufferRange.clear();
+			const uint32_t BatchCount = (uint32_t)std::min<size_t>(FlushBatchSize, TotalRanges - Offset);
+			vkFlushMappedMemoryRanges(m_VKDevice, BatchCount, m_vNonFlushedStagingBufferRange.data() + Offset);
 		}
+		m_vNonFlushedStagingBufferRange.clear();
 	}
 
 	template<bool FlushForRendering>
@@ -2790,14 +2752,13 @@ protected:
 				pData = pNewTexData;
 			}
 
-			bool Needs3DTexDel = false;
-			uint8_t *pTexData3D = static_cast<uint8_t *>(malloc((size_t)PixelSize * ConvertWidth * ConvertHeight));
+			// Reuse the member buffer to avoid per-texture malloc/free during command recording
+			const size_t Convert3DSize = (size_t)PixelSize * ConvertWidth * ConvertHeight;
+			if(m_vTextureConvertBuffer.size() < Convert3DSize)
+				m_vTextureConvertBuffer.resize(Convert3DSize);
+			uint8_t *pTexData3D = m_vTextureConvertBuffer.data();
 			if(!Texture2DTo3D(pData, ConvertWidth, ConvertHeight, PixelSize, 16, 16, pTexData3D, Image3DWidth, Image3DHeight))
-			{
-				free(pTexData3D);
 				pTexData3D = nullptr;
-			}
-			Needs3DTexDel = true;
 
 			if(pTexData3D != nullptr)
 			{
@@ -2821,8 +2782,6 @@ protected:
 				if(!CreateNew3DTexturedStandardDescriptorSets(ImageIndex))
 					return false;
 
-				if(Needs3DTexDel)
-					free(pTexData3D);
 			}
 		}
 		return true;
@@ -3476,8 +3435,16 @@ protected:
 		size_t DynamicStateIndex = GetDynamicModeIndexFromExecBuffer(ExecBuffer);
 		if(DynamicStateIndex == VULKAN_BACKEND_CLIP_MODE_DYNAMIC_SCISSOR_AND_VIEWPORT)
 		{
-			vkCmdSetViewport(CommandBuffer, 0, 1, &ExecBuffer.m_Viewport);
-			vkCmdSetScissor(CommandBuffer, 0, 1, &ExecBuffer.m_Scissor);
+			if(std::memcmp(&m_vLastViewport[RenderThreadIndex], &ExecBuffer.m_Viewport, sizeof(VkViewport)) != 0)
+			{
+				vkCmdSetViewport(CommandBuffer, 0, 1, &ExecBuffer.m_Viewport);
+				m_vLastViewport[RenderThreadIndex] = ExecBuffer.m_Viewport;
+			}
+			if(std::memcmp(&m_vLastScissor[RenderThreadIndex], &ExecBuffer.m_Scissor, sizeof(VkRect2D)) != 0)
+			{
+				vkCmdSetScissor(CommandBuffer, 0, 1, &ExecBuffer.m_Scissor);
+				m_vLastScissor[RenderThreadIndex] = ExecBuffer.m_Scissor;
+			}
 		}
 	}
 
@@ -3532,7 +3499,11 @@ protected:
 
 		if(IsTextured)
 		{
-			vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+			if(m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] != ExecBuffer.m_aDescriptors[0].m_Descriptor)
+			{
+				vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+				m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] = ExecBuffer.m_aDescriptors[0].m_Descriptor;
+			}
 		}
 
 		SUniformTileGPosBorder VertexPushConstants;
@@ -3555,11 +3526,23 @@ protected:
 
 		size_t DrawCount = IndicesDrawNum;
 		vkCmdBindIndexBuffer(CommandBuffer, ExecBuffer.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
-		for(size_t i = 0; i < DrawCount; ++i)
+		// Batch consecutive draw calls whose index ranges are contiguous in the
+		// index buffer, reducing vkCmdDrawIndexed calls from O(N) to O(batches).
+		for(size_t i = 0; i < DrawCount;)
 		{
-			VkDeviceSize IndexOffset = (VkDeviceSize)((ptrdiff_t)pIndicesOffsets[i] / sizeof(uint32_t));
+			VkDeviceSize BatchIndexOffset = (VkDeviceSize)((ptrdiff_t)pIndicesOffsets[i] / sizeof(uint32_t));
+			uint32_t BatchIndexCount = pDrawCount[i];
 
-			vkCmdDrawIndexed(CommandBuffer, static_cast<uint32_t>(pDrawCount[i]), 1, IndexOffset, 0, 0);
+			size_t j = i + 1;
+			while(j < DrawCount &&
+				pIndicesOffsets[j] == pIndicesOffsets[j - 1] + (ptrdiff_t)(pDrawCount[j - 1] * sizeof(uint32_t)))
+			{
+				BatchIndexCount += pDrawCount[j];
+				++j;
+			}
+
+			vkCmdDrawIndexed(CommandBuffer, BatchIndexCount, 1, BatchIndexOffset, 0, 0);
+			i = j;
 		}
 
 		return true;
@@ -3615,7 +3598,11 @@ protected:
 
 		if(IsTextured)
 		{
-			vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+			if(m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] != ExecBuffer.m_aDescriptors[0].m_Descriptor)
+			{
+				vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+				m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] = ExecBuffer.m_aDescriptors[0].m_Descriptor;
+			}
 		}
 
 		vkCmdPushConstants(CommandBuffer, PipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SUniformGPos), m.data());
@@ -3714,35 +3701,13 @@ public:
 
 		std::set<std::string> ReqLayerNames = OurVKLayers();
 		vVKLayers.clear();
-#if defined(CONF_FAMILY_WINDOWS)
-		bool HasPortableReShadeLayer = false;
-#endif
 		for(const auto &LayerName : vVKInstanceLayers)
 		{
-#if defined(CONF_FAMILY_WINDOWS)
-			if(str_comp(LayerName.layerName, gs_pPortableReShadeLayerName) == 0)
-				HasPortableReShadeLayer = true;
-#endif
-
 			if(ReqLayerNames.contains(std::string(LayerName.layerName)))
 			{
 				vVKLayers.emplace_back(LayerName.layerName);
 			}
 		}
-
-#if defined(CONF_FAMILY_WINDOWS)
-		char aBinaryDir[IO_MAX_PATH_LENGTH];
-		bool HasLayerDll = false;
-		bool HasLayerManifest = false;
-		bool HasDisabledLayerManifest = false;
-		if(QueryPortableReShadeLayerFiles(aBinaryDir, sizeof(aBinaryDir), HasLayerDll, HasLayerManifest, HasDisabledLayerManifest) && HasLayerDll && HasLayerManifest)
-		{
-			if(HasPortableReShadeLayer)
-				log_info("gfx/vulkan", "Portable ReShade layer '%s' was discovered by the Vulkan loader.", gs_pPortableReShadeLayerName);
-			else
-				log_warn("gfx/vulkan", "Portable ReShade files were found in '%s', but '%s' was not enumerated by the Vulkan loader.", aBinaryDir, gs_pPortableReShadeLayerName);
-		}
-#endif
 
 		return true;
 	}
@@ -5397,8 +5362,11 @@ public:
 	{
 		for(size_t i = 0; i < SetCount; ++i)
 		{
-			vkFreeDescriptorSets(m_VKDevice, pSets[i].m_pPools->m_vPools[pSets[i].m_PoolIndex].m_Pool, 1, &pSets[i].m_Descriptor);
-			pSets[i].m_Descriptor = VK_NULL_HANDLE;
+			// Route through FreeDescriptorSetFromPool so that the pool's m_CurSize
+			// is decremented. Freeing the VkDescriptorSet directly without adjusting
+			// the accounting leaks pool slots on every swap chain recreation, which
+			// eventually forces unbounded allocation of new descriptor pools.
+			FreeDescriptorSetFromPool(pSets[i]);
 		}
 	}
 
@@ -5806,6 +5774,9 @@ public:
 		m_vImageLastFrameCheck.clear();
 
 		m_vLastPipeline.clear();
+		m_vLastViewport.clear();
+		m_vLastScissor.clear();
+		m_vvLastDescriptorSets.clear();
 
 		for(size_t i = 0; i < m_ThreadCount; ++i)
 		{
@@ -5936,10 +5907,6 @@ public:
 
 		m_CanvasWidth = CanvasWidth;
 		m_CanvasHeight = CanvasHeight;
-
-#if defined(CONF_FAMILY_WINDOWS)
-		ConfigurePortableReShadeVulkanLayerEnvironment();
-#endif
 
 		if(!GetVulkanExtensions(pWindow, vVKExtensions))
 			return -1;
@@ -6258,6 +6225,15 @@ public:
 			Barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
 			SourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 			DestinationStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+		}
+		else if(OldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && NewLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+		{
+			// no layout change: only make the previous frame's copy into the history image
+			// (recorded in a previous submission on the same queue) visible to this frame's blend sampling
+			Barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			Barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+			SourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			DestinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 		}
 		else
 		{
@@ -6598,6 +6574,9 @@ public:
 		}
 
 		m_vLastPipeline.resize(m_ThreadCount, VK_NULL_HANDLE);
+		m_vLastViewport.resize(m_ThreadCount, VkViewport{});
+		m_vLastScissor.resize(m_ThreadCount, VkRect2D{});
+		m_vvLastDescriptorSets.resize(m_ThreadCount, {VK_NULL_HANDLE, VK_NULL_HANDLE});
 
 		m_vvFrameDelayedBufferCleanup.resize(m_SwapChainImageCount);
 		m_vvFrameDelayedTextureCleanup.resize(m_SwapChainImageCount);
@@ -7323,10 +7302,11 @@ public:
 		if(!FrameBlendImage.m_Valid)
 			return true;
 
-		constexpr float MaxBlendAlphaPerPass = 0.85f;
-		const float TotalBlendStrength = std::clamp(g_Config.m_BcMotionBlurStrength / 100.0f, 0.0f, 4.0f);
+		// Map 0-95 user range to 0-4.0 internal strength (matching old 400% max behavior)
+		const float TotalBlendStrength = (g_Config.m_BcMotionBlurStrength / 95.0f) * 4.0f;
 		if(TotalBlendStrength <= 0.0f)
 			return true;
+		constexpr float MaxBlendAlphaPerPass = 0.85f;
 		const int BlendPassCount = std::max(1, (int)std::ceil(TotalBlendStrength / MaxBlendAlphaPerPass));
 		const float BlendAlphaPerPass = TotalBlendStrength / (float)BlendPassCount;
 
@@ -7387,7 +7367,11 @@ public:
 		std::array<float, 4 * 2> aMatrix;
 		GetStateMatrix(State, aMatrix);
 		vkCmdPushConstants(CommandBuffer, PipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SUniformGPos), aMatrix.data());
-		vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &FrameBlendImage.m_DescriptorSet.m_Descriptor, 0, nullptr);
+		if(m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] != FrameBlendImage.m_DescriptorSet.m_Descriptor)
+		{
+			vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &FrameBlendImage.m_DescriptorSet.m_Descriptor, 0, nullptr);
+			m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] = FrameBlendImage.m_DescriptorSet.m_Descriptor;
+		}
 		for(int Pass = 0; Pass < BlendPassCount; ++Pass)
 			vkCmdDrawIndexed(CommandBuffer, 6, 1, 0, 0, 0);
 
@@ -7786,7 +7770,11 @@ public:
 
 		if(IsTextured)
 		{
-			vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+			if(m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] != ExecBuffer.m_aDescriptors[0].m_Descriptor)
+			{
+				vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+				m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] = ExecBuffer.m_aDescriptors[0].m_Descriptor;
+			}
 		}
 
 		uint32_t DrawCount = (uint32_t)pCommand->m_QuadNum;
@@ -7821,7 +7809,14 @@ public:
 				if(!GetUniformBufferObject(ExecBuffer.m_ThreadIndex, true, UniDescrSet, RealDrawCount, (const float *)(pCommand->m_pQuadInfo + RenderOffset), RealDrawCount * sizeof(SQuadRenderInfo)))
 					return false;
 
-				vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, IsTextured ? 1 : 0, 1, &UniDescrSet.m_Descriptor, 0, nullptr);
+				{
+					size_t SetSlot = IsTextured ? 1 : 0;
+					if(m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][SetSlot] != UniDescrSet.m_Descriptor)
+					{
+						vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, static_cast<uint32_t>(SetSlot), 1, &UniDescrSet.m_Descriptor, 0, nullptr);
+						m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][SetSlot] = UniDescrSet.m_Descriptor;
+					}
+				}
 				if(RenderOffset > 0)
 				{
 					int32_t QuadOffset = pCommand->m_QuadOffset + RenderOffset;
@@ -7882,7 +7877,11 @@ public:
 
 		vkCmdBindIndexBuffer(CommandBuffer, ExecBuffer.m_IndexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
-		vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+		if(m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] != ExecBuffer.m_aDescriptors[0].m_Descriptor)
+		{
+			vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+			m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] = ExecBuffer.m_aDescriptors[0].m_Descriptor;
+		}
 
 		SUniformGTextPos PosTexSizeConstant;
 		mem_copy(PosTexSizeConstant.m_aPos, m.data(), m.size() * sizeof(float));
@@ -7958,7 +7957,11 @@ public:
 
 		if(IsTextured)
 		{
-			vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+			if(m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] != ExecBuffer.m_aDescriptors[0].m_Descriptor)
+			{
+				vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+				m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] = ExecBuffer.m_aDescriptors[0].m_Descriptor;
+			}
 		}
 
 		vkCmdPushConstants(CommandBuffer, PipeLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(SUniformGPos), m.data());
@@ -8004,7 +8007,11 @@ public:
 
 		if(IsTextured)
 		{
-			vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+			if(m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] != ExecBuffer.m_aDescriptors[0].m_Descriptor)
+			{
+				vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+				m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] = ExecBuffer.m_aDescriptors[0].m_Descriptor;
+			}
 		}
 
 		SUniformPrimExGVertColor PushConstantColor;
@@ -8066,7 +8073,11 @@ public:
 		VkDeviceSize IndexOffset = (VkDeviceSize)((ptrdiff_t)pCommand->m_pOffset);
 		vkCmdBindIndexBuffer(CommandBuffer, ExecBuffer.m_IndexBuffer, IndexOffset, VK_INDEX_TYPE_UINT32);
 
-		vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+		if(m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] != ExecBuffer.m_aDescriptors[0].m_Descriptor)
+		{
+			vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 0, 1, &ExecBuffer.m_aDescriptors[0].m_Descriptor, 0, nullptr);
+			m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][0] = ExecBuffer.m_aDescriptors[0].m_Descriptor;
+		}
 
 		if(CanBePushed)
 		{
@@ -8113,7 +8124,11 @@ public:
 				if(!GetUniformBufferObject(ExecBuffer.m_ThreadIndex, false, UniDescrSet, UniformCount, (const float *)(pCommand->m_pRenderInfo + RenderOffset), UniformCount * sizeof(IGraphics::SRenderSpriteInfo)))
 					return false;
 
-				vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 1, 1, &UniDescrSet.m_Descriptor, 0, nullptr);
+				if(m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][1] != UniDescrSet.m_Descriptor)
+				{
+					vkCmdBindDescriptorSets(CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, PipeLayout, 1, 1, &UniDescrSet.m_Descriptor, 0, nullptr);
+					m_vvLastDescriptorSets[ExecBuffer.m_ThreadIndex][1] = UniDescrSet.m_Descriptor;
+				}
 			}
 
 			vkCmdDrawIndexed(CommandBuffer, static_cast<uint32_t>(pCommand->m_DrawNum), UniformCount, 0, 0, 0);

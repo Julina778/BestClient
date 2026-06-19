@@ -2,6 +2,7 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include "scoreboard.h"
 
+#include <base/str.h>
 #include <base/system.h>
 #include <base/time.h>
 
@@ -364,8 +365,8 @@ float CScoreboard::GetPopupHeight(int ClientId, bool IsLocal, bool IsSpectating)
 
 	if(!IsLocal)
 	{
-		// Profile, whisper, vote kick, clip name, swap.
-		Height += (ItemSpacing * 2.0f + ButtonSize) * 5.0f;
+		// Profile, whisper, vote kick, clip name, swap, copy skin.
+		Height += (ItemSpacing * 2.0f + ButtonSize) * 6.0f;
 		// Voice mute and voice volume slider.
 		Height += (ItemSpacing * 2.0f + ButtonSize) * 2.0f;
 		// War list quick actions: enemy/team/helper.
@@ -1245,8 +1246,46 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 				// TClient
 				if(pInfo->m_ClientId >= 0 && g_Config.m_TcWarList && g_Config.m_TcWarListScoreboard && GameClient()->m_WarList.GetAnyWar(pInfo->m_ClientId))
 					TextRender()->TextColor(GameClient()->m_WarList.GetNameplateColor(pInfo->m_ClientId));
+				else if(pInfo->m_ClientId >= 0 && g_Config.m_BcNameplateGradient)
+				{
+					const auto &RenderInfo = GameClient()->m_aClients[pInfo->m_ClientId].m_RenderInfo;
+					ColorRGBA Body, Feet;
+					if(RenderInfo.m_CustomColoredSkin)
+					{
+						Body = RenderInfo.m_ColorBody;
+						Feet = RenderInfo.m_ColorFeet;
+					}
+					else
+					{
+						Body = RenderInfo.m_BloodColor;
+						Feet = ColorRGBA(1, 1, 1);
+					}
+					size_t Size, Count;
+					str_utf8_stats(aSanitizedName, sizeof(aSanitizedName), SIZE_MAX, &Size, &Count);
+					if(Count > 1)
+					{
+						const char *pStr = aSanitizedName;
+						for(size_t i = 0; i < Count; i++)
+						{
+							int ByteOffset = (int)(pStr - aSanitizedName);
+							const char *pPrev = pStr;
+							str_utf8_decode(&pStr);
+							int ByteLen = (int)(pStr - pPrev);
+							float t = (float)i / (float)(Count - 1);
+							ColorRGBA Col(Body.r + t * (Feet.r - Body.r), Body.g + t * (Feet.g - Body.g), Body.b + t * (Feet.b - Body.b), 1.0f);
+							Cursor.m_vColorSplits.emplace_back(Cursor.m_CharCount + ByteOffset, ByteLen, Col);
+						}
+						TextRender()->TextColor(1.0f, 1.0f, 1.0f, TextColor.a);
+					}
+					else if(Count == 1)
+					{
+						Cursor.m_vColorSplits.emplace_back(Cursor.m_CharCount, -1, Body);
+						TextRender()->TextColor(1.0f, 1.0f, 1.0f, TextColor.a);
+					}
+				}
 
 				TextRender()->TextEx(&Cursor, aSanitizedName);
+				Cursor.m_vColorSplits.clear();
 
 				// ready / watching
 				if(Client()->IsSixup() && Client()->m_TranslationContext.m_aClients[pInfo->m_ClientId].m_PlayerFlags7 & protocol7::PLAYERFLAG_READY)
@@ -1792,6 +1831,28 @@ CUi::EPopupMenuFunctionResult CScoreboard::CScoreboardPopupContext::Render(void 
 			char aSwapBuf[256];
 			str_format(aSwapBuf, sizeof(aSwapBuf), "say /swap %s", Client.m_aName);
 			pScoreboard->Console()->ExecuteLine(aSwapBuf, IConsole::CLIENT_ID_UNSPECIFIED);
+		}
+
+		View.HSplitTop(ItemSpacing * 2, nullptr, &View);
+		View.HSplitTop(ButtonSize, &Container, &View);
+		if(pUi->DoButton_PopupMenu(&pPopupContext->m_CopySkinButton, Localize("Copy Skin"), &Container, FontSize, TEXTALIGN_MC))
+		{
+			if(g_Config.m_ClDummy == 1)
+			{
+				str_copy(g_Config.m_ClDummySkin, Client.m_aSkinName, sizeof(g_Config.m_ClDummySkin));
+				g_Config.m_ClDummyUseCustomColor = Client.m_UseCustomColor;
+				g_Config.m_ClDummyColorBody = Client.m_ColorBody;
+				g_Config.m_ClDummyColorFeet = Client.m_ColorFeet;
+				pScoreboard->GameClient()->SendDummyInfo(false);
+			}
+			else
+			{
+				str_copy(g_Config.m_ClPlayerSkin, Client.m_aSkinName, sizeof(g_Config.m_ClPlayerSkin));
+				g_Config.m_ClPlayerUseCustomColor = Client.m_UseCustomColor;
+				g_Config.m_ClPlayerColorBody = Client.m_ColorBody;
+				g_Config.m_ClPlayerColorFeet = Client.m_ColorFeet;
+				pScoreboard->GameClient()->SendInfo(false);
+			}
 		}
 
 		View.HSplitTop(ItemSpacing * 2, nullptr, &View);

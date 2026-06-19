@@ -9,9 +9,11 @@
 #include <game/client/ui.h>
 
 #include <array>
+#include <cstdint>
 #include <deque>
 #include <optional>
 #include <string>
+#include <vector>
 
 class CAdminPanel : public CComponent
 {
@@ -36,14 +38,15 @@ private:
 	void SetUiMousePos(vec2 Pos);
 
 	void RenderPanel(const CUIRect &Screen);
-	void RenderPlayerActions(CUIRect View, int ClientId);
+	void RenderPlayerActions(CUIRect View, int ClientId, int LocalAuth);
 	void RenderPlayerInfo(CUIRect View, int ClientId);
 	void RenderPlayerList(CUIRect View);
 	void RenderRconLogin(CUIRect View);
 	void RenderLogs(CUIRect View);
-	void RenderFastActions(CUIRect View);
-	void RenderTunings(CUIRect View);
-	void RenderActionPopup(const CUIRect &Screen);
+	void RenderFastActions(CUIRect View, int LocalAuth);
+	void RenderTunings(CUIRect View, int LocalAuth);
+	void RenderVoiceMod(CUIRect View);
+	void RenderActionPopup(const CUIRect &Screen, int LocalAuth);
 	void OpenActionPopup(int ClientId, int ActionType);
 	void CloseActionPopup();
 
@@ -65,16 +68,23 @@ private:
 	int m_FastActionEditIndex = -1;
 	int m_SelectedTuning = -1;
 	int m_LastSelectedTuning = -1;
-	std::deque<std::string> m_RconLogLines;
+	struct SLogLine
+	{
+		std::string m_Text;
+		char m_aTime[9]; // "HH:MM:SS"
+	};
+	std::deque<SLogLine> m_RconLogLines;
 
 	CButtonContainer m_TabPlayersButton;
 	CButtonContainer m_TabInfoButton;
 	CButtonContainer m_TabTuningsButton;
 	CButtonContainer m_TabFastActionsButton;
 	CButtonContainer m_TabLogsButton;
+	CButtonContainer m_TabVoiceButton;
 
 	CButtonContainer m_RconLoginButton;
 	CButtonContainer m_RconLogoutButton;
+	CButtonContainer m_RconLogButton;
 	CButtonContainer m_SettingsButton;
 	CButtonContainer m_FastActionAddButton;
 
@@ -116,6 +126,13 @@ private:
 	CButtonContainer m_ActionPresetShortButton;
 	CButtonContainer m_ActionPresetMidButton;
 	CButtonContainer m_ActionPresetLongButton;
+
+	// Voice mod tab
+	CLineInputBuffered<128> m_VoiceModKeyInput;
+	CButtonContainer m_VoiceModAuthButton;
+	CButtonContainer m_VoiceModRefreshButton;
+	std::vector<CButtonContainer> m_vVoiceModMuteButtons;
+	int64_t m_LastVoiceModRefreshTick = 0;
 };
 
 #endif // GAME_CLIENT_COMPONENTS_BESTCLIENT_ADMIN_PANEL_H

@@ -31,6 +31,12 @@ class CBestClient : public CComponent
 	int m_HookComboLastProcessedGameTick = -1;
 	bool m_HookComboSoundErrorShown = false;
 
+	float m_SpecMovedNotifyTime = -999.0f;
+	int m_SpecMovedLastTick = -1;
+	int m_SpecMovedActiveTick = -1;
+
+	void UpdateSpecMoved();
+
 	void LoadHookComboSounds(bool LogErrors = true);
 	void UnloadHookComboSounds();
 	void ResetHookComboState();
@@ -44,7 +50,6 @@ class CBestClient : public CComponent
 	static void ConToggleDeepfly(IConsole::IResult *pResult, void *pUserData);
 	static void ConToggleCinematicCamera(IConsole::IResult *pResult, void *pUserData);
 	static void ConSaveRollback(IConsole::IResult *pResult, void *pUserData);
-	static void ConToggleReShadeEffects(IConsole::IResult *pResult, void *pUserData);
 
 	int m_45degreestoggle = 0;
 	int m_45degreestogglelastinput = 0;
@@ -76,12 +81,13 @@ public:
 	enum EBestClientComponent
 	{
 		COMPONENT_VISUALS_MUSIC_PLAYER = 0,
-		COMPONENT_VISUALS_GRAFFITI,
+		COMPONENT_VISUALS_LEGACY_RESERVED_2,
 		COMPONENT_VISUALS_LEGACY_RESERVED_1,
 		COMPONENT_VISUALS_MEDIA_BACKGROUND,
 		COMPONENT_VISUALS_OPTIMIZER,
 		COMPONENT_VISUALS_ANIMATIONS,
 		COMPONENT_VISUALS_AFTERIMAGE,
+		COMPONENT_VISUALS_CRYSTAL_LASER,
 		COMPONENT_VISUALS_FOCUS_MODE,
 		COMPONENT_VISUALS_CHAT_BUBBLES,
 		COMPONENT_VISUALS_3D_PARTICLES,
@@ -134,6 +140,7 @@ public:
 		COMPONENT_VISUALS_FLYING_NAMEPLATES,
 		COMPONENT_VISUALS_KEYSTROKES,
 		COMPONENT_VISUALS_EYE_COMFORT,
+		COMPONENT_VISUALS_RAYCAST,
 		NUM_COMPONENTS_EDITOR_COMPONENTS,
 	};
 
@@ -161,11 +168,16 @@ public:
 	bool IsComponentDisabled(EBestClientComponent Component) const;
 	static bool IsComponentDisabledByMask(int Component, int MaskLo, int MaskHi);
 	void RenderHookCombo(bool ForcePreview = false);
+	void RenderSpecMoved();
+	void RenderRaycast();
+	void RenderWorldBlackout();
 
 	std::shared_ptr<CHttpRequest> m_pBestClientInfoTask = nullptr;
 	void FetchBestClientInfo();
 	bool NeedUpdate();
+	bool IsAutoUpdating() const;
 	bool m_FetchedBestClientInfo = false;
+	bool m_bAutoUpdateArmed = false;
 	char m_aVersionStr[64] = "0";
 };
 

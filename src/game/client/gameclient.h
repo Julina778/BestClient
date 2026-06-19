@@ -37,7 +37,6 @@
 #include "components/bestclient/clientindicator/client_indicator.h"
 #include "components/bestclient/fast_actions.h"
 #include "components/bestclient/fast_practice.h"
-#include "components/bestclient/graffity/graffity.h"
 #include "components/bestclient/hud_editor.h"
 #include "components/bestclient/music_player.h"
 #include "components/bestclient/translate.h"
@@ -235,7 +234,6 @@ public:
 	CAdminPanel m_AdminPanel;
 	CFastActions m_FastActions;
 	CFastPractice m_FastPractice;
-	CGraffity m_Graffity;
 	CBestClient m_BestClient;
 	CVoiceChat m_VoiceChat;
 
@@ -325,6 +323,7 @@ private:
 
 	int m_aCheckInfo[NUM_DUMMIES];
 	unsigned long m_OptimizerDdnetPrevPriorityClass = 0;
+	unsigned long m_OptimizerDdnetLastSetPriorityClass = 0; // cache: last value passed to SetPriorityClass for current process
 	bool m_OptimizerDdnetPriorityHighActive = false;
 	bool m_OptimizerDiscordPriorityBelowNormalActive = false;
 	float m_OptimizerDiscordPriorityLastUpdateTime = -1.0f;
@@ -1125,9 +1124,7 @@ public:
 	float m_SmoothIntraTick = 0;
 	bool CheckNewInput() override;
 	bool IsSnapTapBlockedByCommunity() const;
-	void MaybeShowSnapTapBlockedPopup();
 	std::optional<CServerInfo> m_ConnectServerInfo = std::nullopt;
-	bool m_SnapTapBlockedPopupShown = false;
 	void SetConnectInfo(const NETADDR *pAddress) override;
 };
 
