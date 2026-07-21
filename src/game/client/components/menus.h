@@ -930,6 +930,7 @@ private:
 	static CUi::EPopupMenuFunctionResult PopupVoiceModeration(void *pContext, CUIRect View, bool Active);
 	void RenderSettingsBestClient(CUIRect MainView);
 	void RenderSettingsBestClientInfo(CUIRect MainView);
+	void RenderSettingsBestClientAlesstya(CUIRect MainView);
 	void RenderSettingsBestClientVisuals(CUIRect MainView);
 	void RenderSettingsBestClientGameplay(CUIRect MainView);
 	void RenderSettingsBestClientOthers(CUIRect MainView);

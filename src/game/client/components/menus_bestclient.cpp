@@ -60,7 +60,8 @@ static void DrawBcMenuBadge(IGraphics *pGraphics, CUi *pUi, ITextRender *pTextRe
 
 enum
 {
-	BESTCLIENT_TAB_VISUALS = 0,
+	BESTCLIENT_TAB_ALESSTYA = 0,
+	BESTCLIENT_TAB_VISUALS,
 	BESTCLIENT_TAB_GAMEPLAY,
 	BESTCLIENT_TAB_OTHERS,
 	BESTCLIENT_TAB_FUN,
@@ -81,7 +82,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 	MainView.y -= 20.0f;
 	MainView.h += 20.0f;
 
-	static int s_CurTab = BESTCLIENT_TAB_VISUALS;
+	static int s_CurTab = BESTCLIENT_TAB_ALESSTYA;
 	static CButtonContainer s_aPageTabs[NUM_BESTCLIENT_TABS] = {};
 
 	MainView.HSplitTop(8.0f, nullptr, &MainView);
@@ -89,6 +90,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 	MainView.HSplitTop(24.0f, &TabBar, &MainView);
 
 	const char *apTabNames[NUM_BESTCLIENT_TABS] = {
+		Localize("Alesstya"),
 		Localize("Visuals"),
 		Localize("Gameplay"),
 		Localize("Others"),
@@ -96,6 +98,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		Localize("Info"),
 	};
 	const int aTabOrder[NUM_BESTCLIENT_TABS] = {
+		BESTCLIENT_TAB_ALESSTYA,
 		BESTCLIENT_TAB_VISUALS,
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
@@ -125,7 +128,7 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		TabCount = 1;
 	}
 
-	if(s_CurTab < BESTCLIENT_TAB_VISUALS || s_CurTab >= NUM_BESTCLIENT_TABS || IsTabHidden(s_CurTab))
+	if(s_CurTab < BESTCLIENT_TAB_ALESSTYA || s_CurTab >= NUM_BESTCLIENT_TABS || IsTabHidden(s_CurTab))
 		s_CurTab = FirstVisibleTab;
 
 	const float TabWidth = TabBar.w / (float)TabCount;
@@ -144,7 +147,9 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 
 	MainView.HSplitTop(10.0f, nullptr, &MainView);
 
-	if(s_CurTab == BESTCLIENT_TAB_VISUALS)
+	if(s_CurTab == BESTCLIENT_TAB_ALESSTYA)
+		RenderSettingsBestClientAlesstya(MainView);
+	else if(s_CurTab == BESTCLIENT_TAB_VISUALS)
 		RenderSettingsBestClientVisuals(MainView);
 	else if(s_CurTab == BESTCLIENT_TAB_GAMEPLAY)
 		RenderSettingsBestClientGameplay(MainView);
@@ -154,6 +159,503 @@ void CMenus::RenderSettingsBestClient(CUIRect MainView)
 		RenderSettingsBestClientFun(MainView);
 	else if(s_CurTab == BESTCLIENT_TAB_INFO)
 		RenderSettingsBestClientInfo(MainView);
+}
+
+void CMenus::RenderSettingsBestClientAlesstya(CUIRect MainView)
+{
+	const float LineSize = 20.0f;
+	const float MarginSmall = 5.0f;
+	const float HeadlineFontSize = 20.0f;
+	const float MarginBetweenViews = 30.0f;
+	const float BlockPadding = MarginBetweenViews * 0.6666f;
+	const ColorRGBA BlockColor = ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f);
+
+	static CScrollRegion s_AlesstyaScrollRegion;
+	vec2 AlesstyaScrollOffset(0.0f, 0.0f);
+	CScrollRegionParams AlesstyaScrollParams;
+	AlesstyaScrollParams.m_ScrollUnit = 60.0f;
+	AlesstyaScrollParams.m_Flags = CScrollRegionParams::FLAG_CONTENT_STATIC_WIDTH;
+	AlesstyaScrollParams.m_ScrollbarMargin = 5.0f;
+	s_AlesstyaScrollRegion.Begin(&MainView, &AlesstyaScrollOffset, &AlesstyaScrollParams);
+
+	MainView.y += AlesstyaScrollOffset.y;
+	MainView.VSplitRight(5.0f, &MainView, nullptr);
+	MainView.VSplitLeft(5.0f, nullptr, &MainView);
+
+	const bool IsOnline = Client()->State() == IClient::STATE_ONLINE;
+	const bool IsFngServer = IsOnline && GameClient()->m_GameInfo.m_PredictFNG;
+	const bool Is0xFServer = IsOnline && str_comp_nocase(GameClient()->m_GameInfo.m_aGameType, "0xf") == 0;
+	const bool IsBlockedCameraServer = IsFngServer || Is0xFServer;
+
+	CUIRect LeftView, RightView;
+	MainView.VSplitMid(&LeftView, &RightView, MarginBetweenViews);
+	LeftView.VSplitLeft(MarginSmall, nullptr, &LeftView);
+	RightView.VSplitRight(MarginSmall, &RightView, nullptr);
+
+	static std::vector<CUIRect> s_SectionBoxes;
+	static vec2 s_PrevScrollOffset(0.0f, 0.0f);
+	for(CUIRect &Section : s_SectionBoxes)
+	{
+		float Padding = MarginBetweenViews * 0.6666f;
+		Section.w += Padding;
+		Section.h += Padding;
+		Section.x -= Padding * 0.5f;
+		Section.y -= Padding * 0.5f;
+		Section.y -= s_PrevScrollOffset.y - AlesstyaScrollOffset.y;
+		Section.Draw(BlockColor, IGraphics::CORNER_ALL, 10.0f);
+	}
+	s_PrevScrollOffset = AlesstyaScrollOffset;
+	s_SectionBoxes.clear();
+
+	auto BeginBlock = [&](CUIRect &ColumnRef, float ContentHeight, CUIRect &Content)
+	{
+		CUIRect Block;
+		ColumnRef.HSplitTop(ContentHeight, &Block, &ColumnRef);
+		s_SectionBoxes.push_back(Block);
+		Content = Block;
+	};
+
+	// Left Side
+	CUIRect Column = LeftView;
+	Column.HSplitTop(10.0f, nullptr, &Column);
+
+	// === Skin Stealer ===
+	{
+		CUIRect Block, Label;
+		BeginBlock(Column, LineSize + MarginSmall + LineSize, Block);
+
+		Block.HSplitTop(LineSize, &Label, &Block);
+		Ui()->DoLabel(&Label, Localize("Skin Stealer"), HeadlineFontSize, TEXTALIGN_ML);
+		Block.HSplitTop(MarginSmall, nullptr, &Block);
+		char aBuf[128];
+		if(DoButton_CheckBox(&g_Config.m_ClSkinStealer, Localize("Steal skin after hammering a target"), g_Config.m_ClSkinStealer, &Block))
+		{
+			str_format(aBuf, sizeof(aBuf), "al_skin_stealer %d", !g_Config.m_ClSkinStealer);
+			Console()->ExecuteLine(aBuf, IConsole::CLIENT_ID_UNSPECIFIED);
+		}
+		Column.HSplitTop(MarginBetweenViews, nullptr, &Column);
+	}
+
+	// === Scoreboard Points ===
+	{
+		CUIRect Block, Label;
+		BeginBlock(Column, LineSize + MarginSmall + LineSize, Block);
+
+		Block.HSplitTop(LineSize, &Label, &Block);
+		Ui()->DoLabel(&Label, Localize("Scoreboard Points"), HeadlineFontSize, TEXTALIGN_ML);
+		Block.HSplitTop(MarginSmall, nullptr, &Block);
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClScoreboardPoints, Localize("Show player points on the scoreboard"), &g_Config.m_ClScoreboardPoints, &Block, LineSize);
+		Column.HSplitTop(MarginBetweenViews, nullptr, &Column);
+	}
+
+	// Left Side --- Pie Menu ---
+	{
+		static CButtonContainer s_PieMenuPreviewButton;
+		static CButtonContainer s_PieMenuResetButton;
+		static CButtonContainer s_PieMenuBindReader;
+		static CButtonContainer s_PieMenuBindClear;
+
+		const float PreviewSize = 220.0f;
+
+		const float ContentHeight =
+			LineSize + MarginSmall + // title
+			LineSize + MarginSmall + // enable
+			LineSize + MarginSmall + // scale
+			LineSize + MarginSmall + // opacity
+			LineSize + MarginSmall + // distance
+			LineSize + MarginSmall + // rename queue
+			(LineSize + MarginSmall) * 6 + // six checkboxes
+			(LineSize + MarginSmall) + // +pie_menu bind
+			PreviewSize + LineSize + 20.0f;
+
+		CUIRect Block, Label, Row, Button;
+		BeginBlock(Column, ContentHeight, Block);
+
+		Block.Margin(8.0f, &Block);
+
+		// Title
+		Block.HSplitTop(LineSize, &Label, &Block);
+		Ui()->DoLabel(&Label, Localize("Pie Menu"), HeadlineFontSize, TEXTALIGN_ML);
+		Block.HSplitTop(MarginSmall, nullptr, &Block);
+
+		// Enable
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuEnabled, Localize("Enable pie menu"), &g_Config.m_QmPieMenuEnabled, &Block, LineSize);
+		Block.HSplitTop(MarginSmall, nullptr, &Block);
+
+		if(g_Config.m_QmPieMenuEnabled)
+		{
+			// UI Scale
+			Block.HSplitTop(LineSize, &Button, &Block);
+			Ui()->DoScrollbarOption(&g_Config.m_QmPieMenuScale, &g_Config.m_QmPieMenuScale, &Button, Localize("UI scale"), 50, 200);
+			Block.HSplitTop(MarginSmall, nullptr, &Block);
+
+			// Opacity
+			Block.HSplitTop(LineSize, &Button, &Block);
+			Ui()->DoScrollbarOption(&g_Config.m_QmPieMenuOpacity, &g_Config.m_QmPieMenuOpacity, &Button, Localize("Pie menu opacity"), 0, 100);
+			Block.HSplitTop(MarginSmall, nullptr, &Block);
+
+			// Distance
+			Block.HSplitTop(LineSize, &Button, &Block);
+			Ui()->DoScrollbarOption(&g_Config.m_QmPieMenuMaxDistance, &g_Config.m_QmPieMenuMaxDistance, &Button, Localize("Detection distance"), 100, 2000);
+			Block.HSplitTop(MarginSmall, nullptr, &Block);
+
+			// Rename Queue
+			Block.HSplitTop(LineSize, &Row, &Block);
+			Ui()->DoLabel(&Row, Localize("Rename queue"), 14.0f, TEXTALIGN_ML);
+			Block.HSplitTop(LineSize, &Row, &Block);
+
+			static CLineInput s_PieMenuRenameQueue(g_Config.m_QmPieMenuRenameQueue, sizeof(g_Config.m_QmPieMenuRenameQueue));
+
+			s_PieMenuRenameQueue.SetEmptyText("name1|name2|name3");
+			Ui()->DoEditBox(&s_PieMenuRenameQueue, &Row, 14.0f);
+			Block.HSplitTop(MarginSmall, nullptr, &Block);
+
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuShowFriend, "Show Friend", &g_Config.m_QmPieMenuShowFriend, &Block, LineSize);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuShowWhisper, "Show Whisper", &g_Config.m_QmPieMenuShowWhisper, &Block, LineSize);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuShowMention, "Show Mention", &g_Config.m_QmPieMenuShowMention, &Block, LineSize);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuShowCopy, "Show Copy", &g_Config.m_QmPieMenuShowCopy, &Block, LineSize);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuShowSwap, "Show Swap", &g_Config.m_QmPieMenuShowSwap, &Block, LineSize);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_QmPieMenuShowSpec, "Show Spectate", &g_Config.m_QmPieMenuShowSpec, &Block, LineSize);
+
+			Block.HSplitTop(MarginSmall, nullptr, &Block);
+			DoLine_KeyReader(Block, s_PieMenuBindReader, s_PieMenuBindClear, Localize("Pie Menu bind"), "+pie_menu");
+			Block.HSplitTop(MarginSmall, nullptr, &Block);
+
+			// =========================
+			// Preview
+			// =========================
+
+			CUIRect PreviewRect;
+			Block.HSplitTop(PreviewSize, &PreviewRect, &Block);
+
+			PreviewRect.Margin(8.0f, &PreviewRect);
+
+			PreviewRect.Draw(ColorRGBA(0.0f, 0.0f, 0.0f, 0.2f), IGraphics::CORNER_ALL, 10.0f);
+
+			const vec2 Center = PreviewRect.Center();
+
+			const float OuterRadius = PreviewSize * 0.38f;
+			const float InnerRadius = OuterRadius * 0.36f;
+
+			struct SPieColor
+			{
+				const char *m_pName;
+				const char *m_pIcon;
+				unsigned int *m_pColor;
+				ColorRGBA m_Default;
+			};
+
+			// =========================
+			// Dynamic Pie Menu Items
+			// =========================
+
+			std::vector<SPieColor> aColors;
+
+			if(g_Config.m_QmPieMenuShowFriend)
+			{
+				aColors.push_back({"Friend", "♥", (unsigned int *)&g_Config.m_QmPieMenuColorFriend, ColorRGBA(0.9f, 0.3f, 0.4f)});
+			}
+
+			if(g_Config.m_QmPieMenuShowWhisper)
+			{
+				aColors.push_back({"Whisper", "✉", (unsigned int *)&g_Config.m_QmPieMenuColorWhisper, ColorRGBA(0.5f, 0.35f, 0.7f)});
+			}
+
+			if(g_Config.m_QmPieMenuShowMention)
+			{
+				aColors.push_back({"Mention", "➤", (unsigned int *)&g_Config.m_QmPieMenuColorMention, ColorRGBA(0.85f, 0.5f, 0.2f)});
+			}
+
+			if(g_Config.m_QmPieMenuShowCopy)
+			{
+				aColors.push_back({"Copy", "⚡", (unsigned int *)&g_Config.m_QmPieMenuColorCopySkin, ColorRGBA(0.25f, 0.55f, 0.8f)});
+			}
+
+			if(g_Config.m_QmPieMenuShowSwap)
+			{
+				aColors.push_back({"Swap", "⇄", (unsigned int *)&g_Config.m_QmPieMenuColorSwap, ColorRGBA(0.8f, 0.3f, 0.3f)});
+			}
+
+			if(g_Config.m_QmPieMenuShowSpec)
+			{
+				aColors.push_back({"Spec", "👁", (unsigned int *)&g_Config.m_QmPieMenuColorSpectate, ColorRGBA(0.45f, 0.55f, 0.6f)});
+			}
+
+			if(aColors.empty())
+			{
+				TextRender()->TextColor(1, 1, 1, 1);
+				const char *pMsg = "No pie menu items enabled";
+				float Width = TextRender()->TextWidth(14.0f, pMsg);
+				TextRender()->Text(Center.x - Width * 0.5f, Center.y - 7.0f, 14.0f, pMsg);
+			}
+			else
+			{
+				int Hovered = -1;
+
+				const int Count = (int)aColors.size();
+
+				if(Ui()->MouseInside(&PreviewRect))
+				{
+					vec2 Dir = Ui()->MousePos() - Center;
+					float Dist = length(Dir);
+
+					if(Dist >= InnerRadius && Dist <= OuterRadius * 1.15f)
+					{
+						float Angle = atan2(Dir.y, Dir.x) * 180.0f / pi;
+						while(Angle < 0.0f)
+							Angle += 360.0f;
+						Angle += 90.0f;
+						while(Angle >= 360.0f)
+							Angle -= 360.0f;
+						const float SectorAngle = 360.0f / Count;
+						Hovered = (int)(Angle / SectorAngle);
+					}
+				}
+
+				auto OpenColorPicker = [&](unsigned int *pColor) {
+					ColorHSLA Hsla = ColorHSLA(*pColor, false);
+					m_ColorPickerPopupContext.m_pHslaColor = pColor;
+					m_ColorPickerPopupContext.m_HslaColor = Hsla;
+					m_ColorPickerPopupContext.m_HsvaColor = color_cast<ColorHSVA>(Hsla);
+					m_ColorPickerPopupContext.m_RgbaColor = color_cast<ColorRGBA>(m_ColorPickerPopupContext.m_HsvaColor);
+					m_ColorPickerPopupContext.m_Alpha = false;
+					Ui()->ShowPopupColorPicker(Ui()->MouseX(), Ui()->MouseY(), &m_ColorPickerPopupContext);
+				};
+
+				if(Ui()->DoButtonLogic(&s_PieMenuPreviewButton, 0, &PreviewRect, BUTTONFLAG_LEFT))
+				{
+					if(Hovered >= 0)
+						OpenColorPicker(aColors[Hovered].m_pColor);
+				}
+
+				const float Alpha = std::clamp(g_Config.m_QmPieMenuOpacity / 100.0f, 0.2f, 1.0f);
+
+				for(int i = 0; i < Count; i++)
+				{
+					const float SectorAngle = 360.0f / Count;
+					float Start = -90.0f + i * SectorAngle + 2.0f;
+					float End = Start + SectorAngle - 4.0f;
+					bool Highlight = i == Hovered;
+					float Radius = Highlight ? OuterRadius * 1.1f : OuterRadius;
+					ColorRGBA Color = color_cast<ColorRGBA>(ColorHSLA(*aColors[i].m_pColor));
+
+					if(Highlight)
+					{
+						Color.r = minimum(Color.r * 1.3f, 1.0f);
+						Color.g = minimum(Color.g * 1.3f, 1.0f);
+						Color.b = minimum(Color.b * 1.3f, 1.0f);
+					}
+
+					Graphics()->TextureClear();
+					Graphics()->QuadsBegin();
+
+					Graphics()->SetColor(Color.r, Color.g, Color.b, Alpha);
+
+					for(int s = 0; s < 24; s++)
+					{
+						float A1 = (Start + (End - Start) * (s / 24.0f)) * pi / 180.0f;
+						float A2 = (Start + (End - Start) * ((s + 1) / 24.0f)) * pi / 180.0f;
+
+						vec2 Inner1 = Center + vec2(cos(A1), sin(A1)) * InnerRadius;
+						vec2 Outer1 = Center + vec2(cos(A1), sin(A1)) * Radius;
+						vec2 Inner2 = Center + vec2(cos(A2), sin(A2)) * InnerRadius;
+						vec2 Outer2 = Center + vec2(cos(A2), sin(A2)) * Radius;
+
+						IGraphics::CFreeformItem Freeform(Inner1.x, Inner1.y, Outer1.x, Outer1.y, Inner2.x, Inner2.y, Outer2.x, Outer2.y);
+
+						Graphics()->QuadsDrawFreeform(&Freeform, 1);
+					}
+
+					Graphics()->QuadsEnd();
+
+					float Mid = (Start + End) * 0.5f * pi / 180.0f;
+					vec2 Pos = Center + vec2(cos(Mid), sin(Mid)) * ((InnerRadius + Radius) * 0.5f);
+					float IconSize = 18.0f;
+
+					TextRender()->TextColor(1, 1, 1, Alpha);
+					float Width = TextRender()->TextWidth(IconSize, aColors[i].m_pIcon);
+					TextRender()->Text(Pos.x - Width * 0.5f, Pos.y - IconSize * 0.5f, IconSize, aColors[i].m_pIcon);
+				}
+
+				Graphics()->TextureClear();
+				Graphics()->QuadsBegin();
+
+				Graphics()->SetColor(0.15f, 0.15f, 0.2f, 0.9f * Alpha);
+				Graphics()->DrawCircle(Center.x, Center.y, InnerRadius - 4.0f, 48);
+				Graphics()->QuadsEnd();
+				TextRender()->TextColor(1, 1, 1, 1);
+
+				const char *pText = Hovered >= 0 ? aColors[Hovered].m_pName : "Click";
+				float Width = TextRender()->TextWidth(14.0f, pText);
+				TextRender()->Text(Center.x - Width * 0.5f, Center.y - 7.0f, 14.0f, pText);
+
+				Block.HSplitTop(MarginSmall, nullptr, &Block);
+
+				// =========================
+				// Reset Colors
+				// =========================
+
+				Block.HSplitTop(LineSize, &Button, &Block);
+
+				if(DoButton_Menu(&s_PieMenuResetButton, Localize("Reset colors"), 0, &Button))
+				{
+					for(const auto &Entry : aColors)
+					{
+						*Entry.m_pColor = color_cast<ColorHSLA>(Entry.m_Default).Pack(false);
+					}
+				}
+			}
+		}
+
+		Column.HSplitTop(MarginBetweenViews, nullptr, &Column);
+	}
+	const float LeftColumnEndY = Column.y;
+
+	// Right Side
+	CUIRect RightColumn = RightView;
+	RightColumn.HSplitTop(10.0f, nullptr, &RightColumn);
+
+	Column = RightView;
+	// Right Side --- Grenade & Laser Path ---
+	{
+		static float s_GrenadePathPhase = 0.0f;
+		static float s_LaserPathPhase = 0.0f;
+
+		const bool GrenadePathExpanded = g_Config.m_ClGrenadePath != 0;
+		const bool LaserPathExpanded = g_Config.m_ClLaserPath != 0;
+
+		UpdateModuleRevealPhase(s_GrenadePathPhase, GrenadePathExpanded, Client()->RenderFrameTime());
+		UpdateModuleRevealPhase(s_LaserPathPhase, LaserPathExpanded, Client()->RenderFrameTime());
+
+		const float GrenadeExpandedTargetHeight = + LineSize;
+		const float LaserExpandedTargetHeight = + LineSize;
+
+		const float GrenadeExpandedHeight = GrenadeExpandedTargetHeight * BCUiAnimations::EaseOutCubic(s_GrenadePathPhase);
+		const float LaserExpandedHeight = LaserExpandedTargetHeight * BCUiAnimations::EaseOutCubic(s_LaserPathPhase);
+
+		const float BlockHeight = LineSize + MarginSmall + LineSize + GrenadeExpandedHeight + LineSize + LaserExpandedHeight;
+
+		CUIRect GrenadeLaserBlock;
+		RightColumn.HSplitTop(BlockHeight, &GrenadeLaserBlock, &RightColumn);
+
+		CUIRect BlockBg = GrenadeLaserBlock;
+		BlockBg.w += BlockPadding;
+		BlockBg.h += BlockPadding;
+		BlockBg.x -= BlockPadding * 0.5f;
+		BlockBg.y -= BlockPadding * 0.5f;
+		BlockBg.Draw(BlockColor, IGraphics::CORNER_ALL, 10.0f);
+
+		CUIRect MainView = GrenadeLaserBlock;
+		CUIRect Label;
+		MainView.HSplitTop(LineSize, &Label, &MainView);
+
+		Ui()->DoLabel(&Label, Localize("Grenade & Laser Path"), HeadlineFontSize, TEXTALIGN_ML);
+		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
+
+		MainView.HSplitTop(LineSize, &Label, &MainView);
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClGrenadePath, Localize("Grenade path prediction"), &g_Config.m_ClGrenadePath, &Label, LineSize);
+
+		if(GrenadeExpandedHeight > 0.5f)
+		{
+			CUIRect Visible = MainView;
+			Visible.h = GrenadeExpandedHeight;
+			Ui()->ClipEnable(&Visible);
+
+			//MainView.HSplitTop(MarginSmall, nullptr, &MainView);
+			MainView.HSplitTop(LineSize, &Label, &MainView);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClGrenadePathOthers, Localize("Grenade path prediction others"), &g_Config.m_ClGrenadePathOthers, &Label, LineSize);
+
+			Ui()->ClipDisable();
+		}
+		MainView.HSplitTop(LineSize, &Label, &MainView);
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClLaserPath, Localize("Laser path prediction"), &g_Config.m_ClLaserPath, &Label, LineSize);
+
+		if(LaserExpandedHeight > 0.5f)
+		{
+			CUIRect Visible = MainView;
+			Visible.h = LaserExpandedHeight;
+			Ui()->ClipEnable(&Visible);
+
+			//MainView.HSplitTop(MarginSmall, nullptr, &MainView);
+			MainView.HSplitTop(LineSize, &Label, &MainView);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClLaserPathOthers, Localize("Laser path prediction others"), &g_Config.m_ClLaserPathOthers, &Label, LineSize);
+
+			Ui()->ClipDisable();
+		}
+		RightColumn.HSplitTop(MarginBetweenViews, nullptr, &RightColumn);
+	}
+
+	// Right Side --- Show Tee Stats ---
+	{
+		static float s_TeeStatsPhase = 0.0f;
+		static float s_TeeDJPhase = 0.0f;
+
+		const bool TeeStatsExpanded = g_Config.m_ClShowFlags != 0;
+		const bool TeeDJExpanded = g_Config.m_ClShowDJ != 0;
+
+		UpdateModuleRevealPhase(s_TeeStatsPhase, TeeStatsExpanded, Client()->RenderFrameTime());
+		UpdateModuleRevealPhase(s_TeeDJPhase, TeeDJExpanded, Client()->RenderFrameTime());
+
+		const float TeeStatsTargetHeight = LineSize;
+		const float TeeDJTargetHeight = LineSize;
+
+		const float TeeStatsHeight = TeeStatsTargetHeight * s_TeeStatsPhase;
+		const float TeeDJHeight = TeeDJTargetHeight * s_TeeDJPhase;
+
+		const float ContentHeight = LineSize + MarginSmall + LineSize + TeeStatsHeight + LineSize + TeeDJHeight;
+
+		CUIRect Content, Label, Visible;
+		BeginBlock(RightColumn, ContentHeight, Content);
+
+		Content.HSplitTop(LineSize, &Label, &Content);
+		Ui()->DoLabel(&Label, Localize("Show Tee Stats"), HeadlineFontSize, TEXTALIGN_ML);
+		Content.HSplitTop(MarginSmall, nullptr, &Content);
+
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClShowFlags, Localize("Show Tee Stats (Deep/Jetpack/Endless/etc)"), &g_Config.m_ClShowFlags, &Content, LineSize);
+
+		if(TeeStatsHeight > 0.0f)
+		{
+			Content.HSplitTop(TeeStatsHeight, &Visible, &Content);
+			Ui()->ClipEnable(&Visible);
+			struct SScopedClip
+			{
+				CUi *m_pUi;
+				~SScopedClip() { m_pUi->ClipDisable(); }
+			} ClipGuard{Ui()};
+
+			CUIRect Expand = {Visible.x, Visible.y, Visible.w, TeeStatsTargetHeight};
+			CUIRect OptionRect;
+			Expand.HSplitTop(LineSize, &OptionRect, &Expand);
+			Ui()->DoScrollbarOption(&g_Config.m_ClShowFlagsSize, &g_Config.m_ClShowFlagsSize, &OptionRect, Localize("Size of tee stat"), 1, 150);
+		}
+		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClShowDJ, Localize("Show double jumps of a tee"), &g_Config.m_ClShowDJ, &Content, LineSize);
+
+		if(TeeDJHeight > 0.0f)
+		{
+			Content.HSplitTop(TeeDJHeight, &Visible, &Content);
+			Ui()->ClipEnable(&Visible);
+			struct SScopedClip
+			{
+				CUi *m_pUi;
+				~SScopedClip() { m_pUi->ClipDisable(); }
+			} ClipGuard{Ui()};
+
+			CUIRect Expand = {Visible.x, Visible.y, Visible.w, TeeDJTargetHeight};
+			CUIRect OptionRect;
+			Expand.HSplitTop(LineSize, &OptionRect, &Expand);
+			Ui()->DoScrollbarOption(&g_Config.m_ClShowJumpsSize, &g_Config.m_ClShowJumpsSize, &OptionRect, Localize("Size of double jump"), 1, 150);
+		}
+		RightColumn.HSplitTop(MarginBetweenViews, nullptr, &RightColumn);
+	}
+
+	const float RightColumnEndY = RightColumn.y;
+	CUIRect AlesstyaScrollContentRect;
+	AlesstyaScrollContentRect.x = MainView.x;
+	AlesstyaScrollContentRect.y = maximum(LeftColumnEndY, RightColumnEndY) + MarginSmall * 2.0f;
+	AlesstyaScrollContentRect.w = MainView.w;
+	AlesstyaScrollContentRect.h = 0.0f;
+	s_AlesstyaScrollRegion.AddRect(AlesstyaScrollContentRect);
+	s_AlesstyaScrollRegion.End();
 }
 
 void CMenus::RenderSettingsBestClientVisuals(CUIRect MainView)
@@ -3418,6 +3920,7 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 	RightView.HSplitTop(MarginSmall, nullptr, &RightView);
 
 	const char *apTabNames[] = {
+		Localize("Alesstya"),
 		Localize("Visuals"),
 		Localize("Gameplay"),
 		Localize("Others"),
@@ -3425,6 +3928,7 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 		Localize("Info"),
 	};
 	const int aTabOrder[NUM_BESTCLIENT_TABS] = {
+		BESTCLIENT_TAB_ALESSTYA,
 		BESTCLIENT_TAB_VISUALS,
 		BESTCLIENT_TAB_GAMEPLAY,
 		BESTCLIENT_TAB_OTHERS,
