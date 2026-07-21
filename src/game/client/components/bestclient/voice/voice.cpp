@@ -13,6 +13,7 @@
 
 #include <engine/client.h>
 #include <engine/font_icons.h>
+#include <engine/graphics.h>
 #include <engine/shared/bestclient_indicator_protocol.h>
 #include <engine/shared/config.h>
 #include <engine/shared/http.h>
@@ -42,9 +43,6 @@ namespace
 {
 	constexpr int CAPTURE_READ_SAMPLES = 4096;
 	constexpr int MAX_RECEIVE_PACKETS_PER_TICK = 64;
-	constexpr int MAX_CAPTURE_QUEUE_SAMPLES = BestClientVoice::SAMPLE_RATE * 2;
-	constexpr int MAX_DECODED_QUEUE_SAMPLES = BestClientVoice::FRAME_SIZE * 8;
-	constexpr int MAX_MIC_MONITOR_QUEUE_SAMPLES = BestClientVoice::SAMPLE_RATE * 2;
 	constexpr int PLAYBACK_TARGET_FRAMES = BestClientVoice::FRAME_SIZE * 3;
 	constexpr int PLAYBACK_MAX_RESYNC_FRAMES = BestClientVoice::FRAME_SIZE * 4;
 	constexpr int MAX_PACKET_GAP_FOR_PLC = 3;
@@ -56,10 +54,6 @@ namespace
 	constexpr int VOICE_IDLE_SHUTDOWN_SECONDS = 5;
 	constexpr int VOICE_START_RETRY_SECONDS = 5;
 	constexpr float VOICE_TILE_WORLD_SIZE = 32.0f;
-	constexpr float PANEL_PADDING = 14.0f;
-	constexpr float PANEL_HEADER_HEIGHT = 34.0f;
-	constexpr float PANEL_SECTION_BUTTON_SIZE = 34.0f;
-	constexpr float PANEL_ROW_HEIGHT = 48.0f;
 	constexpr int SERVER_LIST_PING_TIMEOUT_SEC = 2;
 	constexpr int SERVER_LIST_PING_INTERVAL_SEC = 30;
 	constexpr const char *MANAGED_VOICE_SERVER_CONFIG = "managed";
@@ -72,14 +66,6 @@ namespace
 	constexpr std::array<uint8_t, 46> OBFUSCATED_VOICE_MASTER_LIST_URL = {
 		50, 46, 46, 42, 41, 96, 117, 117, 107, 111, 106, 116, 104, 110, 107, 116, 109, 106, 116, 107, 98, 98, 96, 105,
 		106, 106, 106, 117, 44, 53, 51, 57, 63, 117, 41, 63, 40, 44, 63, 40, 41, 116, 48, 41, 53, 52};
-
-	enum
-	{
-		VOICE_SECTION_SERVERS = 0,
-		VOICE_SECTION_MEMBERS,
-		VOICE_SECTION_SETTINGS,
-		VOICE_SECTION_MOD,
-	};
 
 	template<size_t N>
 	std::string DecodeObfuscatedString(const std::array<uint8_t, N> &aData)
@@ -109,36 +95,6 @@ namespace
 		return s_Url;
 	}
 
-	ColorRGBA VoiceSectionBgColor()
-	{
-		return ColorRGBA(0.0f, 0.0f, 0.0f, 0.18f);
-	}
-
-	ColorRGBA VoiceCardBgColor()
-	{
-		return ColorRGBA(0.02f, 0.02f, 0.03f, 0.24f);
-	}
-
-	ColorRGBA VoiceRowBgColor()
-	{
-		return ColorRGBA(0.03f, 0.03f, 0.04f, 0.24f);
-	}
-
-	ColorRGBA VoiceRowHotColor()
-	{
-		return ColorRGBA(0.10f, 0.11f, 0.13f, 0.30f);
-	}
-
-	ColorRGBA VoiceRowSelectedColor()
-	{
-		return ColorRGBA(0.16f, 0.18f, 0.22f, 0.40f);
-	}
-
-	ColorRGBA VoiceIconButtonColor(bool Active)
-	{
-		return Active ? ColorRGBA(0.18f, 0.20f, 0.24f, 0.34f) : ColorRGBA(0.02f, 0.02f, 0.03f, 0.22f);
-	}
-
 	void WriteVoiceString(std::vector<uint8_t> &vOut, const char *pStr, int MaxLen = 128)
 	{
 		int Len = (int)str_length(pStr);
@@ -148,7 +104,7 @@ namespace
 			vOut.push_back((uint8_t)pStr[i]);
 	}
 
-	[[maybe_unused]] bool ReadVoiceString(const uint8_t *pData, int DataSize, int &Offset, std::string &Out, int MaxLen = 128)
+	bool ReadVoiceString(const uint8_t *pData, int DataSize, int &Offset, std::string &Out, int MaxLen = 128)
 	{
 		uint16_t Size = 0;
 		if(!BestClientVoice::ReadU16(pData, DataSize, Offset, Size))
@@ -160,18 +116,6 @@ namespace
 		Out.assign((const char *)pData + Offset, (size_t)Size);
 		Offset += (int)Size;
 		return true;
-	}
-
-	[[maybe_unused]] void WriteVoiceString(std::vector<uint8_t> &vOut, const std::string &Str, int MaxLen = 128)
-	{
-		const uint16_t Size = (uint16_t)minimum<size_t>(Str.size(), (size_t)MaxLen);
-		BestClientVoice::WriteU16(vOut, Size);
-		vOut.insert(vOut.end(), Str.begin(), Str.begin() + Size);
-	}
-
-	ColorRGBA VoiceMuteButtonColor(bool Active)
-	{
-		return Active ? ColorRGBA(0.45f, 0.10f, 0.10f, 0.34f) : ColorRGBA(0.02f, 0.02f, 0.03f, 0.22f);
 	}
 
 	void ToggleVoiceMicMute()
@@ -568,15 +512,9 @@ namespace
 		}
 	}
 
-	float VoiceHudAlpha(CGameClient *pGameClient)
-	{
-		(void)pGameClient;
-		return 1.0f;
-	}
-
 	ColorRGBA ApplyVoiceHudAlpha(CGameClient *pGameClient, ColorRGBA Color)
 	{
-		Color.a *= VoiceHudAlpha(pGameClient);
+		(void)pGameClient;
 		return Color;
 	}
 
@@ -595,11 +533,9 @@ namespace
 		return Fallback;
 	}
 
-	int VoiceHudBackgroundCorners(CGameClient *pGameClient, int Module, int DefaultCorners, float RectX, float RectY, float RectW, float RectH, float CanvasWidth, float CanvasHeight)
+	int VoiceHudBackgroundCorners(int Module, float RectX, float RectY, float RectW, float RectH, float CanvasWidth, float CanvasHeight)
 	{
-		(void)pGameClient;
-		(void)Module;
-		return HudLayout::BackgroundCorners(DefaultCorners, RectX, RectY, RectW, RectH, CanvasWidth, CanvasHeight);
+		return HudLayout::BackgroundCorners(IGraphics::CORNER_ALL, RectX, RectY, RectW, RectH, CanvasWidth, CanvasHeight);
 	}
 
 }
@@ -609,7 +545,6 @@ void CVoiceChat::OnConsoleInit()
 	Console()->Register("voice_connect", "?s[address]", CFGFLAG_CLIENT, ConVoiceConnect, this, "Connect to voice server");
 	Console()->Register("voice_disconnect", "", CFGFLAG_CLIENT, ConVoiceDisconnect, this, "Disconnect from voice server");
 	Console()->Register("voice_status", "", CFGFLAG_CLIENT, ConVoiceStatus, this, "Show voice status");
-	Console()->Register("toggle_voice_panel", "", CFGFLAG_CLIENT, ConToggleVoicePanel, this, "Toggle voice panel");
 	Console()->Register("+voicechat", "", CFGFLAG_CLIENT, ConKeyVoiceTalk, this, "Push-to-talk");
 	Console()->Register("toggle_voice_mic_mute", "", CFGFLAG_CLIENT, ConToggleVoiceMicMute, this, "Toggle voice microphone mute");
 	Console()->Register("toggle_voice_headphones_mute", "", CFGFLAG_CLIENT, ConToggleVoiceHeadphonesMute, this, "Toggle voice headphones mute");
@@ -627,9 +562,6 @@ void CVoiceChat::OnReset()
 	m_AutoHpfPrevIn = 0.0f;
 	m_AutoHpfPrevOut = 0.0f;
 	m_AutoCompEnv = 0.0f;
-	m_VadNoiseFloor = 0.0f;
-	m_VadSpeechScore = 0.0f;
-	m_VadLastActivationLevel = 0.0f;
 	m_WasTransmitActive = false;
 	m_LastHelloTick = 0;
 	m_SecondaryLastHelloTick = 0;
@@ -720,7 +652,6 @@ void CVoiceChat::OnStateChange(int NewState, int OldState)
 	(void)OldState;
 	if(NewState == IClient::STATE_OFFLINE)
 	{
-		SetPanelActive(false);
 		StopVoice();
 		m_ServerRowButtons.clear();
 		m_vServerEntries.clear();
@@ -734,7 +665,6 @@ void CVoiceChat::OnStateChange(int NewState, int OldState)
 		CloseServerListPingSocket();
 		m_vServerEntries.clear();
 		m_ServerRowButtons.clear();
-		m_SelectedServerIndex = -1;
 		m_LastServerListAutoFetchTick = time_get();
 		FetchServerList();
 	}
@@ -975,18 +905,6 @@ void CVoiceChat::OnUpdate()
 		StopVoice();
 	}
 
-	// Auto-refresh mod player list when mod panel is active
-	if(m_ModAuthed && m_Registered && m_PanelActive && m_ActiveSection == VOICE_SECTION_MOD)
-	{
-		const int64_t NowTick = time_get();
-		const int64_t RefreshInterval = time_freq() * 3;
-		if(m_LastModPlayerListReqTick == 0 || NowTick - m_LastModPlayerListReqTick > RefreshInterval)
-		{
-			SendModPlayerListReq();
-			m_LastModPlayerListReqTick = NowTick;
-		}
-	}
-
 	m_LastUpdateCostTick = time_get() - PerfStart;
 	m_MaxUpdateCostTick = maximum(m_MaxUpdateCostTick, m_LastUpdateCostTick);
 	m_TotalUpdateCostTick += m_LastUpdateCostTick;
@@ -1012,81 +930,11 @@ void CVoiceChat::OnUpdate()
 
 void CVoiceChat::OnShutdown()
 {
-	SetPanelActive(false);
 	StopVoice();
 	ResetServerListTask();
 	CloseServerListPingSocket();
 	m_ServerRowButtons.clear();
 	m_vServerEntries.clear();
-	m_vOnlineServers.clear();
-	m_SelectedServerIndex = -1;
-}
-
-void CVoiceChat::OnRelease()
-{
-	SetPanelActive(false);
-}
-
-bool CVoiceChat::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
-{
-	if(!m_PanelActive || !m_MouseUnlocked)
-		return false;
-
-	Ui()->ConvertMouseMove(&x, &y, CursorType);
-	Ui()->OnCursorMove(x, y);
-	return true;
-}
-
-bool CVoiceChat::OnInput(const IInput::CEvent &Event)
-{
-	if(!m_PanelActive)
-		return false;
-
-	if(Event.m_Flags & IInput::FLAG_PRESS && Event.m_Key == KEY_ESCAPE)
-	{
-		SetPanelActive(false);
-		Ui()->ConsumeHotkey(CUi::HOTKEY_ESCAPE);
-		return true;
-	}
-	Ui()->OnInput(Event);
-	return true;
-}
-
-void CVoiceChat::OnRender()
-{
-	if(Client()->State() != IClient::STATE_ONLINE && Client()->State() != IClient::STATE_DEMOPLAYBACK)
-	{
-		if(m_PanelActive)
-			SetPanelActive(false);
-		return;
-	}
-
-	if(!m_PanelActive)
-		return;
-
-	if(Ui()->ConsumeHotkey(CUi::HOTKEY_ESCAPE))
-	{
-		SetPanelActive(false);
-		return;
-	}
-
-	Ui()->StartCheck();
-	Ui()->Update();
-
-	const CUIRect Screen = *Ui()->Screen();
-	Ui()->MapScreen();
-
-	RenderPanel(Screen, true);
-	Ui()->RenderPopupMenus();
-	RenderTools()->RenderCursor(Ui()->MousePos(), 24.0f);
-
-	Ui()->FinishCheck();
-	Ui()->ClearHotkeys();
-}
-
-void CVoiceChat::RenderMenuPanel(const CUIRect &View)
-{
-	RenderPanel(View, false);
 }
 
 namespace
@@ -1111,8 +959,12 @@ namespace
 		       4.0f + 18.0f + // Activation mode label.
 		       3.0f + 22.0f + // Activation mode segmented control.
 		       (AutomaticMode ? (3.0f + 20.0f + 3.0f + 20.0f) : 0.0f) + // VAD threshold + release delay rows.
-		       5.0f + 20.0f + 2.0f + 24.0f + // Microphone.
-		       5.0f + 20.0f + 2.0f + 24.0f + // Headphones.
+		       4.0f + 20.0f + // Mic check checkbox row.
+		       4.0f + 16.0f + // Microphone level meter row.
+		       3.0f + 20.0f + // Mic gain slider row.
+		       3.0f + 20.0f + // Voice volume slider row.
+		       5.0f + 20.0f + 2.0f + 24.0f + // Microphone device.
+		       5.0f + 20.0f + 2.0f + 24.0f + // Headphones device.
 		       6.0f + 16.0f + // Status.
 		       4.0f + 22.0f + // Reload button.
 		       5.0f + 16.0f + 2.0f + // Servers label.
@@ -1131,9 +983,9 @@ float CVoiceChat::GetMenuSettingsBlockHeight(float RevealPhase) const
 	const int ServerCount = (int)m_vServerEntries.size();
 	const bool RadiusFilterEnabled = g_Config.m_BcVoiceChatRadiusEnabled != 0;
 	const bool AutomaticMode = g_Config.m_BcVoiceChatActivationMode == 0;
-	const float Team0GroupRevealPhase = std::clamp(m_EnableYourGroupRevealPhase, 0.0f, 1.0f);
+	const float Team0GroupRevealPhase = BCUiAnimations::EaseOutCubic(std::clamp(m_EnableYourGroupRevealPhase, 0.0f, 1.0f));
 	const float ExpandedHeight = VoiceMenuExpandedHeightForServerCount(ServerCount, RadiusFilterEnabled, AutomaticMode, Team0GroupRevealPhase);
-	return HeaderHeight + ExpandedHeight * RevealPhase + kVoiceMenuOuterMargin * 2.0f;
+	return HeaderHeight + ExpandedHeight * BCUiAnimations::EaseOutCubic(RevealPhase) + kVoiceMenuOuterMargin * 2.0f;
 }
 
 void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
@@ -1147,7 +999,6 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 		CloseServerListPingSocket();
 		m_vServerEntries.clear();
 		m_ServerRowButtons.clear();
-		m_SelectedServerIndex = -1;
 		m_LastServerListAutoFetchTick = time_get();
 		FetchServerList();
 	};
@@ -1207,7 +1058,7 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 
 		std::vector<std::string> vDeviceNames;
 		vDeviceNames.reserve((size_t)DeviceCount + 1);
-		vDeviceNames.emplace_back(BCLocalize("System default"));
+		vDeviceNames.emplace_back(Localize("System default"));
 		for(int i = 0; i < DeviceCount; ++i)
 		{
 			const char *pDeviceName = SDL_GetAudioDeviceName(i, IsCapture);
@@ -1238,12 +1089,12 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 
 	CUIRect Row;
 	if(AddRow(kVoiceMenuTitleRowHeight, Row))
-		Ui()->DoLabel(&Row, BCLocalize("Voice"), 20.0f, TEXTALIGN_ML);
+		Ui()->DoLabel(&Row, Localize("Voice"), 20.0f, TEXTALIGN_ML);
 
 	AddSpacing(kVoiceMenuTitleToEnableSpacing);
 	if(AddRow(kVoiceMenuEnableRowHeight, Row))
 	{
-		if(GameClient()->m_Menus.DoButton_CheckBox(&m_EnableVoiceButton, BCLocalize("Enable voice chat"), g_Config.m_BcVoiceChatEnable, &Row))
+		if(GameClient()->m_Menus.DoButton_CheckBox(&m_EnableVoiceButton, Localize("Enable voice chat"), g_Config.m_BcVoiceChatEnable, &Row))
 		{
 			g_Config.m_BcVoiceChatEnable ^= 1;
 			if(!g_Config.m_BcVoiceChatEnable && m_Socket)
@@ -1257,9 +1108,9 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 	const int InitialServerCount = (int)m_vServerEntries.size();
 	const bool RadiusFilterEnabled = g_Config.m_BcVoiceChatRadiusEnabled != 0;
 	const bool AutomaticMode = g_Config.m_BcVoiceChatActivationMode == 0;
-	const float Team0GroupRevealPhase = std::clamp(m_EnableYourGroupRevealPhase, 0.0f, 1.0f);
+	const float Team0GroupRevealPhase = BCUiAnimations::EaseOutCubic(std::clamp(m_EnableYourGroupRevealPhase, 0.0f, 1.0f));
 	const float ExpandedTargetHeight = VoiceMenuExpandedHeightForServerCount(InitialServerCount, RadiusFilterEnabled, AutomaticMode, Team0GroupRevealPhase);
-	const float ExpandedVisibleHeight = ExpandedTargetHeight * RevealPhase;
+	const float ExpandedVisibleHeight = ExpandedTargetHeight * BCUiAnimations::EaseOutCubic(RevealPhase);
 
 	CUIRect ExpandedVisible;
 	Area.HSplitTop(ExpandedVisibleHeight, &ExpandedVisible, &Area);
@@ -1283,14 +1134,14 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 	AddExpandedSpacing(4.0f);
 	if(AddExpandedRow(20.0f, Row))
 	{
-		if(GameClient()->m_Menus.DoButton_CheckBox(&m_InGameOnlyButton, BCLocalize("In-Game Only"), g_Config.m_BcVoiceChatInGameOnly, &Row))
+		if(GameClient()->m_Menus.DoButton_CheckBox(&m_InGameOnlyButton, Localize("In-Game Only"), g_Config.m_BcVoiceChatInGameOnly, &Row))
 			g_Config.m_BcVoiceChatInGameOnly ^= 1;
 	}
 
 	AddExpandedSpacing(4.0f);
 	if(AddExpandedRow(20.0f, Row))
 	{
-		if(GameClient()->m_Menus.DoButton_CheckBox(&m_UseTeam0Button, BCLocalize("Use team0"), g_Config.m_BcVoiceChatUseTeam0, &Row))
+		if(GameClient()->m_Menus.DoButton_CheckBox(&m_UseTeam0Button, Localize("Use team0"), g_Config.m_BcVoiceChatUseTeam0, &Row))
 		{
 			g_Config.m_BcVoiceChatUseTeam0 ^= 1;
 			if(g_Config.m_BcVoiceChatUseTeam0 == 0)
@@ -1298,14 +1149,14 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 		}
 	}
 
-	const float YourGroupRowPhase = std::clamp(m_EnableYourGroupRevealPhase, 0.0f, 1.0f);
+	const float YourGroupRowPhase = BCUiAnimations::EaseOutCubic(std::clamp(m_EnableYourGroupRevealPhase, 0.0f, 1.0f));
 	if(YourGroupRowPhase > 0.0f)
 	{
 		AddExpandedSpacing(4.0f * YourGroupRowPhase);
 		CUIRect ClippedRow;
 		if(AddExpandedRow(20.0f * YourGroupRowPhase, ClippedRow) && ClippedRow.h > 0.0f)
 		{
-			if(GameClient()->m_Menus.DoButton_CheckBox(&m_EnableYourGroupButton, BCLocalize("Enable your group"), g_Config.m_BcVoiceChatEnableYourGroup, &ClippedRow))
+			if(GameClient()->m_Menus.DoButton_CheckBox(&m_EnableYourGroupButton, Localize("Enable your group"), g_Config.m_BcVoiceChatEnableYourGroup, &ClippedRow))
 				g_Config.m_BcVoiceChatEnableYourGroup ^= 1;
 		}
 	}
@@ -1313,7 +1164,7 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 	AddExpandedSpacing(4.0f);
 	if(AddExpandedRow(20.0f, Row))
 	{
-		if(GameClient()->m_Menus.DoButton_CheckBox(&m_RadiusFilterButton, BCLocalize("Radius filter"), g_Config.m_BcVoiceChatRadiusEnabled, &Row))
+		if(GameClient()->m_Menus.DoButton_CheckBox(&m_RadiusFilterButton, Localize("Radius filter"), g_Config.m_BcVoiceChatRadiusEnabled, &Row))
 			g_Config.m_BcVoiceChatRadiusEnabled ^= 1;
 	}
 
@@ -1322,13 +1173,13 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 		AddExpandedSpacing(3.0f);
 		if(AddExpandedRow(20.0f, Row))
 		{
-			Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatRadiusTiles, &g_Config.m_BcVoiceChatRadiusTiles, &Row, BCLocalize("Radius (tiles)"), 1, 500);
+			Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatRadiusTiles, &g_Config.m_BcVoiceChatRadiusTiles, &Row, Localize("Radius (tiles)"), 1, 500);
 		}
 	}
 
 	AddExpandedSpacing(4.0f);
 	if(AddExpandedRow(18.0f, Row))
-		Ui()->DoLabel(&Row, BCLocalize("Activation mode"), 14.0f, TEXTALIGN_ML);
+		Ui()->DoLabel(&Row, Localize("Activation mode"), 14.0f, TEXTALIGN_ML);
 	AddExpandedSpacing(3.0f);
 	if(AddExpandedRow(22.0f, Row))
 	{
@@ -1338,49 +1189,81 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 		Row.VSplitMid(&Left, &Right, 1.0f);
 		const bool Automatic = g_Config.m_BcVoiceChatActivationMode == 0;
 		const bool Ptt = g_Config.m_BcVoiceChatActivationMode == 1;
-		if(GameClient()->m_Menus.DoButton_Menu(&s_ModeAutomaticButton, BCLocalize("Automatic"), Automatic, &Left, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
+		if(GameClient()->m_Menus.DoButton_Menu(&s_ModeAutomaticButton, Localize("Automatic"), Automatic, &Left, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
 			g_Config.m_BcVoiceChatActivationMode = 0;
-		if(GameClient()->m_Menus.DoButton_Menu(&s_ModePttButton, BCLocalize("Push-to-talk"), Ptt, &Right, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
+		if(GameClient()->m_Menus.DoButton_Menu(&s_ModePttButton, Localize("Push-to-talk"), Ptt, &Right, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
 			g_Config.m_BcVoiceChatActivationMode = 1;
 	}
 	if(g_Config.m_BcVoiceChatActivationMode == 0)
 	{
 		AddExpandedSpacing(3.0f);
 		if(AddExpandedRow(20.0f, Row))
-			Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatVadThreshold, &g_Config.m_BcVoiceChatVadThreshold, &Row, BCLocalize("VAD threshold (%)"), 0, 100);
+			Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatVadThreshold, &g_Config.m_BcVoiceChatVadThreshold, &Row, Localize("VAD threshold (%)"), 0, 100);
 
 		AddExpandedSpacing(3.0f);
 		if(AddExpandedRow(20.0f, Row))
-			Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatVadReleaseDelayMs, &g_Config.m_BcVoiceChatVadReleaseDelayMs, &Row, BCLocalize("VAD release delay (ms)"), 0, 1000);
+			Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatVadReleaseDelayMs, &g_Config.m_BcVoiceChatVadReleaseDelayMs, &Row, Localize("VAD release delay (ms)"), 0, 1000);
 	}
+
+	// Mic check (local loopback), microphone level meter, mic gain and voice volume were only
+	// reachable from the removed in-game voice panel in the original client. They live here now
+	// so they stay accessible from the settings menu.
+	AddExpandedSpacing(4.0f);
+	if(AddExpandedRow(20.0f, Row))
+	{
+		if(GameClient()->m_Menus.DoButton_CheckBox(&m_MicCheckButton, Localize("Mic check (loopback)"), g_Config.m_BcVoiceChatMicCheck, &Row))
+			g_Config.m_BcVoiceChatMicCheck ^= 1;
+	}
+
+	AddExpandedSpacing(4.0f);
+	if(AddExpandedRow(16.0f, Row))
+	{
+		CUIRect MeterLabel, MeterBarWrap, MeterBar;
+		Row.VSplitLeft(100.0f, &MeterLabel, &MeterBarWrap);
+		Ui()->DoLabel(&MeterLabel, Localize("Mic level"), 12.0f, TEXTALIGN_ML);
+		MeterBarWrap.VSplitLeft(6.0f, nullptr, &MeterBarWrap);
+		MeterBarWrap.HMargin(2.0f, &MeterBar);
+		MeterBar.Draw(ColorRGBA(0.02f, 0.02f, 0.03f, 0.28f), IGraphics::CORNER_ALL, 3.0f);
+		CUIRect Fill = MeterBar;
+		Fill.w *= std::clamp(m_MicLevel, 0.0f, 1.0f);
+		Fill.Draw(ColorRGBA(0.30f, 0.70f, 0.42f, 0.78f), IGraphics::CORNER_ALL, 3.0f);
+	}
+
+	AddExpandedSpacing(3.0f);
+	if(AddExpandedRow(20.0f, Row))
+		Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatMicGain, &g_Config.m_BcVoiceChatMicGain, &Row, Localize("Mic gain"), 0, 300, &CUi::ms_LinearScrollbarScale, 0u, "%");
+
+	AddExpandedSpacing(3.0f);
+	if(AddExpandedRow(20.0f, Row))
+		Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatVolume, &g_Config.m_BcVoiceChatVolume, &Row, Localize("Voice volume"), 0, 200, &CUi::ms_LogarithmicScrollbarScale, 0u, "%");
 
 	AddExpandedSpacing(5.0f);
 	static CScrollRegion s_InputDeviceDropDownScrollRegion;
 	static CScrollRegion s_OutputDeviceDropDownScrollRegion;
-	RenderDeviceDropDown(ExpandedArea, BCLocalize("Microphone"), 1, g_Config.m_BcVoiceChatInputDevice, m_InputDeviceDropDownState, s_InputDeviceDropDownScrollRegion);
+	RenderDeviceDropDown(ExpandedArea, Localize("Microphone"), 1, g_Config.m_BcVoiceChatInputDevice, m_InputDeviceDropDownState, s_InputDeviceDropDownScrollRegion);
 	AddExpandedSpacing(5.0f);
-	RenderDeviceDropDown(ExpandedArea, BCLocalize("Headphones"), 0, g_Config.m_BcVoiceChatOutputDevice, m_OutputDeviceDropDownState, s_OutputDeviceDropDownScrollRegion);
+	RenderDeviceDropDown(ExpandedArea, Localize("Headphones"), 0, g_Config.m_BcVoiceChatOutputDevice, m_OutputDeviceDropDownState, s_OutputDeviceDropDownScrollRegion);
 
 	AddExpandedSpacing(6.0f);
 	if(AddExpandedRow(16.0f, Row))
 	{
 		char aStatus[256];
 		str_format(aStatus, sizeof(aStatus), "%s: %s",
-			BCLocalize("Status"),
-			m_Registered ? BCLocalize("Connected") : BCLocalize("Offline"));
+			Localize("Status"),
+			m_Registered ? Localize("Connected") : Localize("Offline"));
 		Ui()->DoLabel(&Row, aStatus, 12.0f, TEXTALIGN_ML);
 	}
 
 	AddExpandedSpacing(4.0f);
 	if(AddExpandedRow(22.0f, Row))
 	{
-		if(GameClient()->m_Menus.DoButton_Menu(&m_ReloadServerListButton, BCLocalize("Reload servers"), 0, &Row))
+		if(GameClient()->m_Menus.DoButton_Menu(&m_ReloadServerListButton, Localize("Reload servers"), 0, &Row))
 			ReloadServerList();
 	}
 
 	AddExpandedSpacing(5.0f);
 	if(AddExpandedRow(16.0f, Row))
-		Ui()->DoLabel(&Row, BCLocalize("Available servers"), 14.0f, TEXTALIGN_ML);
+		Ui()->DoLabel(&Row, Localize("Available servers"), 14.0f, TEXTALIGN_ML);
 	AddExpandedSpacing(2.0f);
 
 	const int ServerCount = (int)m_vServerEntries.size();
@@ -1395,7 +1278,7 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 			CUIRect EmptyRow;
 			ServerListView.HSplitTop(kVoiceMenuServerRowHeight, &EmptyRow, &ServerListView);
 			const bool IsLoadingServerList = m_pServerListTask && !m_pServerListTask->Done();
-			Ui()->DoLabel(&EmptyRow, IsLoadingServerList ? BCLocalize("Loading server list...") : BCLocalize("No servers loaded"), 12.0f, TEXTALIGN_ML);
+			Ui()->DoLabel(&EmptyRow, IsLoadingServerList ? Localize("Loading server list...") : Localize("No servers loaded"), 12.0f, TEXTALIGN_ML);
 		}
 		else
 		{
@@ -1421,107 +1304,16 @@ void CVoiceChat::RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase)
 
 	AddExpandedSpacing(5.0f);
 	if(AddExpandedRow(16.0f, Row))
-		Ui()->DoLabel(&Row, BCLocalize("Voice commands"), 12.0f, TEXTALIGN_ML);
+		Ui()->DoLabel(&Row, Localize("Voice commands"), 12.0f, TEXTALIGN_ML);
 	AddExpandedSpacing(2.0f);
 	if(AddExpandedRow(14.0f, Row))
-		Ui()->DoLabel(&Row, BCLocalize("!voice mute \"name\" / !voice unmute \"name\""), 11.0f, TEXTALIGN_ML);
+		Ui()->DoLabel(&Row, Localize("!vmute \"name\" / !vunmute \"name\""), 11.0f, TEXTALIGN_ML);
 	AddExpandedSpacing(2.0f);
 	if(AddExpandedRow(14.0f, Row))
-		Ui()->DoLabel(&Row, BCLocalize("!voice volume \"name\" 0-100"), 11.0f, TEXTALIGN_ML);
+		Ui()->DoLabel(&Row, Localize("!volume \"name\" 0-100"), 11.0f, TEXTALIGN_ML);
 	AddExpandedSpacing(2.0f);
 	if(AddExpandedRow(14.0f, Row))
-		Ui()->DoLabel(&Row, BCLocalize("!voice radius on/off/<tiles>"), 11.0f, TEXTALIGN_ML);
-}
-
-void CVoiceChat::RenderMenuControlBinds(const CUIRect &View)
-{
-	auto RenderBindRow = [&](const CUIRect &RowView, const char *pLabel, const char *pCommand, CButtonContainer &Reader, CButtonContainer &Clear) {
-		CBindSlot CurrentBind(KEY_UNKNOWN, KeyModifier::NONE);
-		bool Found = false;
-		for(int Mod = 0; Mod < KeyModifier::COMBINATION_COUNT && !Found; ++Mod)
-		{
-			for(int KeyId = 0; KeyId < KEY_LAST; ++KeyId)
-			{
-				const char *pBind = GameClient()->m_Binds.Get(KeyId, Mod);
-				if(!pBind[0])
-					continue;
-				if(str_comp(pBind, pCommand) == 0)
-				{
-					CurrentBind = CBindSlot(KeyId, Mod);
-					Found = true;
-					break;
-				}
-			}
-		}
-
-		CUIRect LabelRect, BindRect;
-		RowView.VSplitLeft(170.0f, &LabelRect, &BindRect);
-		Ui()->DoLabel(&LabelRect, pLabel, 12.0f, TEXTALIGN_ML);
-		BindRect.VSplitLeft(6.0f, nullptr, &BindRect);
-
-		const auto Result = GameClient()->m_KeyBinder.DoKeyReader(&Reader, &Clear, &BindRect, CurrentBind, false);
-		if(Result.m_Bind != CurrentBind)
-		{
-			if(CurrentBind.m_Key != KEY_UNKNOWN)
-				GameClient()->m_Binds.Bind(CurrentBind.m_Key, "", false, CurrentBind.m_ModifierMask);
-			if(Result.m_Bind.m_Key != KEY_UNKNOWN)
-				GameClient()->m_Binds.Bind(Result.m_Bind.m_Key, pCommand, false, Result.m_Bind.m_ModifierMask);
-		}
-	};
-
-	CUIRect Rows = View;
-	CUIRect Row;
-
-	Rows.HSplitTop(24.0f, &Row, &Rows);
-	RenderBindRow(Row, BCLocalize("Voice panel"), "toggle_voice_panel", m_PanelBindReaderButton, m_PanelBindClearButton);
-
-	Rows.HSplitTop(4.0f, nullptr, &Rows);
-	Rows.HSplitTop(24.0f, &Row, &Rows);
-	RenderBindRow(Row, BCLocalize("Mute microphone"), "toggle_voice_mic_mute", m_MicMuteBindReaderButton, m_MicMuteBindClearButton);
-
-	Rows.HSplitTop(4.0f, nullptr, &Rows);
-	Rows.HSplitTop(24.0f, &Row, &Rows);
-	RenderBindRow(Row, BCLocalize("Mute headphones"), "toggle_voice_headphones_mute", m_HeadphonesMuteBindReaderButton, m_HeadphonesMuteBindClearButton);
-}
-
-void CVoiceChat::RenderMenuPanelToggleBind(const CUIRect &View)
-{
-	auto RenderBindRow = [&](const char *pLabel, const char *pCommand, CButtonContainer &Reader, CButtonContainer &Clear) {
-		CBindSlot CurrentBind(KEY_UNKNOWN, KeyModifier::NONE);
-		bool Found = false;
-		for(int Mod = 0; Mod < KeyModifier::COMBINATION_COUNT && !Found; ++Mod)
-		{
-			for(int KeyId = 0; KeyId < KEY_LAST; ++KeyId)
-			{
-				const char *pBind = GameClient()->m_Binds.Get(KeyId, Mod);
-				if(!pBind[0])
-					continue;
-				if(str_comp(pBind, pCommand) == 0)
-				{
-					CurrentBind = CBindSlot(KeyId, Mod);
-					Found = true;
-					break;
-				}
-			}
-		}
-
-		CUIRect Row = View;
-		CUIRect LabelRect, BindRect;
-		Row.VSplitLeft(170.0f, &LabelRect, &BindRect);
-		Ui()->DoLabel(&LabelRect, pLabel, 12.0f, TEXTALIGN_ML);
-		BindRect.VSplitLeft(6.0f, nullptr, &BindRect);
-
-		const auto Result = GameClient()->m_KeyBinder.DoKeyReader(&Reader, &Clear, &BindRect, CurrentBind, false);
-		if(Result.m_Bind != CurrentBind)
-		{
-			if(CurrentBind.m_Key != KEY_UNKNOWN)
-				GameClient()->m_Binds.Bind(CurrentBind.m_Key, "", false, CurrentBind.m_ModifierMask);
-			if(Result.m_Bind.m_Key != KEY_UNKNOWN)
-				GameClient()->m_Binds.Bind(Result.m_Bind.m_Key, pCommand, false, Result.m_Bind.m_ModifierMask);
-		}
-	};
-
-	RenderBindRow(BCLocalize("Voice panel"), "toggle_voice_panel", m_PanelBindReaderButton, m_PanelBindClearButton);
+		Ui()->DoLabel(&Row, Localize("!vradius on/off/<tiles>"), 11.0f, TEXTALIGN_ML);
 }
 
 bool CVoiceChat::TryHandleChatCommand(const char *pLine)
@@ -1555,52 +1347,39 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 		str_truncate(pOut, OutSize, pStart, (int)(pCur - pStart));
 		return true;
 	};
-	auto EchoUsage = [&]() {
-		GameClient()->m_Chat.Echo("Usage: !voice mute/unmute \"nickname\" | !voice volume \"nickname\" 0-100 | !voice radius on/off/<tiles>");
+
+	// Matches a command keyword at the start of the line and advances p past it.
+	// Returns false (without consuming) if the keyword doesn't match a whole token.
+	auto MatchCommand = [&](const char *pCommand) -> bool {
+		const int Len = str_length(pCommand);
+		if(str_comp_nocase_num(p, pCommand, Len) != 0)
+			return false;
+		const char NextChar = p[Len];
+		if(NextChar != '\0' && !std::isspace((unsigned char)NextChar))
+			return false;
+		p += Len;
+		return true;
 	};
 
-	if(str_startswith_nocase(p, "!voicegroup"))
-	{
-		const char NextChar = p[11];
-		if(NextChar == '\0' || std::isspace((unsigned char)NextChar))
-		{
-			GameClient()->m_Chat.Echo("Voicegroup chat commands are disabled");
-			return true;
-		}
-	}
-
-	// !voice ...
-	if(!str_startswith_nocase(p, "!voice"))
-		return false;
-	p += 6;
-	if(p[0] != '\0' && !std::isspace((unsigned char)p[0]))
-		return false;
-
-	char aSub[32];
-	if(!ReadToken(p, aSub, sizeof(aSub)))
-	{
-		EchoUsage();
-		return true;
-	}
-	if(str_comp_nocase(aSub, "mute") == 0)
+	if(MatchCommand("!vmute"))
 	{
 		char aName[128];
 		if(!ReadToken(p, aName, sizeof(aName)))
 		{
-			GameClient()->m_Chat.Echo("Usage: !voice mute \"nickname\"");
+			GameClient()->m_Chat.Echo(Localize("Usage: !vmute \"nickname\""));
 			return true;
 		}
 
 		const std::string Key = NormalizeVoiceNameKey(aName);
 		if(Key.empty())
 		{
-			GameClient()->m_Chat.Echo("Voice mute: invalid nickname");
+			GameClient()->m_Chat.Echo(Localize("Voice mute: invalid nickname"));
 			return true;
 		}
 
 		if(m_MutedNameKeys.find(Key) != m_MutedNameKeys.end())
 		{
-			GameClient()->m_Chat.Echo("Voice mute: already muted");
+			GameClient()->m_Chat.Echo(Localize("Voice mute: already muted"));
 			return true;
 		}
 		m_MutedNameKeys.insert(Key);
@@ -1611,28 +1390,28 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 		str_copy(m_aLastMutedNames, g_Config.m_BcVoiceChatMutedNames, sizeof(m_aLastMutedNames));
 		m_PeerListDirty = true;
 
-		GameClient()->m_Chat.Echo("Voice mute: ok");
+		GameClient()->m_Chat.Echo(Localize("Voice mute: ok"));
 		return true;
 	}
-	if(str_comp_nocase(aSub, "unmute") == 0)
+	if(MatchCommand("!vunmute"))
 	{
 		char aName[128];
 		if(!ReadToken(p, aName, sizeof(aName)))
 		{
-			GameClient()->m_Chat.Echo("Usage: !voice unmute \"nickname\"");
+			GameClient()->m_Chat.Echo(Localize("Usage: !vunmute \"nickname\""));
 			return true;
 		}
 
 		const std::string Key = NormalizeVoiceNameKey(aName);
 		if(Key.empty())
 		{
-			GameClient()->m_Chat.Echo("Voice unmute: invalid nickname");
+			GameClient()->m_Chat.Echo(Localize("Voice unmute: invalid nickname"));
 			return true;
 		}
 
 		if(m_MutedNameKeys.find(Key) == m_MutedNameKeys.end())
 		{
-			GameClient()->m_Chat.Echo("Voice unmute: nickname not muted");
+			GameClient()->m_Chat.Echo(Localize("Voice unmute: nickname not muted"));
 			return true;
 		}
 
@@ -1642,30 +1421,30 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 		str_copy(g_Config.m_BcVoiceChatMutedNames, aOut, sizeof(g_Config.m_BcVoiceChatMutedNames));
 		str_copy(m_aLastMutedNames, g_Config.m_BcVoiceChatMutedNames, sizeof(m_aLastMutedNames));
 		m_PeerListDirty = true;
-		GameClient()->m_Chat.Echo("Voice unmute: ok");
+		GameClient()->m_Chat.Echo(Localize("Voice unmute: ok"));
 		return true;
 	}
-	if(str_comp_nocase(aSub, "volume") == 0)
+	if(MatchCommand("!volume"))
 	{
 		char aName[128];
 		char aValue[32];
 		if(!ReadToken(p, aName, sizeof(aName)) || !ReadToken(p, aValue, sizeof(aValue)))
 		{
-			GameClient()->m_Chat.Echo("Usage: !voice volume \"nickname\" <0-100>");
+			GameClient()->m_Chat.Echo(Localize("Usage: !volume \"nickname\" <0-100>"));
 			return true;
 		}
 
 		const std::string Key = NormalizeVoiceNameKey(aName);
 		if(Key.empty())
 		{
-			GameClient()->m_Chat.Echo("Voice volume: invalid nickname");
+			GameClient()->m_Chat.Echo(Localize("Voice volume: invalid nickname"));
 			return true;
 		}
 
 		int Percent = 0;
 		if(!str_toint(aValue, &Percent) || Percent < 0 || Percent > 100)
 		{
-			GameClient()->m_Chat.Echo("Voice volume: value must be 0-100");
+			GameClient()->m_Chat.Echo(Localize("Voice volume: value must be 0-100"));
 			return true;
 		}
 		if(Percent == 100)
@@ -1680,21 +1459,21 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 		m_PeerListDirty = true;
 
 		char aMsg[128];
-		str_format(aMsg, sizeof(aMsg), "Voice volume: %d%%", Percent);
+		str_format(aMsg, sizeof(aMsg), Localize("Voice volume: %d%%"), Percent);
 		GameClient()->m_Chat.Echo(aMsg);
 		return true;
 	}
-	if(str_comp_nocase(aSub, "radius") == 0)
+	if(MatchCommand("!vradius"))
 	{
 		char aArg[32];
 		if(!ReadToken(p, aArg, sizeof(aArg)))
 		{
 			char aMsg[128];
-			str_format(aMsg, sizeof(aMsg), "Voice radius: %s (%d tiles)",
-				g_Config.m_BcVoiceChatRadiusEnabled ? "on" : "off",
+			str_format(aMsg, sizeof(aMsg), Localize("Voice radius: %s (%d tiles)"),
+				g_Config.m_BcVoiceChatRadiusEnabled ? Localize("On") : Localize("Off"),
 				std::clamp(g_Config.m_BcVoiceChatRadiusTiles, 1, 500));
 			GameClient()->m_Chat.Echo(aMsg);
-			GameClient()->m_Chat.Echo("Usage: !voice radius on/off/<tiles>");
+			GameClient()->m_Chat.Echo(Localize("Usage: !vradius on/off/<tiles>"));
 			return true;
 		}
 
@@ -1714,7 +1493,7 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 		{
 			g_Config.m_BcVoiceChatRadiusEnabled = 0;
 			char aMsg[128];
-			str_format(aMsg, sizeof(aMsg), "Voice radius: off (%d tiles)", std::clamp(g_Config.m_BcVoiceChatRadiusTiles, 1, 500));
+			str_format(aMsg, sizeof(aMsg), Localize("Voice radius: %s (%d tiles)"), Localize("Off"), std::clamp(g_Config.m_BcVoiceChatRadiusTiles, 1, 500));
 			GameClient()->m_Chat.Echo(aMsg);
 			return true;
 		}
@@ -1727,7 +1506,7 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 			{
 				if(!ParseTiles(aTiles, Tiles))
 				{
-					GameClient()->m_Chat.Echo("Voice radius: tiles must be 1-500");
+					GameClient()->m_Chat.Echo(Localize("Voice radius: tiles must be 1-500"));
 					return true;
 				}
 			}
@@ -1735,7 +1514,7 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 			g_Config.m_BcVoiceChatRadiusEnabled = 1;
 
 			char aMsg[128];
-			str_format(aMsg, sizeof(aMsg), "Voice radius: on (%d tiles)", Tiles);
+			str_format(aMsg, sizeof(aMsg), Localize("Voice radius: %s (%d tiles)"), Localize("On"), Tiles);
 			GameClient()->m_Chat.Echo(aMsg);
 			return true;
 		}
@@ -1743,20 +1522,19 @@ bool CVoiceChat::TryHandleChatCommand(const char *pLine)
 		int Tiles = 0;
 		if(!ParseTiles(aArg, Tiles))
 		{
-			GameClient()->m_Chat.Echo("Usage: !voice radius on/off/<tiles>");
+			GameClient()->m_Chat.Echo(Localize("Usage: !vradius on/off/<tiles>"));
 			return true;
 		}
 
 		g_Config.m_BcVoiceChatRadiusTiles = Tiles;
 		g_Config.m_BcVoiceChatRadiusEnabled = 1;
 		char aMsg[128];
-		str_format(aMsg, sizeof(aMsg), "Voice radius: on (%d tiles)", Tiles);
+	str_format(aMsg, sizeof(aMsg), Localize("Voice radius: %s (%d tiles)"), Localize("On"), Tiles);
 		GameClient()->m_Chat.Echo(aMsg);
 		return true;
 	}
 
-	EchoUsage();
-	return true;
+	return false;
 }
 
 void CVoiceChat::RenderHudMuteStatusIndicator(float HudWidth, float HudHeight, bool ForcePreview)
@@ -1781,7 +1559,7 @@ void CVoiceChat::RenderHudMuteStatusIndicator(float HudWidth, float HudHeight, b
 		BackgroundColor = color_cast<ColorRGBA>(ColorHSLA(Layout.m_BackgroundColor, true));
 	BackgroundColor = VoiceHudThemeColor(GameClient(), BackgroundColor, ForcePreview, 1.0f);
 	BackgroundColor = ApplyVoiceHudAlpha(GameClient(), BackgroundColor);
-	const int Corners = VoiceHudBackgroundCorners(GameClient(), HudLayout::MODULE_VOICE_STATUS, IGraphics::CORNER_ALL, DrawX, DrawY, BoxWidth, BoxHeight, HudWidth, HudHeight);
+	const int Corners = VoiceHudBackgroundCorners(HudLayout::MODULE_VOICE_STATUS, DrawX, DrawY, BoxWidth, BoxHeight, HudWidth, HudHeight);
 	Graphics()->DrawRect(DrawX, DrawY, BoxWidth, BoxHeight, BackgroundColor, Corners, 2.3f * Scale);
 
 	struct SVoiceStatusIcon
@@ -1837,7 +1615,7 @@ CUIRect CVoiceChat::GetHudMuteStatusIndicatorRect(float HudWidth, float HudHeigh
 		std::clamp(Layout.m_Y, 0.0f, maximum(0.0f, HudHeight - BoxHeight)),
 		BoxWidth,
 		BoxHeight};
-	const bool MusicPlayerComponentDisabled = GameClient()->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_VISUALS_MUSIC_PLAYER);
+	const bool MusicPlayerComponentDisabled = false;
 	const CMusicPlayer::SHudReservation MusicReservation = GameClient()->m_MusicPlayer.HudReservation();
 	const bool MusicPlayerHudActive = !MusicPlayerComponentDisabled && g_Config.m_BcMusicPlayer != 0 && MusicReservation.m_Visible && MusicReservation.m_Active;
 	if(MusicPlayerHudActive)
@@ -1912,7 +1690,7 @@ void CVoiceChat::RenderHudTalkingIndicator(float HudWidth, float HudHeight, bool
 		const ColorRGBA BackgroundColor = VoiceHudThemeColor(GameClient(), color_cast<ColorRGBA>(ColorHSLA(Layout.m_BackgroundColor, true)), ForcePreview, 1.0f);
 		if(BackgroundEnabled)
 		{
-			const int Corners = VoiceHudBackgroundCorners(GameClient(), HudLayout::MODULE_VOICE_TALKERS, IGraphics::CORNER_ALL, DrawX, DrawY, BoxWidth, BoxHeight, HudWidth, HudHeight);
+			const int Corners = VoiceHudBackgroundCorners(HudLayout::MODULE_VOICE_TALKERS, DrawX, DrawY, BoxWidth, BoxHeight, HudWidth, HudHeight);
 			Graphics()->DrawRect(DrawX, DrawY, BoxWidth, BoxHeight, ApplyVoiceHudAlpha(GameClient(), BackgroundColor.WithMultipliedAlpha(0.88f)), Corners, 3.1f * Scale);
 		}
 
@@ -1920,7 +1698,7 @@ void CVoiceChat::RenderHudTalkingIndicator(float HudWidth, float HudHeight, bool
 		{
 			const STalkingEntry &Entry = vPreviewEntries[Index];
 			const float RowY = DrawY + Index * (RowHeight + RowGap);
-			const int RowCorners = VoiceHudBackgroundCorners(GameClient(), HudLayout::MODULE_VOICE_TALKERS, IGraphics::CORNER_ALL, DrawX, RowY, BoxWidth, RowHeight, HudWidth, HudHeight);
+			const int RowCorners = VoiceHudBackgroundCorners(HudLayout::MODULE_VOICE_TALKERS, DrawX, RowY, BoxWidth, RowHeight, HudWidth, HudHeight);
 			Graphics()->DrawRect(DrawX, RowY, BoxWidth, RowHeight, ApplyVoiceHudAlpha(GameClient(), VoiceHudThemeColor(GameClient(), ColorRGBA(0.06f, 0.07f, 0.09f, 0.60f), ForcePreview, 1.0f)), RowCorners, 3.1f * Scale);
 
 			const float AvatarX = DrawX + RowPadding;
@@ -1943,11 +1721,11 @@ void CVoiceChat::RenderHudTalkingIndicator(float HudWidth, float HudHeight, bool
 			}
 			else
 			{
-				str_format(aName, sizeof(aName), "%s #%u", BCLocalize("Participant"), Entry.m_PeerId);
+				str_format(aName, sizeof(aName), "%s #%u", Localize("Participant"), Entry.m_PeerId);
 			}
 
 			if(aName[0] == '\0')
-				str_copy(aName, BCLocalize("Participant"), sizeof(aName));
+				str_copy(aName, Localize("Participant"), sizeof(aName));
 
 			float NameFontSize = 6.0f * Scale;
 			const float MinNameFontSize = 3.5f * Scale;
@@ -2003,7 +1781,7 @@ void CVoiceChat::RenderHudTalkingIndicator(float HudWidth, float HudHeight, bool
 	const ColorRGBA BackgroundColor = VoiceHudThemeColor(GameClient(), color_cast<ColorRGBA>(ColorHSLA(Layout.m_BackgroundColor, true)), ForcePreview, 1.0f);
 	if(BackgroundEnabled)
 	{
-		const int Corners = VoiceHudBackgroundCorners(GameClient(), HudLayout::MODULE_VOICE_TALKERS, IGraphics::CORNER_ALL, DrawX, DrawY, BoxWidth, BoxHeight, HudWidth, HudHeight);
+		const int Corners = VoiceHudBackgroundCorners(HudLayout::MODULE_VOICE_TALKERS, DrawX, DrawY, BoxWidth, BoxHeight, HudWidth, HudHeight);
 		Graphics()->DrawRect(DrawX, DrawY, BoxWidth, BoxHeight, ApplyVoiceHudAlpha(GameClient(), BackgroundColor.WithMultipliedAlpha(0.88f)), Corners, 3.1f * Scale);
 	}
 
@@ -2011,7 +1789,7 @@ void CVoiceChat::RenderHudTalkingIndicator(float HudWidth, float HudHeight, bool
 	{
 		const STalkingEntry &Entry = vEntries[Index];
 		const float RowY = DrawY + Index * (RowHeight + RowGap);
-		const int RowCorners = VoiceHudBackgroundCorners(GameClient(), HudLayout::MODULE_VOICE_TALKERS, IGraphics::CORNER_ALL, DrawX, RowY, BoxWidth, RowHeight, HudWidth, HudHeight);
+		const int RowCorners = VoiceHudBackgroundCorners(HudLayout::MODULE_VOICE_TALKERS, DrawX, RowY, BoxWidth, RowHeight, HudWidth, HudHeight);
 		Graphics()->DrawRect(DrawX, RowY, BoxWidth, RowHeight, ApplyVoiceHudAlpha(GameClient(), VoiceHudThemeColor(GameClient(), ColorRGBA(0.06f, 0.07f, 0.09f, 0.60f), ForcePreview, 1.0f)), RowCorners, 3.1f * Scale);
 
 		const float AvatarX = DrawX + RowPadding;
@@ -2034,12 +1812,12 @@ void CVoiceChat::RenderHudTalkingIndicator(float HudWidth, float HudHeight, bool
 		}
 		else
 		{
-			str_format(aName, sizeof(aName), "%s #%u", BCLocalize("Participant"), Entry.m_PeerId);
+			str_format(aName, sizeof(aName), "%s #%u", Localize("Participant"), Entry.m_PeerId);
 		}
 
 		if(aName[0] == '\0')
 		{
-			str_copy(aName, BCLocalize("Participant"), sizeof(aName));
+			str_copy(aName, Localize("Participant"), sizeof(aName));
 		}
 
 		float NameFontSize = 6.0f * Scale;
@@ -2090,37 +1868,6 @@ CUIRect CVoiceChat::GetHudTalkingIndicatorRect(float HudWidth, float HudHeight, 
 	const float BoxWidth = 58.0f * Scale;
 	const float BoxHeight = EntryCount * RowHeight + maximum(0, EntryCount - 1) * RowGap;
 	return {std::clamp(Layout.m_X, 0.0f, maximum(0.0f, HudWidth - BoxWidth)), std::clamp(Layout.m_Y, 0.0f, maximum(0.0f, HudHeight - BoxHeight)), BoxWidth, BoxHeight};
-}
-
-void CVoiceChat::SetUiMousePos(vec2 Pos)
-{
-	const vec2 WindowSize = vec2(Graphics()->WindowWidth(), Graphics()->WindowHeight());
-	const CUIRect *pScreen = Ui()->Screen();
-	const vec2 UpdatedMousePos = Ui()->UpdatedMousePos();
-	Pos = Pos / vec2(pScreen->w, pScreen->h) * WindowSize;
-	Ui()->OnCursorMove(Pos.x - UpdatedMousePos.x, Pos.y - UpdatedMousePos.y);
-}
-
-void CVoiceChat::SetPanelActive(bool Active)
-{
-	if(m_PanelActive == Active)
-		return;
-
-	m_PanelActive = Active;
-	if(m_PanelActive)
-	{
-		m_MouseUnlocked = true;
-		m_LastMousePos = Ui()->MousePos();
-		SetUiMousePos(Ui()->Screen()->Center());
-	}
-	else if(m_MouseUnlocked)
-	{
-		Ui()->ClosePopupMenus();
-		m_MouseUnlocked = false;
-		if(m_LastMousePos.has_value())
-			SetUiMousePos(m_LastMousePos.value());
-		m_LastMousePos = Ui()->MousePos();
-	}
 }
 
 void CVoiceChat::StartVoice()
@@ -2190,8 +1937,6 @@ bool CVoiceChat::OpenNetworking()
 	m_SecondaryClientVoiceId = 0;
 	m_SecondarySendSequence = 0;
 	m_SecondaryHelloResetPending = false;
-	m_vOnlineServers.clear();
-	m_SelectedServerIndex = -1;
 	m_AdvertisedTeam = std::numeric_limits<int>::min();
 	m_SecondaryAdvertisedTeam = std::numeric_limits<int>::min();
 	m_SecondaryAdvertisedRoomKey.clear();
@@ -2501,7 +2246,6 @@ void CVoiceChat::ClearPeerState()
 	}
 	m_Peers.clear();
 	m_PeerVolumePercent.clear();
-	m_PeerVolumeSliderButtons.clear();
 	m_PeerResolvedClientIds.clear();
 	m_vSortedPeerIds.clear();
 	m_vVisibleMemberPeerIds.clear();
@@ -2509,97 +2253,6 @@ void CVoiceChat::ClearPeerState()
 	InvalidatePeerCaches();
 }
 
-#if 0
-void CVoiceChat::SendGroupInvite(const std::string &Nick)
-{
-	if(!m_Socket || !m_Registered || !m_HasServerAddr || !m_ServerSupportsGroups)
-		return;
-	if(m_CurrentVoiceGroupId == 0)
-	{
-		GameClient()->m_Chat.Echo("Voicegroup: нельзя приглашать в team0");
-		return;
-	}
-
-	const int LocalId = GameClient()->m_Snap.m_LocalClientId;
-	int TargetId = -1;
-	int TargetCount = 0;
-	for(int ClientId = 0; ClientId < MAX_CLIENTS; ++ClientId)
-	{
-		if(!GameClient()->m_aClients[ClientId].m_Active)
-			continue;
-		if(ClientId == LocalId)
-			continue;
-		if(str_comp(GameClient()->m_aClients[ClientId].m_aName, Nick.c_str()) == 0)
-		{
-			TargetId = ClientId;
-			TargetCount++;
-		}
-	}
-	if(TargetId < 0)
-	{
-		// Fallback: case-insensitive match.
-		for(int ClientId = 0; ClientId < MAX_CLIENTS; ++ClientId)
-		{
-			if(!GameClient()->m_aClients[ClientId].m_Active)
-				continue;
-			if(ClientId == LocalId)
-				continue;
-			if(str_comp_nocase(GameClient()->m_aClients[ClientId].m_aName, Nick.c_str()) == 0)
-			{
-				TargetId = ClientId;
-				TargetCount++;
-			}
-		}
-	}
-	if(TargetId < 0)
-	{
-		GameClient()->m_Chat.Echo("Voicegroup invite: игрок не найден");
-		return;
-	}
-	if(TargetCount > 1)
-		GameClient()->m_Chat.Echo("Voicegroup invite: найдено несколько игроков, выбран первый");
-
-	const int16_t TargetGameClientId = (int16_t)TargetId;
-
-	std::vector<uint8_t> vPacket;
-	vPacket.reserve(14);
-	BestClientVoice::WriteHeader(vPacket, BestClientVoice::PACKET_GROUP_INVITE_REQ);
-	BestClientVoice::WriteU16(vPacket, m_CurrentVoiceGroupId);
-	BestClientVoice::WriteS16(vPacket, TargetGameClientId);
-	net_udp_send(m_Socket, &m_ServerAddr, vPacket.data(), (int)vPacket.size());
-	GameClient()->m_Chat.Echo("Voicegroup invite: отправлено");
-}
-
-void CVoiceChat::UpdateAutoVoiceGroup()
-{
-	if(!m_ServerSupportsGroups || !m_Registered)
-		return;
-	if(m_ManualGroupActive)
-		return;
-
-	const int Team = LocalTeam();
-	char aName[32];
-	if(Team == TEAM_SPECTATORS || Team <= 0)
-		str_copy(aName, "team0", sizeof(aName));
-	else
-		str_format(aName, sizeof(aName), "team%d", Team);
-
-	const std::string DesiredKey = NormalizeVoiceGroupNameKey(aName);
-	if(DesiredKey == m_CurrentVoiceGroupNameKey)
-		return;
-	if(!m_PendingCreateNameKey.empty() && m_PendingCreateNameKey == DesiredKey)
-		return;
-	if(!m_PendingJoinNameKey.empty() && !m_PendingJoinManual && m_PendingJoinNameKey == DesiredKey)
-		return;
-	const int64_t NowTick = time_get();
-	if(m_LastAutoTeamCreateTick > 0 && m_LastAutoTeamCreateNameKey == DesiredKey && NowTick - m_LastAutoTeamCreateTick < time_freq() / 2)
-		return;
-
-	// Try joining; if the server reports "not found", we'll auto-create.
-	SendGroupJoinByName(aName, false);
-}
-
-#endif
 void CVoiceChat::SendHello()
 {
 	if(!m_Socket || !m_HasServerAddr)
@@ -2757,13 +2410,6 @@ void CVoiceChat::VoiceModAuth(const char *pKey)
 	vPacket.reserve(6);
 	BestClientVoice::WriteHeader(vPacket, BestClientVoice::PACKET_MOD_AUTH_REQ);
 	net_udp_send(m_Socket, &m_ServerAddr, vPacket.data(), (int)vPacket.size());
-}
-
-void CVoiceChat::SendModAuthReq()
-{
-	if(!m_Socket || !m_HasServerAddr || !m_Registered)
-		return;
-	VoiceModAuth(m_ModKeyInput.GetString());
 }
 
 void CVoiceChat::SendModPlayerListReq()
@@ -3041,24 +2687,6 @@ void CVoiceChat::ProcessNetwork()
 				m_Registered = true;
 				m_RuntimeState = RUNTIME_REGISTERED;
 				m_HelloResetPending = false;
-
-				char aAddr[NETADDR_MAXSTRSIZE];
-				net_addr_str(&m_ServerAddr, aAddr, sizeof(aAddr), true);
-				const std::string ServerAddr(aAddr);
-				auto It = std::find(m_vOnlineServers.begin(), m_vOnlineServers.end(), ServerAddr);
-				if(It == m_vOnlineServers.end())
-					m_vOnlineServers.push_back(ServerAddr);
-				if(!m_vServerEntries.empty())
-				{
-					for(size_t i = 0; i < m_vServerEntries.size(); ++i)
-					{
-						if(str_comp(m_vServerEntries[i].m_Address.c_str(), ServerAddr.c_str()) == 0)
-						{
-							m_SelectedServerIndex = (int)i;
-							break;
-						}
-					}
-				}
 			}
 			continue;
 		}
@@ -3103,7 +2731,6 @@ void CVoiceChat::ProcessNetwork()
 					if(It->second.m_pDecoder)
 						opus_decoder_destroy(It->second.m_pDecoder);
 					m_PeerVolumePercent.erase(It->first);
-					m_PeerVolumeSliderButtons.erase(It->first);
 					It = m_Peers.erase(It);
 				}
 				else
@@ -3157,7 +2784,6 @@ void CVoiceChat::ProcessNetwork()
 					if(It->second.m_pDecoder)
 						opus_decoder_destroy(It->second.m_pDecoder);
 					m_PeerVolumePercent.erase(It->first);
-					m_PeerVolumeSliderButtons.erase(It->first);
 					It = m_Peers.erase(It);
 				}
 				else
@@ -3169,250 +2795,6 @@ void CVoiceChat::ProcessNetwork()
 			continue;
 		}
 
-#if 0
-		if(Type == BestClientVoice::PACKET_GROUP_LIST)
-		{
-			if(!m_ServerSupportsGroups)
-				continue;
-
-			uint16_t GroupCount = 0;
-			if(!BestClientVoice::ReadU16(pRawData, DataSize, Offset, GroupCount))
-				continue;
-
-			m_VoiceGroups.clear();
-			m_VoiceGroupNameToId.clear();
-			for(uint16_t i = 0; i < GroupCount; ++i)
-			{
-				uint16_t GroupId = 0;
-				uint8_t Privacy = VOICE_GROUP_PRIVATE;
-				uint16_t Members = 0;
-				std::string Name;
-				if(!BestClientVoice::ReadU16(pRawData, DataSize, Offset, GroupId) ||
-					!BestClientVoice::ReadU8(pRawData, DataSize, Offset, Privacy) ||
-					!BestClientVoice::ReadU16(pRawData, DataSize, Offset, Members) ||
-					!ReadVoiceString(pRawData, DataSize, Offset, Name))
-				{
-					m_VoiceGroups.clear();
-					m_VoiceGroupNameToId.clear();
-					break;
-				}
-
-				SVoiceGroupInfo Info;
-				Info.m_Name = Name;
-				Info.m_Private = Privacy == VOICE_GROUP_PRIVATE;
-				Info.m_Members = (int)Members;
-				m_VoiceGroups[GroupId] = Info;
-
-				const std::string Key = NormalizeVoiceGroupNameKey(Name.c_str());
-				if(!Key.empty())
-					m_VoiceGroupNameToId[Key] = GroupId;
-			}
-
-			if(m_PrintGroupListOnNext)
-			{
-				m_PrintGroupListOnNext = false;
-				GameClient()->m_Chat.Echo("Voice groups:");
-				std::vector<uint16_t> vIds;
-				vIds.reserve(m_VoiceGroups.size());
-				for(const auto &Pair : m_VoiceGroups)
-					vIds.push_back(Pair.first);
-				std::sort(vIds.begin(), vIds.end());
-				for(uint16_t GroupId : vIds)
-				{
-					const auto It = m_VoiceGroups.find(GroupId);
-					if(It == m_VoiceGroups.end())
-						continue;
-					const SVoiceGroupInfo &Info = It->second;
-					char aBuf[256];
-					str_format(aBuf, sizeof(aBuf), "  %s (%s) members=%d", Info.m_Name.c_str(), Info.m_Private ? "private" : "public", Info.m_Members);
-					GameClient()->m_Chat.Echo(aBuf);
-				}
-			}
-			continue;
-		}
-
-		if(Type == BestClientVoice::PACKET_GROUP_INVITE_EVT)
-		{
-			if(!m_ServerSupportsGroups)
-				continue;
-
-			uint16_t GroupId = 0;
-			uint8_t Privacy = VOICE_GROUP_PRIVATE;
-			std::string Name;
-			int16_t InviterGameClientId = BestClientVoice::INVALID_GAME_CLIENT_ID;
-			if(!BestClientVoice::ReadU16(pRawData, DataSize, Offset, GroupId) ||
-				!BestClientVoice::ReadU8(pRawData, DataSize, Offset, Privacy) ||
-				!ReadVoiceString(pRawData, DataSize, Offset, Name) ||
-				!BestClientVoice::ReadS16(pRawData, DataSize, Offset, InviterGameClientId))
-				continue;
-
-			m_PendingInviteGroupId = GroupId;
-			m_PendingInviteGroupName = Name;
-			char aBuf[256];
-			str_format(aBuf, sizeof(aBuf), "Вас пригласили в voicegroup \"%s\" (%s). Напишите !voicegroup join", Name.c_str(), Privacy == VOICE_GROUP_PRIVATE ? "private" : "public");
-			GameClient()->m_Chat.Echo(aBuf);
-			continue;
-		}
-
-		if(Type == BestClientVoice::PACKET_GROUP_CREATE_ACK)
-		{
-			if(!m_ServerSupportsGroups)
-				continue;
-
-			uint8_t Status = VOICE_GROUP_STATUS_INVALID;
-			uint16_t GroupId = 0;
-			uint8_t Privacy = VOICE_GROUP_PRIVATE;
-			std::string Name;
-			if(!BestClientVoice::ReadU8(pRawData, DataSize, Offset, Status) ||
-				!BestClientVoice::ReadU16(pRawData, DataSize, Offset, GroupId) ||
-				!BestClientVoice::ReadU8(pRawData, DataSize, Offset, Privacy) ||
-				!ReadVoiceString(pRawData, DataSize, Offset, Name))
-				continue;
-
-			const std::string NameKey = NormalizeVoiceGroupNameKey(Name.c_str());
-			if(Status == VOICE_GROUP_STATUS_OK)
-			{
-				SVoiceGroupInfo Info;
-				Info.m_Name = Name;
-				Info.m_Private = Privacy == VOICE_GROUP_PRIVATE;
-				Info.m_Members = 0;
-				m_VoiceGroups[GroupId] = Info;
-				if(!NameKey.empty())
-					m_VoiceGroupNameToId[NameKey] = GroupId;
-
-				char aBuf[256];
-				str_format(aBuf, sizeof(aBuf), "Voicegroup create: ok (%s)", Name.c_str());
-				GameClient()->m_Chat.Echo(aBuf);
-
-				if(!m_PendingCreateNameKey.empty() && m_PendingCreateNameKey == NameKey)
-				{
-					const bool Manual = m_PendingCreateManual;
-					m_PendingCreateNameKey.clear();
-					m_PendingCreateManual = false;
-					SendGroupJoinById(GroupId, Manual, false);
-				}
-			}
-			else
-			{
-				GameClient()->m_Chat.Echo(Status == VOICE_GROUP_STATUS_EXISTS ? "Voicegroup create: уже существует" : "Voicegroup create: ошибка");
-				m_PendingCreateNameKey.clear();
-				m_PendingCreateManual = false;
-			}
-			continue;
-		}
-
-		if(Type == BestClientVoice::PACKET_GROUP_JOIN_ACK)
-		{
-			if(!m_ServerSupportsGroups)
-				continue;
-
-			uint8_t Status = VOICE_GROUP_STATUS_INVALID;
-			uint16_t GroupId = 0;
-			uint8_t Privacy = VOICE_GROUP_PRIVATE;
-			std::string Name;
-			if(!BestClientVoice::ReadU8(pRawData, DataSize, Offset, Status) ||
-				!BestClientVoice::ReadU16(pRawData, DataSize, Offset, GroupId) ||
-				!BestClientVoice::ReadU8(pRawData, DataSize, Offset, Privacy) ||
-				!ReadVoiceString(pRawData, DataSize, Offset, Name))
-				continue;
-
-			const std::string NameKey = NormalizeVoiceGroupNameKey(Name.c_str());
-			const bool PendingManual = m_PendingJoinManual;
-			const bool PendingConsumeInvite = m_PendingJoinConsumeInvite;
-			const std::string PendingJoinKey = m_PendingJoinNameKey;
-			m_PendingJoinNameKey.clear();
-			m_PendingJoinManual = false;
-			m_PendingJoinConsumeInvite = false;
-
-			if(Status == VOICE_GROUP_STATUS_OK)
-			{
-				m_CurrentVoiceGroupId = GroupId;
-				m_CurrentVoiceGroupNameKey = NameKey;
-				m_ManualGroupActive = PendingManual;
-				if(PendingConsumeInvite)
-				{
-					m_PendingInviteGroupId.reset();
-					m_PendingInviteGroupName.clear();
-					m_ManualGroupActive = true;
-				}
-
-				SVoiceGroupInfo Info;
-				Info.m_Name = Name;
-				Info.m_Private = Privacy == VOICE_GROUP_PRIVATE;
-				Info.m_Members = 0;
-				m_VoiceGroups[GroupId] = Info;
-				if(!NameKey.empty())
-					m_VoiceGroupNameToId[NameKey] = GroupId;
-
-				// Drop old peers immediately (switching groups must isolate audio right away).
-				ClearPeerState();
-				if(m_PlaybackDevice)
-					SDL_ClearQueuedAudio(m_PlaybackDevice);
-
-				char aBuf[256];
-				str_format(aBuf, sizeof(aBuf), "Voicegroup: joined %s (%s)", Name.c_str(), Info.m_Private ? "private" : "public");
-				GameClient()->m_Chat.Echo(aBuf);
-			}
-			else
-			{
-				if(Status == VOICE_GROUP_STATUS_NOT_INVITED)
-					GameClient()->m_Chat.Echo("Voicegroup join: нужен инвайт");
-				else if(Status == VOICE_GROUP_STATUS_FORBIDDEN)
-					GameClient()->m_Chat.Echo("Voicegroup join: запрещено");
-				else if(Status == VOICE_GROUP_STATUS_NOT_FOUND)
-					GameClient()->m_Chat.Echo("Voicegroup join: не найдено");
-				else
-					GameClient()->m_Chat.Echo("Voicegroup join: ошибка");
-
-				// Auto team group: if missing, create it once.
-				if(!PendingManual && Status == VOICE_GROUP_STATUS_NOT_FOUND && !PendingJoinKey.empty())
-				{
-					if(str_startswith(PendingJoinKey.c_str(), "team") && PendingJoinKey != "team0")
-					{
-						const int64_t NowTick = time_get();
-						const bool Recently = (m_LastAutoTeamCreateTick > 0 && NowTick - m_LastAutoTeamCreateTick < time_freq() * 2 && m_LastAutoTeamCreateNameKey == PendingJoinKey);
-						if(!Recently)
-						{
-							m_LastAutoTeamCreateTick = NowTick;
-							m_LastAutoTeamCreateNameKey = PendingJoinKey;
-							m_PendingCreateNameKey = PendingJoinKey;
-							m_PendingCreateManual = false;
-							SendGroupCreate(PendingJoinKey, true);
-						}
-					}
-				}
-			}
-			continue;
-		}
-
-		if(Type == BestClientVoice::PACKET_GROUP_SET_PRIVACY_ACK)
-		{
-			if(!m_ServerSupportsGroups)
-				continue;
-
-			uint8_t Status = VOICE_GROUP_STATUS_INVALID;
-			uint16_t GroupId = 0;
-			uint8_t Privacy = VOICE_GROUP_PRIVATE;
-			if(!BestClientVoice::ReadU8(pRawData, DataSize, Offset, Status) ||
-				!BestClientVoice::ReadU16(pRawData, DataSize, Offset, GroupId) ||
-				!BestClientVoice::ReadU8(pRawData, DataSize, Offset, Privacy))
-				continue;
-
-			if(Status == VOICE_GROUP_STATUS_OK)
-			{
-				auto It = m_VoiceGroups.find(GroupId);
-				if(It != m_VoiceGroups.end())
-					It->second.m_Private = Privacy == VOICE_GROUP_PRIVATE;
-				GameClient()->m_Chat.Echo(Privacy == VOICE_GROUP_PRIVATE ? "Voicegroup: set private" : "Voicegroup: set public");
-			}
-			else
-			{
-				GameClient()->m_Chat.Echo("Voicegroup privacy: ошибка");
-			}
-			continue;
-		}
-
-#endif
 		// Moderator control packets
 		if(Type == BestClientVoice::PACKET_MOD_AUTH_CHALLENGE)
 		{
@@ -3521,7 +2903,7 @@ void CVoiceChat::ProcessNetwork()
 			if(m_MutedByModNotifyTick == 0 || NowTick - m_MutedByModNotifyTick > time_freq() * 3)
 			{
 				m_MutedByModNotifyTick = NowTick;
-				GameClient()->m_Chat.Echo(BCLocalize("You are muted. Your voice was muted by a moderator."));
+				GameClient()->m_Chat.Echo(Localize("You are muted. Your voice was muted by a moderator."));
 			}
 			continue;
 		}
@@ -3664,8 +3046,6 @@ void CVoiceChat::ProcessCapture()
 		m_LastProcessCaptureTick = time_get();
 		m_WasTransmitActive = false;
 		m_AutoActivationUntilTick = 0;
-		m_VadSpeechScore = 0.0f;
-		m_VadLastActivationLevel = 0.0f;
 		m_AutoNsNoiseFloor = 0.0f;
 		m_AutoNsGate = 1.0f;
 		m_AutoHpfPrevIn = 0.0f;
@@ -3683,7 +3063,6 @@ void CVoiceChat::ProcessCapture()
 		m_LastProcessCaptureTick = time_get();
 		m_WasTransmitActive = false;
 		m_AutoActivationUntilTick = 0;
-		m_VadSpeechScore = 0.0f;
 		m_AutoNsNoiseFloor = 0.0f;
 		m_AutoNsGate = 1.0f;
 		m_AutoHpfPrevIn = 0.0f;
@@ -3755,7 +3134,6 @@ void CVoiceChat::ProcessCapture()
 		int16_t aFrame[BestClientVoice::FRAME_SIZE];
 		m_CapturePcm.PopFront(aFrameRaw, BestClientVoice::FRAME_SIZE);
 
-		// Apply mic gain with a smooth limiter to avoid clipping/pumping artifacts ("robotic" voice).
 		const int MicGainPercent = std::clamp(g_Config.m_BcVoiceChatMicGain, 0, 300);
 		int PeakBeforeLimiter = 0;
 		int aScaled[BestClientVoice::FRAME_SIZE];
@@ -3784,13 +3162,11 @@ void CVoiceChat::ProcessCapture()
 		const bool AutoMode = g_Config.m_BcVoiceChatActivationMode == 0;
 		if(AutoMode)
 		{
-			// Rushie auto chain before VAD decision: noise suppressor + HPF/compressor.
+			// Keep the pre-compressor Peak for the VAD threshold comparison below:
+			// ApplyAutoHpfCompressor hard-limits its output to 50% of full scale, which would
+			// otherwise make the upper half of the VAD threshold slider (50-100%) unreachable.
 			ApplyAutoNoiseSuppressorSimple(aFrame, BestClientVoice::FRAME_SIZE, 0.50f, m_AutoNsNoiseFloor, m_AutoNsGate);
 			ApplyAutoHpfCompressor(aFrame, BestClientVoice::FRAME_SIZE, m_AutoHpfPrevIn, m_AutoHpfPrevOut, m_AutoCompEnv);
-
-			Peak = 0;
-			for(int i = 0; i < BestClientVoice::FRAME_SIZE; ++i)
-				Peak = maximum(Peak, absolute((int)aFrame[i]));
 		}
 		else
 		{
@@ -3818,7 +3194,6 @@ void CVoiceChat::ProcessCapture()
 		{
 			m_WasTransmitActive = false;
 			m_AutoActivationUntilTick = 0;
-			m_VadSpeechScore = 0.0f;
 			m_AutoNsNoiseFloor = 0.0f;
 			m_AutoNsGate = 1.0f;
 			m_AutoHpfPrevIn = 0.0f;
@@ -3831,22 +3206,21 @@ void CVoiceChat::ProcessCapture()
 		bool Active = false;
 		if(g_Config.m_BcVoiceChatActivationMode == 1)
 		{
-			// Push-to-talk
 			Active = m_PushToTalkPressed;
 		}
 		else
 		{
-			// Rushie-style VAD: simple peak threshold + release delay.
 			const float VadThreshold = std::clamp(g_Config.m_BcVoiceChatVadThreshold / 100.0f, 0.0f, 1.0f);
 			const int VadReleaseMs = std::clamp(g_Config.m_BcVoiceChatVadReleaseDelayMs, 0, 1000);
 			const int64_t VadReleaseTicks = (int64_t)time_freq() * VadReleaseMs / 1000;
 			const bool Trigger = VadThreshold <= 0.0f || PeakLinear >= VadThreshold;
 
-			m_VadLastActivationLevel = PeakLinear;
 			if(Trigger)
 			{
 				Active = true;
-				m_AutoActivationUntilTick = VadReleaseTicks > 0 ? NowTick + VadReleaseTicks : 0;
+				// Always land in the future (even with 0ms release delay) so IsClientTalking(),
+				// which requires m_AutoActivationUntilTick > 0, reflects the current frame's activity.
+				m_AutoActivationUntilTick = NowTick + maximum<int64_t>(VadReleaseTicks, 1);
 			}
 			else if(VadReleaseTicks > 0 && m_AutoActivationUntilTick > 0 && NowTick <= m_AutoActivationUntilTick)
 			{
@@ -3927,13 +3301,17 @@ void CVoiceChat::ProcessPlayback()
 		int aMix[BestClientVoice::FRAME_SIZE * 2];
 		mem_zero(aMix, sizeof(aMix));
 
+		bool MixedAnySamples = false;
 		const float MicCheckGain = g_Config.m_BcVoiceChatMicCheck ? 0.75f * MasterVolume : 0.0f;
 		if(MicCheckGain <= 0.0f)
 		{
 			m_MicMonitorPcm.DiscardFront(minimum(m_MicMonitorPcm.Size(), (size_t)BestClientVoice::FRAME_SIZE));
 		}
-		else
+		else if(m_MicMonitorPcm.Size() >= (size_t)BestClientVoice::FRAME_SIZE)
 		{
+			// Only pop once a full frame has accumulated; popping a short frame and zero-padding
+			// the rest (as before) spliced silent gaps into the loopback whenever capture hadn't
+			// caught up yet, which is audible as choppy/glitchy playback.
 			int16_t aMicFrame[BestClientVoice::FRAME_SIZE] = {};
 			const size_t MicSamples = m_MicMonitorPcm.PopFront(aMicFrame, BestClientVoice::FRAME_SIZE);
 			for(size_t i = 0; i < MicSamples; ++i)
@@ -3942,6 +3320,7 @@ void CVoiceChat::ProcessPlayback()
 				aMix[i * 2u] += Mixed;
 				aMix[i * 2u + 1] += Mixed;
 			}
+			MixedAnySamples = true;
 		}
 
 		for(auto &PeerPair : m_Peers)
@@ -3958,9 +3337,6 @@ void CVoiceChat::ProcessPlayback()
 			{
 				if(Peer.m_DecodedPcm.Size() > 0)
 					Peer.m_DecodedPcm.Clear();
-				// Keep the talking timeout driven by incoming voice packets.
-				// Clearing it here makes the HUD speaker indicator flicker when
-				// playback is muted locally (e.g. headphones mute).
 				continue;
 			}
 
@@ -3972,7 +3348,12 @@ void CVoiceChat::ProcessPlayback()
 				aMix[i * 2u] += Mixed;
 				aMix[i * 2u + 1] += Mixed;
 			}
+			if(PeerSamples > 0)
+				MixedAnySamples = true;
 		}
+
+		if(!MixedAnySamples)
+			break;
 
 		int64_t Peak = 0;
 		for(int i = 0; i < BestClientVoice::FRAME_SIZE * 2; ++i)
@@ -4013,7 +3394,6 @@ void CVoiceChat::CleanupPeers()
 			if(Peer.m_pDecoder)
 				opus_decoder_destroy(Peer.m_pDecoder);
 			m_PeerVolumePercent.erase(It->first);
-			m_PeerVolumeSliderButtons.erase(It->first);
 			It = m_Peers.erase(It);
 			PeersChanged = true;
 		}
@@ -4185,22 +3565,6 @@ bool CVoiceChat::HasPendingPlaybackAudio() const
 	return false;
 }
 
-bool CVoiceChat::HasRecentVoiceActivity(int64_t Now) const
-{
-	if(m_PushToTalkPressed)
-		return true;
-	if(g_Config.m_BcVoiceChatActivationMode == 0 && m_AutoActivationUntilTick > 0 && Now <= m_AutoActivationUntilTick)
-		return true;
-	if(HasPendingPlaybackAudio())
-		return true;
-	for(const auto &PeerPair : m_Peers)
-	{
-		if(PeerPair.second.m_LastVoiceTick > 0 && Now - PeerPair.second.m_LastVoiceTick <= VOICE_IDLE_SHUTDOWN_SECONDS * time_freq())
-			return true;
-	}
-	return false;
-}
-
 bool CVoiceChat::ShouldKeepVoicePipelineActive() const
 {
 	return g_Config.m_BcVoiceChatEnable != 0;
@@ -4297,11 +3661,6 @@ uint64_t CVoiceChat::CurrentHelloAuthTimestamp() const
 	return (uint64_t)time_timestamp();
 }
 
-void CVoiceChat::AppendHelloAuthProof(std::vector<uint8_t> &vPacket) const
-{
-	BestClientIndicator::AppendHmacSha256(vPacket, VoiceAuthKey().c_str());
-}
-
 int CVoiceChat::ResolvePeerClientId(const CRemotePeer &Peer) const
 {
 	if(Peer.m_AnnouncedGameClientId >= 0 && Peer.m_AnnouncedGameClientId < MAX_CLIENTS)
@@ -4366,17 +3725,14 @@ bool CVoiceChat::IsClientTalking(int ClientId) const
 	const CNetObj_PlayerInfo *pPlayerInfo = GameClient()->m_Snap.m_apPlayerInfos[ClientId];
 	const bool IsLocalClient = (pPlayerInfo && pPlayerInfo->m_Local) || ClientId == GameClient()->m_Snap.m_LocalClientId;
 
-	// Local speaking state should not depend on peer mapping.
 	if(IsLocalClient)
 	{
 		if(g_Config.m_BcVoiceChatMicMuted)
 			return false;
 
-		// Light up while push-to-talk is held.
 		if(g_Config.m_BcVoiceChatActivationMode == 1)
 			return m_PushToTalkPressed;
 
-		// Automatic activation: light up while VAD is active (incl. hangover).
 		const int64_t NowTick = time_get();
 		return m_AutoActivationUntilTick > 0 && NowTick <= m_AutoActivationUntilTick;
 	}
@@ -4397,919 +3753,6 @@ bool CVoiceChat::IsClientTalking(int ClientId) const
 	return false;
 }
 
-std::optional<int> CVoiceChat::GetClientVolumePercent(int ClientId) const
-{
-	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
-		return std::nullopt;
-
-	for(const auto &ResolvedPair : m_PeerResolvedClientIds)
-	{
-		if(ResolvedPair.second != ClientId)
-			continue;
-
-		if(const auto It = m_PeerVolumePercent.find(ResolvedPair.first); It != m_PeerVolumePercent.end())
-			return std::clamp(It->second, 0, 200);
-		return 100;
-	}
-
-	return std::nullopt;
-}
-
-void CVoiceChat::SetClientVolumePercent(int ClientId, int VolumePercent)
-{
-	if(ClientId < 0 || ClientId >= MAX_CLIENTS)
-		return;
-
-	const int ClampedVolume = std::clamp(VolumePercent, 0, 200);
-	for(const auto &ResolvedPair : m_PeerResolvedClientIds)
-	{
-		if(ResolvedPair.second == ClientId)
-			m_PeerVolumePercent[ResolvedPair.first] = ClampedVolume;
-	}
-}
-
-std::vector<uint16_t> CVoiceChat::SortedPeerIds() const
-{
-	return m_vSortedPeerIds;
-}
-
-void CVoiceChat::RenderServersSection(CUIRect View)
-{
-	CUIRect Top;
-	View.HSplitTop(24.0f, &Top, &View);
-	Ui()->DoLabel(&Top, BCLocalize("Voice servers"), 15.0f, TEXTALIGN_ML);
-	View.HSplitTop(8.0f, nullptr, &View);
-
-	CUIRect RoomCard;
-	View.HSplitTop(68.0f, &RoomCard, &View);
-	RoomCard.Draw(VoiceCardBgColor(), IGraphics::CORNER_ALL, 6.0f);
-	CUIRect CardInner = RoomCard;
-	CardInner.Margin(10.0f, &CardInner);
-
-	CUIRect CardIcon, CardText;
-	CardInner.VSplitLeft(24.0f, &CardIcon, &CardText);
-	TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
-	Ui()->DoLabel(&CardIcon, FontIcon::NETWORK_WIRED, 14.0f, TEXTALIGN_MC);
-	TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
-
-	CUIRect CardTitle, CardLine;
-	CardText.HSplitTop(24.0f, &CardTitle, &CardLine);
-	Ui()->DoLabel(&CardTitle, BCLocalize("Servers"), 14.0f, TEXTALIGN_ML);
-
-	auto ReloadServerList = [&]() {
-		ResetServerListTask();
-		CloseServerListPingSocket();
-		m_vServerEntries.clear();
-		m_ServerRowButtons.clear();
-		m_SelectedServerIndex = -1;
-		FetchServerList();
-	};
-
-	CUIRect StatusLine, ReloadButton;
-	CardLine.VSplitRight(92.0f, &StatusLine, &ReloadButton);
-	char aStatus[192];
-	str_format(aStatus, sizeof(aStatus), "%s: %s", BCLocalize("Current"), m_Registered ? BCLocalize("Connected") : BCLocalize("Offline"));
-	Ui()->DoLabel(&StatusLine, aStatus, 11.0f, TEXTALIGN_ML);
-	if(GameClient()->m_Menus.DoButton_Menu(&m_ReloadServerListButton, BCLocalize("Reload"), 0, &ReloadButton))
-		ReloadServerList();
-	View.HSplitTop(10.0f, nullptr, &View);
-
-	CUIRect ListLabel;
-	View.HSplitTop(20.0f, &ListLabel, &View);
-	Ui()->DoLabel(&ListLabel, BCLocalize("Available servers"), 12.0f, TEXTALIGN_ML);
-	View.HSplitTop(4.0f, nullptr, &View);
-
-	if(m_vServerEntries.empty())
-	{
-		const bool IsLoadingServerList = m_pServerListTask && !m_pServerListTask->Done();
-		Ui()->DoLabel(&View, IsLoadingServerList ? BCLocalize("Loading server list...") : BCLocalize("No servers loaded. Press Reload"), 12.0f, TEXTALIGN_ML);
-		return;
-	}
-
-	static CScrollRegion s_ServerListScrollRegion;
-	static vec2 s_ServerListScrollOffset(0.0f, 0.0f);
-	CScrollRegionParams ScrollParams;
-	ScrollParams.m_ScrollUnit = 30.0f;
-	ScrollParams.m_Flags = CScrollRegionParams::FLAG_CONTENT_STATIC_WIDTH;
-	ScrollParams.m_ScrollbarMargin = 4.0f;
-	s_ServerListScrollRegion.Begin(&View, &s_ServerListScrollOffset, &ScrollParams);
-	View.y += s_ServerListScrollOffset.y;
-
-	for(size_t i = 0; i < m_vServerEntries.size(); ++i)
-	{
-		const auto &Entry = m_vServerEntries[i];
-		CUIRect Row;
-		View.HSplitTop(30.0f, &Row, &View);
-		const bool RowVisible = s_ServerListScrollRegion.AddRect(Row);
-		CUIRect Spacing;
-		View.HSplitTop(4.0f, &Spacing, &View);
-		s_ServerListScrollRegion.AddRect(Spacing);
-		if(!RowVisible)
-			continue;
-
-		CButtonContainer &Button = m_ServerRowButtons[i];
-		const bool Selected = (int)i == m_SelectedServerIndex;
-		const int Clicked = Ui()->DoButtonLogic(&Button, Selected, &Row, BUTTONFLAG_LEFT, CUi::EButtonSoundType::BUTTON);
-		const bool Hot = Ui()->HotItem() == &Button;
-
-		const ColorRGBA RowColor = Selected ? VoiceRowSelectedColor() :
-						      (Hot ? VoiceRowHotColor() : VoiceRowBgColor());
-		Row.Draw(RowColor, IGraphics::CORNER_ALL, 5.0f);
-
-		CUIRect Inner = Row;
-		Inner.Margin(4.0f, &Inner);
-		const float FlagAspect = 2.0f; // countryflags textures are 2:1
-		CUIRect FlagRect, ServerInfoRect;
-		Inner.VSplitLeft(Inner.h * FlagAspect, &FlagRect, &ServerInfoRect);
-		ServerInfoRect.VSplitLeft(6.0f, nullptr, &ServerInfoRect);
-		CUIRect NameRect, PingRect;
-		ServerInfoRect.VSplitRight(56.0f, &NameRect, &PingRect);
-		PingRect.VSplitLeft(6.0f, nullptr, &PingRect);
-
-		char aPing[32];
-		if(Entry.m_PingMs >= 0)
-			str_format(aPing, sizeof(aPing), "%d", Entry.m_PingMs);
-		else
-			str_copy(aPing, "--", sizeof(aPing));
-
-		ColorRGBA PingColor = TextRender()->DefaultTextColor();
-		if(Entry.m_PingMs >= 0)
-		{
-			const float PingRatio = std::clamp((Entry.m_PingMs - 20.0f) / 180.0f, 0.0f, 1.0f);
-			PingColor = ColorRGBA(0.25f + PingRatio * 0.70f, 0.90f - PingRatio * 0.60f, 0.30f, 1.0f);
-		}
-
-		GameClient()->m_CountryFlags.Render(Entry.m_Flag, ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f), FlagRect.x, FlagRect.y, FlagRect.w, FlagRect.h);
-		Ui()->DoLabel(&NameRect, Entry.m_Name.c_str(), 11.0f, TEXTALIGN_ML);
-		TextRender()->TextColor(PingColor);
-		Ui()->DoLabel(&PingRect, aPing, 11.0f, TEXTALIGN_MR);
-		TextRender()->TextColor(TextRender()->DefaultTextColor());
-
-		if(Clicked)
-		{
-			m_SelectedServerIndex = (int)i;
-			if(str_comp(g_Config.m_BcVoiceChatServerAddress, Entry.m_Address.c_str()) != 0)
-			{
-				str_copy(g_Config.m_BcVoiceChatServerAddress, Entry.m_Address.c_str(), sizeof(g_Config.m_BcVoiceChatServerAddress));
-				str_copy(m_aLastServerAddr, ResolvedVoiceServerAddress(Entry.m_Address.c_str()), sizeof(m_aLastServerAddr));
-				StopVoice();
-				m_RuntimeState = RUNTIME_RECONNECTING;
-				StartVoice();
-			}
-		}
-	}
-
-	s_ServerListScrollRegion.AddRect(View);
-	s_ServerListScrollRegion.End();
-}
-
-void CVoiceChat::RenderMembersSection(CUIRect View)
-{
-	CUIRect Header;
-	View.HSplitTop(24.0f, &Header, &View);
-	Ui()->DoLabel(&Header, BCLocalize("Участники"), 15.0f, TEXTALIGN_ML);
-	View.HSplitTop(6.0f, nullptr, &View);
-
-	const bool HasLocalParticipant = m_Registered && LocalGameClientId() >= 0 && LocalGameClientId() < MAX_CLIENTS;
-	if(m_vVisibleMemberPeerIds.empty() && !HasLocalParticipant)
-	{
-		Ui()->DoLabel(&View, BCLocalize("Нет подключенных участников."), 12.0f, TEXTALIGN_ML);
-		return;
-	}
-
-	static CScrollRegion s_MembersScrollRegion;
-	static vec2 s_MembersScrollOffset(0.0f, 0.0f);
-	CScrollRegionParams ScrollParams;
-	ScrollParams.m_ScrollUnit = PANEL_ROW_HEIGHT;
-	ScrollParams.m_Flags = CScrollRegionParams::FLAG_CONTENT_STATIC_WIDTH;
-	ScrollParams.m_ScrollbarMargin = 4.0f;
-	s_MembersScrollRegion.Begin(&View, &s_MembersScrollOffset, &ScrollParams);
-	View.y += s_MembersScrollOffset.y;
-
-	auto RenderMemberRow = [&](const char *pName, const CTeeRenderInfo *pTeeInfo, const char *pInfoText, bool ShowSlider, uint16_t PeerId) {
-		CUIRect Row;
-		View.HSplitTop(PANEL_ROW_HEIGHT, &Row, &View);
-		const bool RowVisible = s_MembersScrollRegion.AddRect(Row);
-		CUIRect Spacing;
-		View.HSplitTop(4.0f, &Spacing, &View);
-		s_MembersScrollRegion.AddRect(Spacing);
-		if(!RowVisible)
-			return;
-
-		Row.Draw(VoiceRowBgColor(), IGraphics::CORNER_ALL, 5.0f);
-
-		CUIRect RowInner = Row;
-		RowInner.Margin(6.0f, &RowInner);
-		CUIRect Avatar, Main, Right;
-		RowInner.VSplitLeft(34.0f, &Avatar, &Main);
-		Main.VSplitRight(84.0f, &Main, &Right);
-		Main.VSplitLeft(6.0f, nullptr, &Main);
-
-		CUIRect NameRow, SliderRow;
-		Main.HSplitTop(18.0f, &NameRow, &SliderRow);
-		SliderRow.HSplitTop(2.0f, nullptr, &SliderRow);
-		SliderRow.HSplitTop(16.0f, &SliderRow, nullptr);
-
-		if(pTeeInfo && pTeeInfo->Valid())
-		{
-			CTeeRenderInfo TeeInfo = *pTeeInfo;
-			TeeInfo.m_Size = Avatar.h;
-			RenderTools()->RenderTee(CAnimState::GetIdle(), &TeeInfo, EMOTE_NORMAL, vec2(1.0f, 0.0f), Avatar.Center());
-		}
-
-		Ui()->DoLabel(&NameRow, pName, 11.0f, TEXTALIGN_ML);
-
-		if(ShowSlider)
-		{
-			auto [VolumeIt, Inserted] = m_PeerVolumePercent.emplace(PeerId, 100);
-			(void)Inserted;
-			int &PeerVolume = VolumeIt->second;
-			PeerVolume = std::clamp(PeerVolume, 0, 200);
-			CButtonContainer &VolumeSlider = m_PeerVolumeSliderButtons[PeerId];
-			const float CurrentRel = PeerVolume / 200.0f;
-			const float NewRel = Ui()->DoScrollbarH(&VolumeSlider, &SliderRow, CurrentRel);
-			PeerVolume = std::clamp(round_to_int(NewRel * 200.0f), 0, 200);
-		}
-		else
-		{
-			Ui()->DoLabel(&SliderRow, BCLocalize("Local participant"), 10.0f, TEXTALIGN_ML);
-		}
-
-		Ui()->DoLabel(&Right, pInfoText, 10.0f, TEXTALIGN_MR);
-	};
-
-	if(HasLocalParticipant)
-	{
-		const int LocalClientId = LocalGameClientId();
-		char aName[128];
-		str_format(aName, sizeof(aName), "%s (you)", GameClient()->m_aClients[LocalClientId].m_aName);
-		char aInfo[128];
-		if(LocalTeam() == TEAM_SPECTATORS)
-			str_format(aInfo, sizeof(aInfo), "%s %s", BCLocalize("Team"), BCLocalize("spec"));
-		else
-			str_format(aInfo, sizeof(aInfo), "%s %d", BCLocalize("Team"), LocalTeam());
-		RenderMemberRow(aName, &GameClient()->m_aClients[LocalClientId].m_RenderInfo, aInfo, false, 0);
-	}
-
-	for(uint16_t PeerId : m_vVisibleMemberPeerIds)
-	{
-		auto It = m_Peers.find(PeerId);
-		if(It == m_Peers.end())
-			continue;
-
-		const CRemotePeer &Peer = It->second;
-		const auto ItResolved = m_PeerResolvedClientIds.find(PeerId);
-		const int MatchedClientId = ItResolved == m_PeerResolvedClientIds.end() ? -1 : ItResolved->second;
-		const CTeeRenderInfo *pTeeInfo = nullptr;
-		CTeeRenderInfo TeeInfo;
-		if(MatchedClientId >= 0 && GameClient()->m_aClients[MatchedClientId].m_RenderInfo.Valid())
-		{
-			TeeInfo = GameClient()->m_aClients[MatchedClientId].m_RenderInfo;
-			pTeeInfo = &TeeInfo;
-		}
-
-		char aPeerName[128];
-		if(MatchedClientId >= 0)
-		{
-			str_copy(aPeerName, GameClient()->m_aClients[MatchedClientId].m_aName, sizeof(aPeerName));
-		}
-		else
-		{
-			str_format(aPeerName, sizeof(aPeerName), "%s #%u", BCLocalize("Участник"), PeerId);
-		}
-		const int PeerVolume = m_PeerVolumePercent.find(PeerId) == m_PeerVolumePercent.end() ? 100 : std::clamp(m_PeerVolumePercent[PeerId], 0, 200);
-
-		const int GainPercent = (int)(ComputePeerGain(Peer) * (PeerVolume / 100.0f) * 100.0f);
-		char aInfo[128];
-		str_format(aInfo, sizeof(aInfo), "Team %d  %d%%", (int)Peer.m_Team, maximum(0, GainPercent));
-		RenderMemberRow(aPeerName, pTeeInfo, aInfo, true, PeerId);
-	}
-
-	s_MembersScrollRegion.AddRect(View);
-	s_MembersScrollRegion.End();
-}
-
-void CVoiceChat::RenderSettingsSection(CUIRect View)
-{
-	CUIRect Header;
-	View.HSplitTop(24.0f, &Header, &View);
-	Ui()->DoLabel(&Header, BCLocalize("Voice settings"), 15.0f, TEXTALIGN_ML);
-	View.HSplitTop(8.0f, nullptr, &View);
-
-	// Simplified settings: enable, mode, devices (+ server list below).
-	{
-		CUIRect OptionsCard;
-		const bool RadiusFilterEnabled = g_Config.m_BcVoiceChatRadiusEnabled != 0;
-		const bool AutomaticMode = g_Config.m_BcVoiceChatActivationMode == 0;
-		const float YourGroupRevealPhase = std::clamp(m_EnableYourGroupRevealPhase, 0.0f, 1.0f);
-		const float OptionsInnerHeight =
-			28.0f + 4.0f + // Voice on/off.
-			24.0f + 4.0f + // In-Game Only.
-			24.0f + // Use team0.
-			(4.0f + 24.0f) * YourGroupRevealPhase + // Enable your group (animated reveal).
-			4.0f + // Gap before radius.
-			24.0f + // Radius checkbox.
-			(RadiusFilterEnabled ? (4.0f + 20.0f) : 0.0f) + // Radius slider.
-			4.0f + 28.0f + // Mode.
-			(AutomaticMode ? (4.0f + 20.0f + 4.0f + 20.0f) : 0.0f) + // VAD threshold + release delay.
-			4.0f + 24.0f + // Microphone.
-			4.0f + 24.0f; // Headphones.
-		const float OptionsHeight = OptionsInnerHeight + 20.0f;
-		View.HSplitTop(OptionsHeight, &OptionsCard, &View);
-		OptionsCard.Draw(VoiceCardBgColor(), IGraphics::CORNER_ALL, 6.0f);
-		CUIRect Options = OptionsCard;
-		Options.Margin(10.0f, &Options);
-
-		auto AddSpacing = [&](float Height) {
-			CUIRect Spacing;
-			Options.HSplitTop(Height, &Spacing, &Options);
-		};
-
-		auto RenderDeviceDropDownRow = [&](CUIRect Row, const char *pLabel, int IsCapture, int &ConfigDeviceIndex, CUi::SDropDownState &DropDownState, CScrollRegion &DropDownScrollRegion) {
-			CUIRect LabelRect, DropDownRect;
-			Row.VSplitLeft(170.0f, &LabelRect, &DropDownRect);
-			Ui()->DoLabel(&LabelRect, pLabel, 12.0f, TEXTALIGN_ML);
-			DropDownRect.VSplitLeft(6.0f, nullptr, &DropDownRect);
-
-			int DeviceCount = SDL_GetNumAudioDevices(IsCapture);
-			if(DeviceCount < 0)
-				DeviceCount = 0;
-
-			std::vector<std::string> vDeviceNames;
-			vDeviceNames.reserve((size_t)DeviceCount + 1);
-			vDeviceNames.emplace_back(BCLocalize("System default"));
-			for(int i = 0; i < DeviceCount; ++i)
-			{
-				const char *pDeviceName = SDL_GetAudioDeviceName(i, IsCapture);
-				if(pDeviceName && pDeviceName[0] != '\0')
-					vDeviceNames.emplace_back(pDeviceName);
-				else
-				{
-					char aDevice[32];
-					str_format(aDevice, sizeof(aDevice), "Device #%d", i + 1);
-					vDeviceNames.emplace_back(aDevice);
-				}
-			}
-
-			std::vector<const char *> vpDeviceNames;
-			vpDeviceNames.reserve(vDeviceNames.size());
-			for(const std::string &DeviceName : vDeviceNames)
-				vpDeviceNames.push_back(DeviceName.c_str());
-
-			int Selection = ConfigDeviceIndex + 1;
-			if(Selection < 0 || Selection >= (int)vpDeviceNames.size())
-				Selection = 0;
-
-			DropDownState.m_SelectionPopupContext.m_pScrollRegion = &DropDownScrollRegion;
-			const int NewSelection = Ui()->DoDropDown(&DropDownRect, Selection, vpDeviceNames.data(), (int)vpDeviceNames.size(), DropDownState);
-			if(NewSelection >= 0 && NewSelection < (int)vpDeviceNames.size() && NewSelection != Selection)
-				ConfigDeviceIndex = NewSelection - 1;
-		};
-
-		static CScrollRegion s_InputDeviceDropDownScrollRegion;
-		static CScrollRegion s_OutputDeviceDropDownScrollRegion;
-
-		CUIRect Row;
-		Options.HSplitTop(28.0f, &Row, &Options);
-		if(GameClient()->m_Menus.DoButton_Menu(&m_EnableVoiceButton, g_Config.m_BcVoiceChatEnable ? BCLocalize("Voice: On") : BCLocalize("Voice: Off"), 0, &Row))
-		{
-			g_Config.m_BcVoiceChatEnable ^= 1;
-			if(!g_Config.m_BcVoiceChatEnable && m_Socket)
-				StopVoice();
-		}
-
-		AddSpacing(4.0f);
-		Options.HSplitTop(24.0f, &Row, &Options);
-		if(GameClient()->m_Menus.DoButton_CheckBox(&m_InGameOnlyButton, BCLocalize("In-Game Only"), g_Config.m_BcVoiceChatInGameOnly, &Row))
-			g_Config.m_BcVoiceChatInGameOnly ^= 1;
-
-		AddSpacing(4.0f);
-		Options.HSplitTop(24.0f, &Row, &Options);
-		if(GameClient()->m_Menus.DoButton_CheckBox(&m_UseTeam0Button, BCLocalize("Use team0"), g_Config.m_BcVoiceChatUseTeam0, &Row))
-		{
-			g_Config.m_BcVoiceChatUseTeam0 ^= 1;
-			if(g_Config.m_BcVoiceChatUseTeam0 == 0)
-				g_Config.m_BcVoiceChatEnableYourGroup = 0;
-		}
-
-		if(YourGroupRevealPhase > 0.0f)
-		{
-			AddSpacing(4.0f * YourGroupRevealPhase);
-			CUIRect ClippedRow;
-			Options.HSplitTop(24.0f * YourGroupRevealPhase, &ClippedRow, &Options);
-			if(ClippedRow.h > 0.0f)
-			{
-				if(GameClient()->m_Menus.DoButton_CheckBox(&m_EnableYourGroupButton, BCLocalize("Enable your group"), g_Config.m_BcVoiceChatEnableYourGroup, &ClippedRow))
-					g_Config.m_BcVoiceChatEnableYourGroup ^= 1;
-			}
-		}
-
-		AddSpacing(4.0f);
-		Options.HSplitTop(24.0f, &Row, &Options);
-		if(GameClient()->m_Menus.DoButton_CheckBox(&m_RadiusFilterButton, BCLocalize("Radius filter"), g_Config.m_BcVoiceChatRadiusEnabled, &Row))
-			g_Config.m_BcVoiceChatRadiusEnabled ^= 1;
-
-		if(g_Config.m_BcVoiceChatRadiusEnabled)
-		{
-			AddSpacing(4.0f);
-			Options.HSplitTop(20.0f, &Row, &Options);
-			Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatRadiusTiles, &g_Config.m_BcVoiceChatRadiusTiles, &Row, BCLocalize("Radius (tiles)"), 1, 500);
-		}
-
-		AddSpacing(4.0f);
-		Options.HSplitTop(28.0f, &Row, &Options);
-		if(GameClient()->m_Menus.DoButton_Menu(&m_ActivationModeButton, g_Config.m_BcVoiceChatActivationMode == 1 ? BCLocalize("Mode: Push-to-talk") : BCLocalize("Mode: Automatic activation"), 0, &Row))
-			g_Config.m_BcVoiceChatActivationMode = g_Config.m_BcVoiceChatActivationMode == 1 ? 0 : 1;
-
-		if(g_Config.m_BcVoiceChatActivationMode == 0)
-		{
-			AddSpacing(4.0f);
-			Options.HSplitTop(20.0f, &Row, &Options);
-			Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatVadThreshold, &g_Config.m_BcVoiceChatVadThreshold, &Row, BCLocalize("VAD threshold (%)"), 0, 100);
-
-			AddSpacing(4.0f);
-			Options.HSplitTop(20.0f, &Row, &Options);
-			Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatVadReleaseDelayMs, &g_Config.m_BcVoiceChatVadReleaseDelayMs, &Row, BCLocalize("VAD release delay (ms)"), 0, 1000);
-		}
-
-		AddSpacing(4.0f);
-		Options.HSplitTop(24.0f, &Row, &Options);
-		RenderDeviceDropDownRow(Row, BCLocalize("Microphone"), 1, g_Config.m_BcVoiceChatInputDevice, m_InputDeviceDropDownState, s_InputDeviceDropDownScrollRegion);
-		AddSpacing(4.0f);
-		Options.HSplitTop(24.0f, &Row, &Options);
-		RenderDeviceDropDownRow(Row, BCLocalize("Headphones"), 0, g_Config.m_BcVoiceChatOutputDevice, m_OutputDeviceDropDownState, s_OutputDeviceDropDownScrollRegion);
-	}
-
-	View.HSplitTop(10.0f, nullptr, &View);
-	RenderServersSection(View);
-	return;
-
-	CUIRect StatusCard;
-	View.HSplitTop(102.0f, &StatusCard, &View);
-	StatusCard.Draw(VoiceCardBgColor(), IGraphics::CORNER_ALL, 6.0f);
-	CUIRect StatusInner = StatusCard;
-	StatusInner.Margin(8.0f, &StatusInner);
-
-	char aLine[192];
-	str_format(aLine, sizeof(aLine), "%s: %s", BCLocalize("Connection"), m_Registered ? BCLocalize("Connected") : BCLocalize("Connecting"));
-	CUIRect Line;
-	StatusInner.HSplitTop(20.0f, &Line, &StatusInner);
-	Ui()->DoLabel(&Line, aLine, 11.0f, TEXTALIGN_ML);
-	str_format(aLine, sizeof(aLine), "%s: %s", BCLocalize("Mode"), g_Config.m_BcVoiceChatActivationMode == 1 ? BCLocalize("Push-to-talk") : BCLocalize("Automatic activation"));
-	StatusInner.HSplitTop(20.0f, &Line, &StatusInner);
-	Ui()->DoLabel(&Line, aLine, 11.0f, TEXTALIGN_ML);
-	int ParticipantCount = (m_Registered && LocalGameClientId() >= 0 && LocalGameClientId() < MAX_CLIENTS ? 1 : 0) + (int)m_vVisibleMemberPeerIds.size();
-	str_format(aLine, sizeof(aLine), "%s: %d", BCLocalize("Участники"), ParticipantCount);
-	StatusInner.HSplitTop(20.0f, &Line, &StatusInner);
-	Ui()->DoLabel(&Line, aLine, 11.0f, TEXTALIGN_ML);
-	str_format(aLine, sizeof(aLine), "%s: %s  |  %s: %s",
-		BCLocalize("Microphone"), g_Config.m_BcVoiceChatMicMuted ? BCLocalize("Muted") : BCLocalize("On"),
-		BCLocalize("Headphones"), g_Config.m_BcVoiceChatHeadphonesMuted ? BCLocalize("Muted") : BCLocalize("On"));
-	StatusInner.HSplitTop(20.0f, &Line, &StatusInner);
-	Ui()->DoLabel(&Line, aLine, 11.0f, TEXTALIGN_ML);
-
-	View.HSplitTop(10.0f, nullptr, &View);
-
-	static CScrollRegion s_SettingsScrollRegion;
-	static vec2 s_SettingsScrollOffset(0.0f, 0.0f);
-	CScrollRegionParams ScrollParams;
-	ScrollParams.m_ScrollUnit = 26.0f;
-	ScrollParams.m_Flags = CScrollRegionParams::FLAG_CONTENT_STATIC_WIDTH;
-	ScrollParams.m_ScrollbarMargin = 4.0f;
-	s_SettingsScrollRegion.Begin(&View, &s_SettingsScrollOffset, &ScrollParams);
-	View.y += s_SettingsScrollOffset.y;
-
-	auto AddSpacing = [&](float Height) {
-		CUIRect Spacing;
-		View.HSplitTop(Height, &Spacing, &View);
-		s_SettingsScrollRegion.AddRect(Spacing);
-	};
-
-	auto AddRow = [&](float Height, CUIRect &Row) {
-		View.HSplitTop(Height, &Row, &View);
-		return s_SettingsScrollRegion.AddRect(Row);
-	};
-
-	CUIRect Button;
-	if(AddRow(20.0f, Button))
-		Ui()->DoScrollbarOption(&g_Config.m_BcVoiceChatVolume, &g_Config.m_BcVoiceChatVolume, &Button, BCLocalize("Voice volume"), 0, 200, &CUi::ms_LogarithmicScrollbarScale, 0u, "%");
-
-	AddSpacing(4.0f);
-	if(AddRow(28.0f, Button) && GameClient()->m_Menus.DoButton_Menu(&m_ActivationModeButton, g_Config.m_BcVoiceChatActivationMode == 1 ? BCLocalize("Mode: Push-to-talk") : BCLocalize("Mode: Automatic activation"), 0, &Button))
-		g_Config.m_BcVoiceChatActivationMode = g_Config.m_BcVoiceChatActivationMode == 1 ? 0 : 1;
-
-	AddSpacing(4.0f);
-	if(AddRow(28.0f, Button) && GameClient()->m_Menus.DoButton_Menu(&m_MicCheckButton, g_Config.m_BcVoiceChatMicCheck ? BCLocalize("Mic check: On") : BCLocalize("Mic check: Off"), 0, &Button))
-		g_Config.m_BcVoiceChatMicCheck ^= 1;
-
-	AddSpacing(5.0f);
-	CUIRect MicLevelRow;
-	if(AddRow(42.0f, MicLevelRow))
-	{
-		CUIRect MeterRow, VolumeRow;
-		MicLevelRow.HSplitTop(16.0f, &MeterRow, &MicLevelRow);
-		MicLevelRow.HSplitTop(6.0f, nullptr, &MicLevelRow);
-		MicLevelRow.HSplitTop(16.0f, &VolumeRow, nullptr);
-
-		CUIRect MicLevelLabel, MicLevelMeterWrap, MicLevelMeter;
-		MeterRow.VSplitLeft(170.0f, &MicLevelLabel, &MicLevelMeterWrap);
-		Ui()->DoLabel(&MicLevelLabel, BCLocalize("Microphone level"), 12.0f, TEXTALIGN_ML);
-		MicLevelMeterWrap.VSplitLeft(6.0f, nullptr, &MicLevelMeterWrap);
-		MicLevelMeterWrap.HSplitTop(2.0f, nullptr, &MicLevelMeterWrap);
-		MicLevelMeterWrap.HSplitTop(12.0f, &MicLevelMeter, nullptr);
-
-		MicLevelMeter.Draw(ColorRGBA(0.02f, 0.02f, 0.03f, 0.28f), IGraphics::CORNER_ALL, 4.0f);
-		CUIRect Fill = MicLevelMeter;
-		Fill.w *= std::clamp(m_MicLevel, 0.0f, 1.0f);
-		Fill.Draw(ColorRGBA(0.30f, 0.70f, 0.42f, 0.78f), IGraphics::CORNER_ALL, 4.0f);
-
-		CUIRect MicVolumeLabel, MicVolumeControls;
-		VolumeRow.VSplitLeft(170.0f, &MicVolumeLabel, &MicVolumeControls);
-		Ui()->DoLabel(&MicVolumeLabel, BCLocalize("Mic volume"), 12.0f, TEXTALIGN_ML);
-		MicVolumeControls.VSplitLeft(6.0f, nullptr, &MicVolumeControls);
-		CUIRect MicVolumeSlider, MicVolumeValue;
-		MicVolumeControls.VSplitRight(110.0f, &MicVolumeSlider, &MicVolumeValue);
-		MicVolumeSlider.VSplitRight(8.0f, &MicVolumeSlider, nullptr);
-		MicVolumeValue.VSplitLeft(8.0f, nullptr, &MicVolumeValue);
-		const float MicVolumeRel = std::clamp(g_Config.m_BcVoiceChatMicGain / 300.0f, 0.0f, 1.0f);
-		const float NewMicVolumeRel = Ui()->DoScrollbarH(&g_Config.m_BcVoiceChatMicGain, &MicVolumeSlider, MicVolumeRel);
-		g_Config.m_BcVoiceChatMicGain = std::clamp(round_to_int(NewMicVolumeRel * 300.0f), 0, 300);
-
-		char aMicVolume[32];
-		str_format(aMicVolume, sizeof(aMicVolume), "Mic volume: %d%%", g_Config.m_BcVoiceChatMicGain);
-		Ui()->DoLabel(&MicVolumeValue, aMicVolume, 10.0f, TEXTALIGN_MR);
-	}
-
-	auto RenderDeviceDropDown = [&](const char *pLabel, int IsCapture, int &ConfigDeviceIndex, CUi::SDropDownState &DropDownState, CScrollRegion &DropDownScrollRegion) {
-		AddSpacing(5.0f);
-		CUIRect Row;
-		if(!AddRow(24.0f, Row))
-			return;
-
-		CUIRect LabelRect, DropDownRect;
-		Row.VSplitLeft(170.0f, &LabelRect, &DropDownRect);
-		Ui()->DoLabel(&LabelRect, pLabel, 12.0f, TEXTALIGN_ML);
-		DropDownRect.VSplitLeft(6.0f, nullptr, &DropDownRect);
-
-		int DeviceCount = SDL_GetNumAudioDevices(IsCapture);
-		if(DeviceCount < 0)
-			DeviceCount = 0;
-
-		std::vector<std::string> vDeviceNames;
-		vDeviceNames.reserve((size_t)DeviceCount + 1);
-		vDeviceNames.emplace_back(BCLocalize("System default"));
-		for(int i = 0; i < DeviceCount; ++i)
-		{
-			const char *pDeviceName = SDL_GetAudioDeviceName(i, IsCapture);
-			if(pDeviceName && pDeviceName[0] != '\0')
-			{
-				vDeviceNames.emplace_back(pDeviceName);
-			}
-			else
-			{
-				char aDevice[32];
-				str_format(aDevice, sizeof(aDevice), "Device #%d", i + 1);
-				vDeviceNames.emplace_back(aDevice);
-			}
-		}
-
-		std::vector<const char *> vpDeviceNames;
-		vpDeviceNames.reserve(vDeviceNames.size());
-		for(const std::string &DeviceName : vDeviceNames)
-			vpDeviceNames.push_back(DeviceName.c_str());
-
-		int Selection = ConfigDeviceIndex + 1;
-		if(Selection < 0 || Selection >= (int)vpDeviceNames.size())
-			Selection = 0;
-
-		DropDownState.m_SelectionPopupContext.m_pScrollRegion = &DropDownScrollRegion;
-		const int NewSelection = Ui()->DoDropDown(&DropDownRect, Selection, vpDeviceNames.data(), (int)vpDeviceNames.size(), DropDownState);
-		if(NewSelection >= 0 && NewSelection < (int)vpDeviceNames.size() && NewSelection != Selection)
-			ConfigDeviceIndex = NewSelection - 1;
-	};
-
-	static CScrollRegion s_InputDeviceDropDownScrollRegion;
-	static CScrollRegion s_OutputDeviceDropDownScrollRegion;
-	RenderDeviceDropDown(BCLocalize("Microphone"), 1, g_Config.m_BcVoiceChatInputDevice, m_InputDeviceDropDownState, s_InputDeviceDropDownScrollRegion);
-	RenderDeviceDropDown(BCLocalize("Headphones"), 0, g_Config.m_BcVoiceChatOutputDevice, m_OutputDeviceDropDownState, s_OutputDeviceDropDownScrollRegion);
-
-	AddSpacing(4.0f);
-	if(AddRow(28.0f, Button) && GameClient()->m_Menus.DoButton_Menu(&m_ReconnectButton, BCLocalize("Reconnect"), 0, &Button))
-	{
-		StopVoice();
-		m_RuntimeState = RUNTIME_RECONNECTING;
-		StartVoice();
-	}
-
-	AddSpacing(8.0f);
-	auto RenderBindRow = [&](const char *pLabel, const char *pCommand, CButtonContainer &Reader, CButtonContainer &Clear) {
-		CUIRect BindRow;
-		if(!AddRow(24.0f, BindRow))
-			return;
-
-		CBindSlot CurrentBind(KEY_UNKNOWN, KeyModifier::NONE);
-		bool Found = false;
-		for(int Mod = 0; Mod < KeyModifier::COMBINATION_COUNT && !Found; ++Mod)
-		{
-			for(int KeyId = 0; KeyId < KEY_LAST; ++KeyId)
-			{
-				const char *pBind = GameClient()->m_Binds.Get(KeyId, Mod);
-				if(!pBind[0])
-					continue;
-				if(str_comp(pBind, pCommand) == 0)
-				{
-					CurrentBind = CBindSlot(KeyId, Mod);
-					Found = true;
-					break;
-				}
-			}
-		}
-
-		CUIRect LabelRect, BindRect;
-		BindRow.VSplitLeft(170.0f, &LabelRect, &BindRect);
-		Ui()->DoLabel(&LabelRect, pLabel, 12.0f, TEXTALIGN_ML);
-		BindRect.VSplitLeft(6.0f, nullptr, &BindRect);
-
-		const auto Result = GameClient()->m_KeyBinder.DoKeyReader(&Reader, &Clear, &BindRect, CurrentBind, false);
-		if(Result.m_Bind != CurrentBind)
-		{
-			if(CurrentBind.m_Key != KEY_UNKNOWN)
-				GameClient()->m_Binds.Bind(CurrentBind.m_Key, "", false, CurrentBind.m_ModifierMask);
-			if(Result.m_Bind.m_Key != KEY_UNKNOWN)
-				GameClient()->m_Binds.Bind(Result.m_Bind.m_Key, pCommand, false, Result.m_Bind.m_ModifierMask);
-		}
-		AddSpacing(4.0f);
-	};
-
-	RenderBindRow(BCLocalize("PTT"), "+voicechat", m_PttBindReaderButton, m_PttBindClearButton);
-	RenderBindRow(BCLocalize("Mute microphone"), "toggle_voice_mic_mute", m_MicMuteBindReaderButton, m_MicMuteBindClearButton);
-	RenderBindRow(BCLocalize("Mute headphones"), "toggle_voice_headphones_mute", m_HeadphonesMuteBindReaderButton, m_HeadphonesMuteBindClearButton);
-
-	s_SettingsScrollRegion.AddRect(View);
-	s_SettingsScrollRegion.End();
-}
-
-void CVoiceChat::RenderModSection(CUIRect View)
-{
-	const float RowH = 28.0f;
-	const float Pad = 6.0f;
-
-	CUIRect Row;
-	View.HSplitTop(Pad, nullptr, &View);
-
-	if(!m_Registered)
-	{
-		View.HSplitTop(RowH, &Row, &View);
-		Ui()->DoLabel(&Row, BCLocalize("Not connected to voice server"), 12.0f, TEXTALIGN_MC);
-		return;
-	}
-
-	if(!m_ModAuthed)
-	{
-		// Key input
-		CUIRect LabelRect, FieldRect;
-		View.HSplitTop(RowH, &Row, &View);
-		Row.VSplitLeft(100.0f, &LabelRect, &FieldRect);
-		Ui()->DoLabel(&LabelRect, BCLocalize("Mod key:"), 12.0f, TEXTALIGN_ML);
-		FieldRect.HMargin(2.0f, &FieldRect);
-		m_ModKeyInput.SetHidden(true);
-		Ui()->DoEditBox(&m_ModKeyInput, &FieldRect, 12.0f);
-
-		View.HSplitTop(Pad, nullptr, &View);
-		View.HSplitTop(RowH, &Row, &View);
-
-		if(m_ModAuthFailed)
-		{
-			CUIRect MsgRect, BtnRect;
-			Row.VSplitRight(120.0f, &MsgRect, &BtnRect);
-			TextRender()->TextColor(ColorRGBA(1.0f, 0.3f, 0.3f, 1.0f));
-			Ui()->DoLabel(&MsgRect, BCLocalize("Wrong key"), 12.0f, TEXTALIGN_ML);
-			TextRender()->TextColor(TextRender()->DefaultTextColor());
-			if(GameClient()->m_Menus.DoButton_Menu(&m_ModAuthButton, BCLocalize("Login"), 0, &BtnRect))
-				SendModAuthReq();
-		}
-		else if(m_ModAuthPending)
-		{
-			Ui()->DoLabel(&Row, BCLocalize("Authenticating..."), 12.0f, TEXTALIGN_MC);
-		}
-		else
-		{
-			if(GameClient()->m_Menus.DoButton_Menu(&m_ModAuthButton, BCLocalize("Login as moderator"), 0, &Row))
-				SendModAuthReq();
-		}
-		return;
-	}
-
-	// Authenticated — show player list
-	{
-		CUIRect HeaderRow, RefreshBtn;
-		View.HSplitTop(RowH, &HeaderRow, &View);
-		HeaderRow.VSplitRight(90.0f, &HeaderRow, &RefreshBtn);
-		Ui()->DoLabel(&HeaderRow, BCLocalize("Voice moderator panel"), 13.0f, TEXTALIGN_ML);
-		if(GameClient()->m_Menus.DoButton_Menu(&m_ModRefreshButton, BCLocalize("Refresh"), 0, &RefreshBtn))
-			SendModPlayerListReq();
-	}
-
-	View.HSplitTop(Pad, nullptr, &View);
-
-	if(m_vModPlayers.empty())
-	{
-		View.HSplitTop(RowH, &Row, &View);
-		Ui()->DoLabel(&Row, BCLocalize("No players in current room"), 12.0f, TEXTALIGN_MC);
-		return;
-	}
-
-	if(m_vModMuteButtons.size() != m_vModPlayers.size())
-		m_vModMuteButtons.resize(m_vModPlayers.size());
-
-	static CScrollRegion s_ModScrollRegion;
-	static vec2 s_ModScrollOffset(0.0f, 0.0f);
-	CScrollRegionParams ScrollParams;
-	ScrollParams.m_ScrollUnit = RowH + Pad;
-	ScrollParams.m_Flags = CScrollRegionParams::FLAG_CONTENT_STATIC_WIDTH;
-	ScrollParams.m_ScrollbarMargin = 4.0f;
-	s_ModScrollRegion.Begin(&View, &s_ModScrollOffset, &ScrollParams);
-	View.y += s_ModScrollOffset.y;
-
-	for(size_t i = 0; i < m_vModPlayers.size(); ++i)
-	{
-		const SModPlayer &Player = m_vModPlayers[i];
-		CUIRect PlayerRow;
-		View.HSplitTop(RowH, &PlayerRow, &View);
-		const bool Visible = s_ModScrollRegion.AddRect(PlayerRow);
-		CUIRect Spacing;
-		View.HSplitTop(Pad * 0.5f, &Spacing, &View);
-		s_ModScrollRegion.AddRect(Spacing);
-		if(!Visible)
-			continue;
-
-		CUIRect NameRect, MuteBtn;
-		PlayerRow.VSplitRight(80.0f, &NameRect, &MuteBtn);
-
-		PlayerRow.Draw(ColorRGBA(0.05f, 0.05f, 0.07f, 0.3f), IGraphics::CORNER_ALL, 4.0f);
-
-		char aLabel[BestClientVoice::MAX_PLAYER_NAME_LENGTH + 32];
-		if(Player.m_Name.empty())
-			str_format(aLabel, sizeof(aLabel), "[id:%d]", (int)Player.m_GameClientId);
-		else
-			str_copy(aLabel, Player.m_Name.c_str(), sizeof(aLabel));
-
-		NameRect.HMargin(2.0f, &NameRect);
-		NameRect.VMargin(4.0f, &NameRect);
-		if(Player.m_IsMuted)
-			TextRender()->TextColor(ColorRGBA(1.0f, 0.4f, 0.4f, 1.0f));
-		Ui()->DoLabel(&NameRect, aLabel, 11.0f, TEXTALIGN_ML);
-		if(Player.m_IsMuted)
-			TextRender()->TextColor(TextRender()->DefaultTextColor());
-
-		MuteBtn.HMargin(2.0f, &MuteBtn);
-		const char *pBtnLabel = Player.m_IsMuted ? BCLocalize("Unmute") : BCLocalize("Mute");
-		if(GameClient()->m_Menus.DoButton_Menu(&m_vModMuteButtons[i], pBtnLabel, 0, &MuteBtn))
-			SendModMuteReq(Player.m_SessionId, !Player.m_IsMuted);
-	}
-
-	s_ModScrollRegion.End();
-}
-
-void CVoiceChat::RenderPanel(const CUIRect &Screen, bool ShowCloseButton)
-{
-	const float PanelW = minimum(Screen.w * 0.88f, 1280.0f);
-	const float PanelH = minimum(Screen.h * 0.86f, 820.0f);
-	CUIRect Panel = {Screen.x + (Screen.w - PanelW) / 2.0f, Screen.y + (Screen.h - PanelH) / 2.0f, PanelW, PanelH};
-	const ColorRGBA Bg = color_cast<ColorRGBA>(ColorHSLA(g_Config.m_BcAdminPanelBgColor, true));
-	Panel.Draw(Bg, IGraphics::CORNER_ALL, 8.0f);
-
-	CUIRect Header, Body;
-	Panel.HSplitTop(PANEL_HEADER_HEIGHT, &Header, &Body);
-
-	CUIRect HeaderInner = Header;
-	HeaderInner.Margin(8.0f, &HeaderInner);
-	CUIRect Left, Right;
-	HeaderInner.VSplitRight(PANEL_HEADER_HEIGHT - 4.0f, &Left, &Right);
-
-	CUIRect HeaderIcon, HeaderTitle;
-	Left.VSplitLeft(20.0f, &HeaderIcon, &HeaderTitle);
-	TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
-	Ui()->DoLabel(&HeaderIcon, FontIcon::NETWORK_WIRED, 12.0f, TEXTALIGN_MC);
-	TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
-	Ui()->DoLabel(&HeaderTitle, BCLocalize("Voice chat"), 13.0f, TEXTALIGN_ML);
-
-	TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
-	if(ShowCloseButton)
-	{
-		const bool Close = GameClient()->m_Menus.DoButton_Menu(&m_ClosePanelButton, FontIcon::XMARK, 0, &Right);
-		TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
-		if(Close)
-			SetPanelActive(false);
-	}
-	else
-	{
-		TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
-	}
-
-	Body.Margin(PANEL_PADDING, &Body);
-	CUIRect Footer;
-	Body.HSplitBottom(40.0f, &Body, &Footer);
-
-	// Simplified panel: only settings (includes server list).
-	{
-		CUIRect Content = Body;
-		Content.Draw(VoiceSectionBgColor(), IGraphics::CORNER_ALL, 6.0f);
-		Content.Margin(10.0f, &Content);
-		RenderSettingsSection(Content);
-
-		CUIRect FooterInner = Footer;
-		FooterInner.Margin(2.0f, &FooterInner);
-		CUIRect ButtonsRow;
-		FooterInner.VSplitLeft(64.0f, &ButtonsRow, nullptr);
-		CUIRect MicButton;
-		ButtonsRow.VSplitLeft(28.0f, &MicButton, &ButtonsRow);
-		ButtonsRow.VSplitLeft(8.0f, nullptr, &ButtonsRow);
-		CUIRect HeadphonesButton;
-		ButtonsRow.VSplitLeft(28.0f, &HeadphonesButton, nullptr);
-
-		TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
-		if(GameClient()->m_Menus.DoButton_Menu(&m_MicMuteButton, FontIcon::MICROPHONE, 0, &MicButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, VoiceMuteButtonColor(g_Config.m_BcVoiceChatMicMuted != 0)))
-			ToggleVoiceMicMute();
-		if(GameClient()->m_Menus.DoButton_Menu(&m_HeadphonesMuteButton, FontIcon::HEADPHONES, 0, &HeadphonesButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, VoiceMuteButtonColor(g_Config.m_BcVoiceChatHeadphonesMuted != 0)))
-			ToggleVoiceHeadphonesMute();
-
-		// Show mute state as a cross overlay instead of darkening the button.
-		TextRender()->TextColor(1.0f, 0.25f, 0.25f, 1.0f);
-		if(g_Config.m_BcVoiceChatMicMuted)
-			Ui()->DoLabel(&MicButton, FontIcon::XMARK, 8.0f, TEXTALIGN_MC);
-		if(g_Config.m_BcVoiceChatHeadphonesMuted)
-			Ui()->DoLabel(&HeadphonesButton, FontIcon::XMARK, 8.0f, TEXTALIGN_MC);
-		TextRender()->TextColor(TextRender()->DefaultTextColor());
-		TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
-	}
-	return;
-
-	CUIRect Rail;
-	Body.VSplitLeft(48.0f, &Rail, &Body);
-	Rail.Draw(VoiceSectionBgColor(), IGraphics::CORNER_ALL, 6.0f);
-
-	CUIRect RailInner = Rail;
-	RailInner.Margin(6.0f, &RailInner);
-	CUIRect RailButton;
-
-	TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
-	RailInner.HSplitTop(PANEL_SECTION_BUTTON_SIZE, &RailButton, &RailInner);
-	if(GameClient()->m_Menus.DoButton_Menu(&m_SectionRoomButton, FontIcon::NETWORK_WIRED, 0, &RailButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, VoiceIconButtonColor(m_ActiveSection == VOICE_SECTION_SERVERS)))
-		m_ActiveSection = VOICE_SECTION_SERVERS;
-	RailInner.HSplitTop(6.0f, nullptr, &RailInner);
-	RailInner.HSplitTop(PANEL_SECTION_BUTTON_SIZE, &RailButton, &RailInner);
-	if(GameClient()->m_Menus.DoButton_Menu(&m_SectionMembersButton, FontIcon::ICON_USERS, 0, &RailButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, VoiceIconButtonColor(m_ActiveSection == VOICE_SECTION_MEMBERS)))
-		m_ActiveSection = VOICE_SECTION_MEMBERS;
-	RailInner.HSplitTop(6.0f, nullptr, &RailInner);
-	RailInner.HSplitTop(PANEL_SECTION_BUTTON_SIZE, &RailButton, &RailInner);
-	if(GameClient()->m_Menus.DoButton_Menu(&m_SectionSettingsButton, FontIcon::GEAR, 0, &RailButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, VoiceIconButtonColor(m_ActiveSection == VOICE_SECTION_SETTINGS)))
-		m_ActiveSection = VOICE_SECTION_SETTINGS;
-	RailInner.HSplitTop(6.0f, nullptr, &RailInner);
-	RailInner.HSplitTop(PANEL_SECTION_BUTTON_SIZE, &RailButton, &RailInner);
-	if(GameClient()->m_Menus.DoButton_Menu(&m_SectionModButton, FontIcon::LOCK, 0, &RailButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, VoiceIconButtonColor(m_ActiveSection == VOICE_SECTION_MOD)))
-		m_ActiveSection = VOICE_SECTION_MOD;
-	TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
-
-	Body.VSplitLeft(10.0f, nullptr, &Body);
-	Body.Draw(VoiceSectionBgColor(), IGraphics::CORNER_ALL, 6.0f);
-	Body.Margin(10.0f, &Body);
-
-	if(m_ActiveSection == VOICE_SECTION_MEMBERS)
-		RenderMembersSection(Body);
-	else if(m_ActiveSection == VOICE_SECTION_SETTINGS)
-		RenderSettingsSection(Body);
-	else if(m_ActiveSection == VOICE_SECTION_MOD)
-		RenderModSection(Body);
-	else
-		RenderServersSection(Body);
-
-	CUIRect FooterInner = Footer;
-	FooterInner.Margin(2.0f, &FooterInner);
-	CUIRect ButtonsRow;
-	FooterInner.VSplitLeft(64.0f, &ButtonsRow, nullptr);
-	CUIRect MicButton;
-	ButtonsRow.VSplitLeft(28.0f, &MicButton, &ButtonsRow);
-	ButtonsRow.VSplitLeft(8.0f, nullptr, &ButtonsRow);
-	CUIRect HeadphonesButton;
-	ButtonsRow.VSplitLeft(28.0f, &HeadphonesButton, nullptr);
-
-	TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
-	if(GameClient()->m_Menus.DoButton_Menu(&m_MicMuteButton, FontIcon::MICROPHONE, 0, &MicButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, VoiceMuteButtonColor(g_Config.m_BcVoiceChatMicMuted != 0)))
-		ToggleVoiceMicMute();
-	if(GameClient()->m_Menus.DoButton_Menu(&m_HeadphonesMuteButton, FontIcon::HEADPHONES, 0, &HeadphonesButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, VoiceMuteButtonColor(g_Config.m_BcVoiceChatHeadphonesMuted != 0)))
-		ToggleVoiceHeadphonesMute();
-
-	// Show mute state as a cross overlay instead of darkening the button.
-	TextRender()->TextColor(1.0f, 0.25f, 0.25f, 1.0f);
-	if(g_Config.m_BcVoiceChatMicMuted)
-		Ui()->DoLabel(&MicButton, FontIcon::XMARK, 8.0f, TEXTALIGN_MC);
-	if(g_Config.m_BcVoiceChatHeadphonesMuted)
-		Ui()->DoLabel(&HeadphonesButton, FontIcon::XMARK, 8.0f, TEXTALIGN_MC);
-	TextRender()->TextColor(TextRender()->DefaultTextColor());
-	TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
-}
-
 void CVoiceChat::FetchServerList()
 {
 	if(m_pServerListTask && !m_pServerListTask->Done())
@@ -5319,7 +3762,7 @@ void CVoiceChat::FetchServerList()
 	m_pServerListTask->Timeout(CTimeout{10000, 0, 500, 5});
 	m_pServerListTask->LogProgress(HTTPLOG::NONE);
 	m_pServerListTask->IpResolve(IPRESOLVE::V4);
-	m_pServerListTask->VerifyPeer(false); // allow self-signed/local TLS endpoint
+	m_pServerListTask->VerifyPeer(false);
 	Http()->Run(m_pServerListTask);
 }
 
@@ -5380,21 +3823,7 @@ void CVoiceChat::FinishServerList()
 	if(!m_vServerEntries.empty())
 	{
 		m_ServerRowButtons.resize(m_vServerEntries.size());
-		m_SelectedServerIndex = 0;
-		const std::string EffectiveAddress = EffectiveServerAddress();
-		for(size_t i = 0; i < m_vServerEntries.size(); ++i)
-		{
-			if(str_comp(ResolvedVoiceServerAddress(m_vServerEntries[i].m_Address.c_str()), EffectiveAddress.c_str()) == 0)
-			{
-				m_SelectedServerIndex = (int)i;
-				break;
-			}
-		}
 		StartServerListPings();
-	}
-	else
-	{
-		m_SelectedServerIndex = -1;
 	}
 }
 
@@ -5472,13 +3901,6 @@ void CVoiceChat::ConVoiceStatus(IConsole::IResult *pResult, void *pUserData)
 		pSelf->m_PushToTalkPressed ? 1 : 0,
 		g_Config.m_BcVoiceChatRadiusEnabled ? 1 : 0,
 		std::clamp(g_Config.m_BcVoiceChatRadiusTiles, 1, 500));
-}
-
-void CVoiceChat::ConToggleVoicePanel(IConsole::IResult *pResult, void *pUserData)
-{
-	(void)pResult;
-	CVoiceChat *pSelf = static_cast<CVoiceChat *>(pUserData);
-	pSelf->SetPanelActive(!pSelf->m_PanelActive);
 }
 
 void CVoiceChat::ConKeyVoiceTalk(IConsole::IResult *pResult, void *pUserData)

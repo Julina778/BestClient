@@ -26,8 +26,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include <game/client/lineinput.h>
-
 struct OpusEncoder;
 struct OpusDecoder;
 class CHttpRequest;
@@ -37,7 +35,7 @@ class CVoiceChat : public CComponent
 public:
 	int Sizeof() const override { return sizeof(*this); }
 
-	// Voice moderation — public interface for admin panel
+	// Voice moderation — public interface for the moderation popup in the settings menu
 	struct SModPlayer
 	{
 		uint16_t m_SessionId = 0;
@@ -58,29 +56,17 @@ public:
 	void OnReset() override;
 	void OnStateChange(int NewState, int OldState) override;
 	void OnUpdate() override;
-	void OnRelease() override;
-	void OnRender() override;
-	bool OnCursorMove(float x, float y, IInput::ECursorType CursorType) override;
-	bool OnInput(const IInput::CEvent &Event) override;
 	void OnShutdown() override;
 	bool IsClientTalking(int ClientId) const;
-	std::optional<int> GetClientVolumePercent(int ClientId) const;
-	void SetClientVolumePercent(int ClientId, int VolumePercent);
 	void RenderHudTalkingIndicator(float HudWidth, float HudHeight, bool ForcePreview = false);
 	void RenderHudMuteStatusIndicator(float HudWidth, float HudHeight, bool ForcePreview = false);
 	CUIRect GetHudTalkingIndicatorRect(float HudWidth, float HudHeight, bool ForcePreview = false) const;
 	CUIRect GetHudMuteStatusIndicatorRect(float HudWidth, float HudHeight, bool ForcePreview = false) const;
-	// Renders the voice panel inside menus/settings (independent from the in-game toggle state).
-	void RenderMenuPanel(const CUIRect &View);
-	// Renders only the voice settings block (no popup frame).
+	// Renders only the voice settings block for the Others settings tab.
 	void RenderMenuSettingsBlock(const CUIRect &View, float RevealPhase = 1.0f);
 	// Returns dynamic height for the voice settings block in menus.
 	float GetMenuSettingsBlockHeight(float RevealPhase = 1.0f) const;
-	// Renders binds for voice controls used in settings pages.
-	void RenderMenuControlBinds(const CUIRect &View);
-	// Renders a bind row for toggling the voice panel (used by the settings menu).
-	void RenderMenuPanelToggleBind(const CUIRect &View);
-	// Handles chat commands starting with "!voice". Returns true if consumed locally (not sent to server).
+	// Handles chat commands (!vmute, !vunmute, !volume, !vradius). Returns true if consumed locally (not sent to server).
 	bool TryHandleChatCommand(const char *pLine);
 
 private:
@@ -240,7 +226,6 @@ private:
 	CFixedSampleRingBuffer<BestClientVoice::SAMPLE_RATE * 2> m_MicMonitorPcm;
 	std::unordered_map<uint16_t, CRemotePeer> m_Peers;
 	std::unordered_map<uint16_t, int> m_PeerVolumePercent;
-	std::unordered_map<uint16_t, CButtonContainer> m_PeerVolumeSliderButtons;
 	std::unordered_set<std::string> m_MutedNameKeys;
 	std::unordered_map<std::string, int> m_NameVolumePercent;
 	char m_aLastMutedNames[512] = {};
@@ -256,11 +241,7 @@ private:
 	float m_AutoHpfPrevIn = 0.0f;
 	float m_AutoHpfPrevOut = 0.0f;
 	float m_AutoCompEnv = 0.0f;
-	float m_VadNoiseFloor = 0.0f;
-	float m_VadSpeechScore = 0.0f;
-	float m_VadLastActivationLevel = 0.0f;
 	bool m_WasTransmitActive = false;
-	bool m_WasEnabled = false;
 	char m_aLastServerAddr[128] = "";
 	int64_t m_LastStartAttempt = 0;
 	int64_t m_LastEncoderTuneTick = 0;
@@ -272,7 +253,6 @@ private:
 	int64_t m_LastActiveTick = 0;
 	int64_t m_LastProcessNetworkTick = 0;
 	int64_t m_LastProcessCaptureTick = 0;
-	int64_t m_LastProcessPlaybackTick = 0;
 	int64_t m_LastPerfReportTick = 0;
 	int64_t m_LastUpdateCostTick = 0;
 	int64_t m_MaxUpdateCostTick = 0;
@@ -280,15 +260,9 @@ private:
 	int64_t m_UpdateSamples = 0;
 	int m_LastInputDevice = -2;
 	int m_LastOutputDevice = -2;
-	bool m_PanelActive = false;
-	bool m_MouseUnlocked = false;
-	std::optional<vec2> m_LastMousePos;
-	int m_ActiveSection = 0;
-	std::vector<std::string> m_vOnlineServers;
 	std::vector<CVoiceServerEntry> m_vServerEntries;
 	std::vector<CButtonContainer> m_ServerRowButtons;
 	std::shared_ptr<CHttpRequest> m_pServerListTask = nullptr;
-	int m_SelectedServerIndex = -1;
 	std::string m_AdvertisedRoomKey;
 	std::string m_AdvertisedPlayerName;
 	int m_AdvertisedGameClientId = BestClientVoice::INVALID_GAME_CLIENT_ID - 1;
@@ -310,8 +284,6 @@ private:
 	int64_t m_MutedByModNotifyTick = 0;
 	std::vector<SModPlayer> m_vModPlayers;
 	int64_t m_LastModPlayerListReqTick = 0;
-	CLineInputBuffered<128> m_ModKeyInput;
-	std::vector<CButtonContainer> m_vModMuteButtons;
 
 	std::vector<uint16_t> m_vSortedPeerIds;
 	std::vector<uint16_t> m_vVisibleMemberPeerIds;
@@ -325,33 +297,13 @@ private:
 	CUi::SDropDownState m_InputDeviceDropDownState;
 	CUi::SDropDownState m_OutputDeviceDropDownState;
 
-	CButtonContainer m_SectionRoomButton;
-	CButtonContainer m_SectionMembersButton;
-	CButtonContainer m_SectionSettingsButton;
-	CButtonContainer m_SectionModButton;
-	CButtonContainer m_ClosePanelButton;
-	CButtonContainer m_ModAuthButton;
-	CButtonContainer m_ModRefreshButton;
-	CButtonContainer m_MicMuteButton;
-	CButtonContainer m_HeadphonesMuteButton;
-	CButtonContainer m_MicCheckButton;
 	CButtonContainer m_EnableVoiceButton;
 	CButtonContainer m_InGameOnlyButton;
 	CButtonContainer m_UseTeam0Button;
 	CButtonContainer m_EnableYourGroupButton;
-	CButtonContainer m_ActivationModeButton;
 	CButtonContainer m_RadiusFilterButton;
+	CButtonContainer m_MicCheckButton;
 	CButtonContainer m_ReloadServerListButton;
-	CButtonContainer m_ReconnectButton;
-	CButtonContainer m_DisconnectButton;
-	CButtonContainer m_PttBindReaderButton;
-	CButtonContainer m_PttBindClearButton;
-	CButtonContainer m_PanelBindReaderButton;
-	CButtonContainer m_PanelBindClearButton;
-	CButtonContainer m_MicMuteBindReaderButton;
-	CButtonContainer m_MicMuteBindClearButton;
-	CButtonContainer m_HeadphonesMuteBindReaderButton;
-	CButtonContainer m_HeadphonesMuteBindClearButton;
 
 	void StartVoice();
 	void StopVoice();
@@ -359,7 +311,6 @@ private:
 	bool ShouldKeepVoicePipelineActive() const;
 	bool ShouldUseSecondaryTeamConnection() const;
 	bool HasPendingPlaybackAudio() const;
-	bool HasRecentVoiceActivity(int64_t Now) const;
 	bool OpenNetworking();
 	bool OpenSecondaryNetworking();
 	void CloseNetworking();
@@ -406,13 +357,6 @@ private:
 	bool IsRadiusFilterEnabled() const;
 	float RadiusFilterDistanceUnits() const;
 	bool IsPositionWithinRadiusFilter(vec2 Position) const;
-	void SetPanelActive(bool Active);
-	void SetUiMousePos(vec2 Pos);
-	void RenderPanel(const CUIRect &Screen, bool ShowCloseButton);
-	void RenderServersSection(CUIRect View);
-	void RenderMembersSection(CUIRect View);
-	void RenderSettingsSection(CUIRect View);
-	std::vector<uint16_t> SortedPeerIds() const;
 	void FetchServerList();
 	void FinishServerList();
 	void ResetServerListTask();
@@ -424,17 +368,13 @@ private:
 	const char *EffectiveServerLabel() const;
 	bool IsManagedServerConfig() const;
 	uint64_t CurrentHelloAuthTimestamp() const;
-	void AppendHelloAuthProof(std::vector<uint8_t> &vPacket) const;
 
-	void SendModAuthReq();
 	void SendModPlayerListReq();
 	void SendModMuteReq(uint16_t SessionId, bool Mute);
-	void RenderModSection(CUIRect View);
 
 	static void ConVoiceConnect(IConsole::IResult *pResult, void *pUserData);
 	static void ConVoiceDisconnect(IConsole::IResult *pResult, void *pUserData);
 	static void ConVoiceStatus(IConsole::IResult *pResult, void *pUserData);
-	static void ConToggleVoicePanel(IConsole::IResult *pResult, void *pUserData);
 	static void ConKeyVoiceTalk(IConsole::IResult *pResult, void *pUserData);
 	static void ConToggleVoiceMicMute(IConsole::IResult *pResult, void *pUserData);
 	static void ConToggleVoiceHeadphonesMute(IConsole::IResult *pResult, void *pUserData);

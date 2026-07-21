@@ -19,7 +19,6 @@ enum class EBindOptionGroup
 	CHAT,
 	DUMMY,
 	BEST_CLIENT,
-	BEST_CLIENT_VOICE,
 	BEST_CLIENT_PRACTICE,
 	MISCELLANEOUS,
 	CUSTOM,
@@ -83,8 +82,6 @@ private:
 	void RenderSettingsBinds(EBindOptionGroup Group, CUIRect View);
 
 	float MeasureSettingsMouseHeight() const;
-	CLineInputNumber m_IngameMouseSensInput;
-	CLineInputNumber m_UiMouseSensInput;
 	void RenderSettingsMouse(CUIRect View);
 
 	std::vector<CButtonContainer> m_vJoystickIngameModeButtonContainers = {{}, {}};
@@ -92,8 +89,6 @@ private:
 	CScrollRegion m_JoystickDropDownScrollRegion;
 	CUi::SDropDownState m_JoystickDropDownState;
 	float MeasureSettingsJoystickHeight() const;
-	CLineInputNumber m_IngameControllerSensInput;
-	CLineInputNumber m_UiControllerSensInput;
 	void RenderSettingsJoystick(CUIRect View);
 	void RenderJoystickAxisPicker(CUIRect View);
 	void RenderJoystickBar(const CUIRect *pRect, float Current, float Tolerance, bool Active);

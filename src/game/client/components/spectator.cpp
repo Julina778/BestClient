@@ -533,31 +533,29 @@ void CSpectator::OnRender()
 			TextRender()->TextColor(1.0f, 1.0f, 1.0f, PlayerSelected ? 1.0f : 0.5f);
 			TeeAlpha = 1.0f;
 		}
-		CTextCursor NameCursor;
 		const bool ShowBestClientIndicator = g_Config.m_BcClientIndicatorInScoreboard &&
 						     pInfo->m_ClientId >= 0 &&
 						     GameClient()->m_ClientIndicator.IsPlayerBestClient(pInfo->m_ClientId);
 		const float BestClientIconSize = FontSize * (0.8f + 0.3f * g_Config.m_BcClientIndicatorInSoreboardSize / 100.0f);
 		const float BestClientIconSpacing = 4.0f;
 		const float BestClientIconReserve = ShowBestClientIndicator ? BestClientIconSize + BestClientIconSpacing : 0.0f;
-		const float NameX = Width / 2.0f + x + 50.0f + BestClientIconReserve;
-		const float NameY = Height / 2.0f + y + BoxMove + (LineHeight - FontSize) / 2.f;
-		NameCursor.SetPosition(vec2(NameX, NameY));
+
+		CTextCursor NameCursor;
+		NameCursor.SetPosition(vec2(Width / 2.0f + x + 50.0f + BestClientIconReserve, Height / 2.0f + y + BoxMove + (LineHeight - FontSize) / 2.f));
 		NameCursor.m_FontSize = FontSize;
 		NameCursor.m_Flags |= TEXTFLAG_ELLIPSIS_AT_END;
-		NameCursor.m_LineWidth = 180.0f - BestClientIconReserve;
-		if(NameCursor.m_LineWidth < 0.0f)
-			NameCursor.m_LineWidth = 0.0f;
+		NameCursor.m_LineWidth = 180.0f;
 
 		if(ShowBestClientIndicator)
 		{
 			const CUIRect IconRect = {
-				NameX - BestClientIconReserve,
+				Width / 2.0f + x + 50.0f,
 				Height / 2.0f + y + BoxMove + (LineHeight - BestClientIconSize) / 2.0f,
 				BestClientIconSize,
 				BestClientIconSize};
 			RenderBestClientIcon(Graphics(), IconRect, GameClient()->m_ClientIndicator.IsPlayerDeveloper(pInfo->m_ClientId));
 		}
+
 		if(g_Config.m_ClShowIds)
 		{
 			char aClientId[16];

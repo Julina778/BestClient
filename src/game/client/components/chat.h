@@ -2,9 +2,11 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #ifndef GAME_CLIENT_COMPONENTS_CHAT_H
 #define GAME_CLIENT_COMPONENTS_CHAT_H
+
 #include <base/str.h>
 
 #include <engine/console.h>
+#include <engine/external/regex.h>
 #include <engine/shared/config.h>
 #include <engine/shared/jobs.h>
 #include <engine/shared/protocol.h>
@@ -13,12 +15,12 @@
 #include <generated/protocol7.h>
 
 #include <game/client/component.h>
-#include <game/client/components/hud_layout.h>
 #include <game/client/components/media_decoder.h>
 #include <game/client/lineinput.h>
 #include <game/client/render.h>
 #include <game/client/ui.h>
 
+#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string>
@@ -37,6 +39,9 @@ constexpr auto SAVES_FILE = "ddnet-saves.txt";
 constexpr int MAX_LINE_LENGTH = 256; // Global constant for chat line length
 class CHttpRequest;
 
+// Shared with CGifBubbles so the above-head bubble matches the chat preview's rounded style.
+void DrawRoundedMediaPreview(IGraphics *pGraphics, const IGraphics::CTextureHandle &Texture, float X, float Y, float W, float H, float Rounding, float Alpha);
+
 class CChat : public CComponent
 {
 	static constexpr float CHAT_HEIGHT_FULL = 200.0f;
@@ -46,7 +51,7 @@ class CChat : public CComponent
 	enum
 	{
 		MAX_LINES = 64,
-		CHAT_LINE_LENGTH = ::MAX_LINE_LENGTH,
+		MAX_LINE_LENGTH = ::MAX_LINE_LENGTH
 	};
 
 	enum class EMediaState
@@ -77,7 +82,7 @@ class CChat : public CComponent
 
 	class CMediaDecodeJob;
 
-	CLineInputBuffered<CHAT_LINE_LENGTH> m_Input;
+	CLineInputBuffered<MAX_LINE_LENGTH> m_Input;
 	class CLine
 	{
 	public:
@@ -93,7 +98,7 @@ class CChat : public CComponent
 		bool m_Whisper;
 		int m_NameColor;
 		char m_aName[64];
-		char m_aText[CHAT_LINE_LENGTH];
+		char m_aText[MAX_LINE_LENGTH];
 		bool m_Friend;
 		bool m_Highlighted;
 		std::optional<ColorRGBA> m_CustomColor;
@@ -133,8 +138,7 @@ class CChat : public CComponent
 		float m_aTextHeight[2];
 		float m_aMediaPreviewWidth[2];
 		float m_aMediaPreviewHeight[2];
-		SRenderRect m_NameRect;
-		bool m_NameRectValid;
+
 		SRenderRect m_TranslateRect;
 		bool m_TranslateRectValid;
 		SRenderRect m_TranslateLanguageRect;
@@ -143,6 +147,10 @@ class CChat : public CComponent
 		bool m_MediaPreviewRectValid;
 		SRenderRect m_MediaRetryRect;
 		bool m_MediaRetryRectValid;
+
+		// Set when the whole line is a single allowed gif-bubble-domain media link; drives the
+		// floating gif bubble rendered above the sender's head (see CGifBubbles).
+		bool m_ShowAboveHead;
 	};
 
 	bool m_PrevScoreBoardShowed;
@@ -156,10 +164,6 @@ class CChat : public CComponent
 
 	CLine m_aLines[MAX_LINES];
 	int m_CurrentLine;
-	int m_BacklogCurLine;
-	bool m_ScrollbarDragging;
-	float m_ScrollbarDragOffset;
-	std::optional<vec2> m_LastMousePos;
 	bool m_MouseIsPress;
 	vec2 m_MousePress;
 	vec2 m_MouseRelease;
@@ -192,10 +196,10 @@ class CChat : public CComponent
 	bool m_Show;
 	bool m_CompletionUsed;
 	int m_CompletionChosen;
-	char m_aCompletionBuffer[CHAT_LINE_LENGTH];
+	char m_aCompletionBuffer[MAX_LINE_LENGTH];
 	int m_PlaceholderOffset;
 	int m_PlaceholderLength;
-	static char ms_aDisplayText[CHAT_LINE_LENGTH];
+	static char ms_aDisplayText[MAX_LINE_LENGTH];
 	class CRateablePlayer
 	{
 	public:
@@ -232,22 +236,17 @@ class CChat : public CComponent
 		int m_Team;
 		char m_aText[1];
 	};
-	struct CPendingChatEntry
-	{
-		int m_Team;
-		char m_aText[CHAT_LINE_LENGTH];
-	};
 	CHistoryEntry *m_pHistoryEntry;
 	CStaticRingBuffer<CHistoryEntry, 64 * 1024, CRingBufferBase::FLAG_RECYCLE> m_History;
-	std::vector<CPendingChatEntry> m_vPendingChatQueue;
+	int m_PendingChatCounter;
 	int64_t m_LastChatSend;
 	int64_t m_aLastSoundPlayed[CHAT_NUM];
 	bool m_IsInputCensored;
-	char m_aCurrentInputText[CHAT_LINE_LENGTH];
+	char m_aCurrentInputText[MAX_LINE_LENGTH];
 	bool m_EditingNewLine;
-	char m_aSavedInputText[CHAT_LINE_LENGTH];
+	char m_aSavedInputText[MAX_LINE_LENGTH];
 	bool m_SavedInputPending;
-	char m_aPreviousDisplayedInputText[CHAT_LINE_LENGTH];
+	char m_aPreviousDisplayedInputText[MAX_LINE_LENGTH];
 	int64_t m_ChatOpenAnimationStart;
 	struct STypingGlyphAnim
 	{
@@ -258,26 +257,37 @@ class CChat : public CComponent
 	};
 	std::vector<STypingGlyphAnim> m_vTypingGlyphAnims;
 
+	// smoothly animated position of the chat input's blinking caret, replacing the input's own
+	// instantly-teleporting one while typing animation is enabled
+	vec2 m_CaretVisualPos = vec2(0.0f, 0.0f);
+	vec2 m_CaretAnimFromPos = vec2(0.0f, 0.0f);
+	vec2 m_CaretAnimTargetPos = vec2(0.0f, 0.0f);
+	int64_t m_CaretAnimStartTime = 0;
+	bool m_CaretAnimValid = false;
+	int64_t m_CaretBlinkAnchor = 0;
+
+	int m_BacklogCurLine;
+	bool m_ScrollbarDragging;
+	float m_ScrollbarDragOffset;
+	std::optional<vec2> m_LastMousePos;
+
 	bool m_ServerSupportsCommandInfo;
 
 	CButtonContainer m_TranslateSettingsButton;
 	CButtonContainer m_TranslateSettingsEnableButton;
 	CButtonContainer m_TranslateSettingsEnableOutgoingButton;
+	CButtonContainer m_TranslateSettingsStripPunctuationButton;
 	SPopupMenuId m_TranslateSettingsPopupId;
 	bool m_TranslateButtonPressed;
 	bool m_TranslateButtonRectValid;
-	SRenderRect m_TranslateButtonRect;
+	SRenderRect m_TranslateButtonRect;    // chat-space, for ChatMousePos() click detection
+	CUIRect m_TranslateButtonUiRect = {0, 0, 0, 0}; // UI-space, for DoPopupMenu
 	int m_HoveredTranslateLineIndex = -1;
 
 	bool m_HideMediaByBind;
-	bool m_MediaViewerOpen;
-	int m_MediaViewerLineIndex;
-	float m_MediaViewerZoom;
-	vec2 m_MediaViewerPan;
-	bool m_MediaViewerDragging;
-	vec2 m_MediaViewerDragStartMouse;
-	vec2 m_MediaViewerPanStart;
-	int64_t m_MediaViewerLastClickTime;
+
+	int m_FullscreenMediaLineIndex;
+	char m_aFullscreenMediaUrl[512];
 
 	static bool IsDirectMediaUrl(const char *pUrl);
 	static void ExtractMediaUrlsFromText(const char *pText, std::vector<std::string> &vOutUrls);
@@ -295,31 +305,27 @@ class CChat : public CComponent
 	bool DecodeStaticImage(const unsigned char *pData, size_t DataSize, const char *pContextName, CLine &Line);
 	bool DecodeAnimatedGif(const unsigned char *pData, size_t DataSize, const char *pContextName, CLine &Line);
 	bool DecodeImageWithFfmpeg(const unsigned char *pData, size_t DataSize, const char *pContextName, CLine &Line, bool DecodeAllFrames, int MaxAnimationDurationMs);
-	void CloseMediaViewer();
-	void OpenMediaViewer(int LineIndex);
-	bool ValidateMediaViewerLine() const;
 	bool GetCurrentFrameTexture(CLine &Line, IGraphics::CTextureHandle &Texture) const;
-	vec2 ChatMousePos() const;
-	void ClampMediaViewerPan(const CLine &Line, float ScreenWidth, float ScreenHeight);
-	bool GetMediaViewerRect(const CLine &Line, float ScreenWidth, float ScreenHeight, float &x, float &y, float &w, float &h) const;
 	bool AnyMediaAllowed() const;
 	bool IsMediaKindAllowed(EMediaKind Kind) const;
 	bool IsMediaUrlAllowed(const char *pUrl) const;
 	bool HasAllowedMediaCandidates(const CLine &Line) const;
 	bool ShouldDisplayMediaSlot(const CLine &Line) const;
 	bool ShouldHideMediaPreview(const CLine &Line) const;
+	bool ShouldHideNsfwMedia(const CLine &Line) const;
 	std::string MediaPlaceholderText(const CLine &Line) const;
 	std::string BuildVisibleMessageText(const CLine &Line, bool UseMediaLabelWhenEmpty) const;
-	std::string BuildPlainTextLine(const CLine &Line) const;
-	bool ShouldHideLineFromStreamer(const CLine &Line) const;
-	bool ShouldShowFriendMarker(const CLine &Line) const;
-	void RenderTextLine(CLine &Line, float y, float fontSize, float lineWidth, float textBegin, float realMsgPaddingTee, float realMsgPaddingY, bool isScoreBoardOpen, float blend, std::string *pSelectionString);
+	std::string BuildPlainTextLine(const CLine &Line, int HoveredTranslateLineIndex = -1) const;
+
+	void OpenFullscreenMedia(int LineIndex);
+	void CloseFullscreenMedia();
+	bool HasValidFullscreenMedia() const;
+	void RenderFullscreenMedia(float Width, float Height);
+
+	vec2 ChatMousePos() const;
 	void OpenTranslateSettingsPopup(const CUIRect &ButtonRect);
 	void RenderTranslateSettingsButton(const CUIRect &ButtonRect);
 	static CUi::EPopupMenuFunctionResult PopupTranslateSettings(void *pContext, CUIRect View, bool Active);
-	void SendChatQueuedInternal(int Team, const char *pLine);
-	bool HasServerCommand(const char *pName) const;
-	bool TryConvertWrongLayoutSlashCommand(const char *pLine, char *pOut, int OutSize) const;
 
 	static void ConSay(IConsole::IResult *pResult, void *pUserData);
 	static void ConSayTeam(IConsole::IResult *pResult, void *pUserData);
@@ -328,23 +334,30 @@ class CChat : public CComponent
 	static void ConEcho(IConsole::IResult *pResult, void *pUserData);
 	static void ConClearChat(IConsole::IResult *pResult, void *pUserData);
 	static void ConToggleHideChatMedia(IConsole::IResult *pResult, void *pUserData);
+	static void ConAddCensorList(IConsole::IResult *pResult, void *pUserData);
+	static void ConAddWhiteList(IConsole::IResult *pResult, void *pUserData);
 
 	static void ConchainChatOld(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 	static void ConchainChatFontSize(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 	static void ConchainChatWidth(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
+	static void ConchainRegexPlayerWhitelist(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
+
+	static std::vector<std::string> SplitWords(const char *pMessage);
+	Regex m_RegexPlayerWhitelist;
 
 	bool LineShouldHighlight(const char *pLine, const char *pName);
+	void StoreSave(const char *pText);
+	bool HasServerCommand(const char *pName) const;
+	bool TryConvertWrongLayoutSlashCommand(const char *pLine, char *pOut, int OutSize) const;
 	void ResetTypingAnimation();
 	void SyncTypingAnimationBaseline();
 	void RefreshTypingAnimation();
-	bool WasChatAutoHidden() const;
-	void StoreSave(const char *pText);
-	void SetUiMousePos(vec2 Pos);
 
 	friend class CBindChat;
 	friend class CTranslate;
-	friend class CBestClient;
 	friend class CTClient;
+	friend class CGifBubbles;
+	friend class CChatBubbles;
 
 public:
 	CChat();
@@ -358,6 +371,7 @@ public:
 
 	bool IsActive() const { return m_Mode != MODE_NONE; }
 	void AddLine(int ClientId, int Team, const char *pLine);
+	const char *FilterText(const char *pMessage, int ClientId = -2, bool IsChat = false);
 	void EnableMode(int Team);
 	void DisableMode();
 	void RegisterCommand(const char *pName, const char *pParams, const char *pHelpText);
@@ -368,7 +382,8 @@ public:
 	void OnConsoleInit() override;
 	void OnStateChange(int NewState, int OldState) override;
 	void OnRender() override;
-	void OnPrepareLines(float y, int StartLine, int HoveredTranslateLineIndex = -1);
+	void OnPrepareLines(float x, float y, int StartLine, int HoveredTranslateLineIndex = -1);
+	CUIRect GetHudRect(float HudWidth, float HudHeight, bool ForcePreview = false) const;
 	void Reset();
 	void OnRelease() override;
 	void OnMessage(int MsgType, void *pRawMsg) override;
@@ -378,8 +393,6 @@ public:
 
 	void RebuildChat();
 	void ClearLines();
-	void RenderHud(bool ForcePreview = false);
-	CUIRect GetHudRect(float HudWidth, float HudHeight, bool ForcePreview = false) const;
 
 	void EnsureCoherentFontSize() const;
 	void EnsureCoherentWidth() const;
@@ -407,11 +420,10 @@ public:
 	//
 	// It uses team or public chat depending on m_Mode.
 	void SendChatQueued(const char *pLine);
-	void SendTranslatedChatQueued(int Team, const char *pLine);
-	void AddHistoryEntry(int Team, const char *pLine);
-	void SendChatPayloadQueued(int Team, const char *pLine);
 
-	// BestClient
-	bool LineHighlighted(int ClientId, const char *pLine);
+	// Like SendChatQueued, but sends to an explicit team (used by the
+	// translator to deliver an already-translated outgoing message
+	// without re-triggering translation).
+	void SendTranslatedChatQueued(int Team, const char *pLine);
 };
 #endif

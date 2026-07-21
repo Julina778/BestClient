@@ -72,6 +72,14 @@ namespace
 		return net_addr_is_local(&Addr);
 	}
 
+	// Peer packets carry a ClientId supplied by the indicator server; a malformed
+	// or spoofed packet must not be allowed to poison the caches with an out of
+	// range slot that never gets cleaned up.
+	bool IsValidPeerClientId(int ClientId)
+	{
+		return ClientId >= 0 && ClientId < MAX_CLIENTS;
+	}
+
 	const char *PacketTypeName(int PacketType)
 	{
 		switch(PacketType)
@@ -172,10 +180,6 @@ void CClientIndicator::OnShutdown()
 
 bool CClientIndicator::IsPlayerBestClient(int ClientId) const
 {
-	const CGameClient *pGameClient = GameClient();
-	if(pGameClient && pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR))
-		return false;
-
 	if(Client()->State() != IClient::STATE_ONLINE || !g_Config.m_BcClientIndicator)
 		return false;
 	for(const int LocalId : GameClient()->m_aLocalIds)
@@ -213,10 +217,6 @@ bool CClientIndicator::IsPlayerBestClient(int ClientId) const
 
 bool CClientIndicator::IsPlayerDeveloper(int ClientId) const
 {
-	const CGameClient *pGameClient = GameClient();
-	if(pGameClient && pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR))
-		return false;
-
 	if(Client()->State() != IClient::STATE_ONLINE || !g_Config.m_BcClientIndicator)
 		return false;
 	if(m_DeveloperClientIds.find(ClientId) != m_DeveloperClientIds.end())
@@ -251,10 +251,6 @@ bool CClientIndicator::GetPlayerVersionLabel(int ClientId, char *pVersion, int V
 	if(!pVersion || VersionSize <= 0)
 		return false;
 	pVersion[0] = '\0';
-
-	const CGameClient *pGameClient = GameClient();
-	if(pGameClient && pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR))
-		return false;
 
 	if(Client()->State() != IClient::STATE_ONLINE || !g_Config.m_BcClientIndicator)
 		return false;
@@ -787,7 +783,7 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 		if(BestClientIndicator::ReadPeerStatePacket(pRawData, DataSize, PeerState))
 		{
 			DebugLogF("received peer_state client_id=%d player='%s' server=%s", PeerState.m_ClientId, PeerState.m_PlayerName.c_str(), PeerState.m_ServerAddress.c_str());
-			if(PeerState.m_ServerAddress == m_PresenceCache.ServerAddress())
+			if(IsValidPeerClientId(PeerState.m_ClientId) && PeerState.m_ServerAddress == m_PresenceCache.ServerAddress())
 			{
 				m_PresenceCache.SetPresent(PeerState.m_ClientId, true);
 				SchedulePresenceBrowserRefresh();
@@ -798,7 +794,7 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 		if(BestClientIndicator::ReadPeerRemovePacket(pRawData, DataSize, PeerState))
 		{
 			DebugLogF("received peer_remove client_id=%d player='%s' server=%s", PeerState.m_ClientId, PeerState.m_PlayerName.c_str(), PeerState.m_ServerAddress.c_str());
-			if(PeerState.m_ServerAddress == m_PresenceCache.ServerAddress())
+			if(IsValidPeerClientId(PeerState.m_ClientId) && PeerState.m_ServerAddress == m_PresenceCache.ServerAddress())
 			{
 				m_PresenceCache.SetPresent(PeerState.m_ClientId, false);
 				m_DeveloperClientIds.erase(PeerState.m_ClientId);
@@ -813,6 +809,9 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 			PeerList.m_ServerAddress == m_PresenceCache.ServerAddress())
 		{
 			DebugLogF("received peer_list server=%s count=%llu", PeerList.m_ServerAddress.c_str(), (unsigned long long)PeerList.m_vClientIds.size());
+			PeerList.m_vClientIds.erase(std::remove_if(PeerList.m_vClientIds.begin(), PeerList.m_vClientIds.end(),
+						    [](int ClientId) { return !IsValidPeerClientId(ClientId); }),
+				PeerList.m_vClientIds.end());
 			m_PresenceCache.Replace(PeerList.m_vClientIds);
 			SchedulePresenceBrowserRefresh();
 			continue;
@@ -821,7 +820,7 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 		if(BestClientIndicator::ReadPeerDevStatePacket(pRawData, DataSize, PeerState))
 		{
 			DebugLogF("received peer_dev_state client_id=%d developer=%d player='%s' server=%s", PeerState.m_ClientId, PeerState.m_Developer ? 1 : 0, PeerState.m_PlayerName.c_str(), PeerState.m_ServerAddress.c_str());
-			if(PeerState.m_ServerAddress == m_PresenceCache.ServerAddress())
+			if(IsValidPeerClientId(PeerState.m_ClientId) && PeerState.m_ServerAddress == m_PresenceCache.ServerAddress())
 			{
 				if(PeerState.m_Developer)
 					m_DeveloperClientIds.insert(PeerState.m_ClientId);
@@ -837,7 +836,10 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 			DebugLogF("received peer_dev_list server=%s count=%llu", PeerList.m_ServerAddress.c_str(), (unsigned long long)PeerList.m_vClientIds.size());
 			m_DeveloperClientIds.clear();
 			for(const int ClientId : PeerList.m_vClientIds)
-				m_DeveloperClientIds.insert(ClientId);
+			{
+				if(IsValidPeerClientId(ClientId))
+					m_DeveloperClientIds.insert(ClientId);
+			}
 			continue;
 		}
 
@@ -845,7 +847,7 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 		if(BestClientIndicator::ReadPeerVersionStatePacket(pRawData, DataSize, PeerVersionState))
 		{
 			DebugLogF("received peer_version_state client_id=%d version='%s' player='%s' server=%s", PeerVersionState.m_ClientId, PeerVersionState.m_ClientVersion.c_str(), PeerVersionState.m_PlayerName.c_str(), PeerVersionState.m_ServerAddress.c_str());
-			if(PeerVersionState.m_ServerAddress == m_PresenceCache.ServerAddress())
+			if(IsValidPeerClientId(PeerVersionState.m_ClientId) && PeerVersionState.m_ServerAddress == m_PresenceCache.ServerAddress())
 				m_ClientVersions[PeerVersionState.m_ClientId] = PeerVersionState.m_ClientVersion;
 			continue;
 		}
@@ -855,13 +857,16 @@ void CClientIndicator::ProcessIncomingPackets(bool Force)
 			DevAuthResult.m_ServerAddress == m_PresenceCache.ServerAddress())
 		{
 			DebugLogF("received dev_auth_result client_id=%d success=%d server=%s", DevAuthResult.m_ClientId, DevAuthResult.m_Success ? 1 : 0, DevAuthResult.m_ServerAddress.c_str());
-			if(DevAuthResult.m_Success)
+			if(IsValidPeerClientId(DevAuthResult.m_ClientId))
 			{
-				m_DeveloperClientIds.insert(DevAuthResult.m_ClientId);
-				SchedulePresenceBrowserRefresh();
+				if(DevAuthResult.m_Success)
+				{
+					m_DeveloperClientIds.insert(DevAuthResult.m_ClientId);
+					SchedulePresenceBrowserRefresh();
+				}
+				else
+					m_DeveloperClientIds.erase(DevAuthResult.m_ClientId);
 			}
-			else
-				m_DeveloperClientIds.erase(DevAuthResult.m_ClientId);
 			continue;
 		}
 
@@ -1128,17 +1133,12 @@ bool CClientIndicator::HasPendingNetworkTask() const
 
 bool CClientIndicator::IsBrowserSnapshotEnabled() const
 {
-	const CGameClient *pGameClient = GameClient();
-	return g_Config.m_BcClientIndicator != 0 &&
-	       (!pGameClient || !pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR));
+	return g_Config.m_BcClientIndicator != 0;
 }
 
 bool CClientIndicator::IsPresenceEnabled() const
 {
-	const CGameClient *pGameClient = GameClient();
-	return g_Config.m_BcClientIndicator != 0 &&
-	       Client()->State() == IClient::STATE_ONLINE &&
-	       (!pGameClient || !pGameClient->m_BestClient.IsComponentDisabled(CBestClient::COMPONENT_OTHERS_CLIENT_INDICATOR));
+	return g_Config.m_BcClientIndicator != 0 && Client()->State() == IClient::STATE_ONLINE;
 }
 
 const char *CClientIndicator::EffectiveSharedToken() const

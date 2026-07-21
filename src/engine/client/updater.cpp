@@ -1,10 +1,14 @@
+/* Copyright © 2026 BestProject Team */
 #include "updater.h"
 
+#include <base/math.h>
 #include <base/process.h>
 #include <base/system.h>
 
 #include <engine/client.h>
+#include <engine/config.h>
 #include <engine/external/json-parser/json.h>
+#include <engine/shared/config.h>
 #include <engine/shared/http.h>
 #include <engine/shared/json.h>
 #include <engine/storage.h>
@@ -12,15 +16,34 @@
 #include <game/client/components/bestclient/version.h>
 #include <game/version.h>
 
+#if defined(CONF_PLATFORM_ANDROID)
+#include <android/android_main.h>
+#endif
+
 #include <algorithm>
 #include <cctype>
 #include <iterator>
 #include <string>
 #include <vector>
 
+static bool StrEndsWithNoCase(const char *pStr, const char *pSuffix)
+{
+	if(!pStr || !pSuffix)
+		return false;
+	int StrLen = str_length(pStr);
+	int SuffixLen = str_length(pSuffix);
+	if(SuffixLen > StrLen)
+		return false;
+	return str_comp_nocase(pStr + StrLen - SuffixLen, pSuffix) == 0;
+}
+
 static constexpr const char *GITHUB_RELEASES_URL = "https://api.github.com/repos/BestProjectTeam/BestClient/releases?per_page=10";
 static constexpr const char *GITHUB_LATEST_RELEASE_URL = "https://github.com/BestProjectTeam/BestClient/releases/latest";
+#if defined(CONF_PLATFORM_ANDROID)
+static constexpr const char *UPDATE_ARCHIVE_PATH = "update/bestclient-release.apk";
+#else
 static constexpr const char *UPDATE_ARCHIVE_PATH = "update/bestclient-release.zip";
+#endif
 
 static void BuildGitHubReleasesUrl(char *pBuf, int BufSize)
 {
@@ -130,17 +153,17 @@ static int ScoreArchiveAsset(const char *pAssetName)
 		return -1;
 
 #if defined(CONF_FAMILY_WINDOWS)
-	if(!str_endswith_nocase(pAssetName, ".zip"))
+	if(!StrEndsWithNoCase(pAssetName, ".zip"))
 		return -1;
 	if(Lower.find("windows") == std::string::npos && Lower.find("win") == std::string::npos)
 		return -1;
 #elif defined(CONF_PLATFORM_ANDROID)
-	if(!str_endswith_nocase(pAssetName, ".apk"))
+	if(!StrEndsWithNoCase(pAssetName, ".apk"))
 		return -1;
 	if(Lower.find("android") == std::string::npos)
 		return -1;
 #elif defined(CONF_PLATFORM_LINUX)
-	if(!str_endswith_nocase(pAssetName, ".tar.xz"))
+	if(!StrEndsWithNoCase(pAssetName, ".tar.xz"))
 		return -1;
 	if(Lower.find("linux") == std::string::npos)
 		return -1;
@@ -291,6 +314,10 @@ void CUpdater::Init(CHttp *pHttp)
 	m_pClient = Kernel()->RequestInterface<IClient>();
 	m_pStorage = Kernel()->RequestInterface<IStorage>();
 	m_pHttp = pHttp;
+
+#if !defined(CONF_HEADLESS_CLIENT) && (defined(CONF_FAMILY_WINDOWS) || defined(CONF_PLATFORM_LINUX) || defined(CONF_PLATFORM_ANDROID))
+	m_bAutoCheckPending = true;
+#endif
 }
 
 void CUpdater::SetCurrentState(EUpdaterState NewState)
@@ -329,6 +356,11 @@ int CUpdater::GetCurrentPercent()
 	return m_Percent;
 }
 
+const char *CUpdater::GetLatestVersionString()
+{
+	return m_aLatestVersion;
+}
+
 void CUpdater::ResetTask()
 {
 	if(m_pCurrentTask)
@@ -360,38 +392,38 @@ void CUpdater::StartReleaseFetch()
 	m_pHttp->Run(m_pCurrentTask);
 }
 
-bool CUpdater::ParseReleaseTask()
+void CUpdater::ParseReleaseTask()
 {
 	json_value *pJson = m_pCurrentTask ? m_pCurrentTask->ResultJson() : nullptr;
 	if(!pJson)
 	{
 		SetStatus("Failed to parse release info");
 		SetCurrentState(IUpdater::FAIL);
-		return false;
+		return;
 	}
 
-	const bool Parsed = ParseLatestRelease(pJson, m_aLatestVersion, sizeof(m_aLatestVersion), m_aArchiveName, sizeof(m_aArchiveName), m_aArchiveUrl, sizeof(m_aArchiveUrl));
+	char aVersion[64] = "";
+	char aArchiveName[128] = "";
+	char aArchiveUrl[2048] = "";
+
+	const bool Parsed = ParseLatestRelease(pJson, aVersion, sizeof(aVersion), aArchiveName, sizeof(aArchiveName), aArchiveUrl, sizeof(aArchiveUrl));
 	json_value_free(pJson);
 
-	if(!Parsed)
+	if(!Parsed || CompareVersionStrings(aVersion, BESTCLIENT_VERSION) <= 0)
 	{
 		m_aLatestVersion[0] = '\0';
 		m_aArchiveName[0] = '\0';
 		m_aArchiveUrl[0] = '\0';
-		SetStatus("No compatible release found");
+		SetStatus("No update available");
 		SetCurrentState(IUpdater::CLEAN);
-		return false;
+		return;
 	}
 
-	// Update is available only when the remote tag is higher than current version.
-	if(CompareVersionStrings(m_aLatestVersion, BESTCLIENT_VERSION) <= 0)
-	{
-		SetStatus("No new release found");
-		SetCurrentState(IUpdater::CLEAN);
-		return false;
-	}
-
-	return true;
+	str_copy(m_aLatestVersion, aVersion, sizeof(m_aLatestVersion));
+	str_copy(m_aArchiveName, aArchiveName, sizeof(m_aArchiveName));
+	str_copy(m_aArchiveUrl, aArchiveUrl, sizeof(m_aArchiveUrl));
+	SetStatus("Update available");
+	SetCurrentState(IUpdater::VERSION_AVAILABLE);
 }
 
 void CUpdater::StartArchiveDownload()
@@ -444,10 +476,80 @@ bool CUpdater::LaunchApplyScriptAndQuit()
 
 	m_pClient->Quit();
 	return true;
+#elif defined(CONF_PLATFORM_ANDROID)
+	char aArchivePath[IO_MAX_PATH_LENGTH];
+
+	m_pStorage->GetBinaryPath(m_aArchivePath, aArchivePath, sizeof(aArchivePath));
+	if(!m_pStorage->FileExists(aArchivePath, IStorage::TYPE_ABSOLUTE))
+	{
+		SetStatus("Downloaded archive missing");
+		return false;
+	}
+
+	char aAbsoluteArchivePath[IO_MAX_PATH_LENGTH];
+	m_pStorage->GetBinaryPathAbsolute(m_aArchivePath, aAbsoluteArchivePath, sizeof(aAbsoluteArchivePath));
+
+	if(!InstallAndroidApk(aAbsoluteArchivePath))
+	{
+		SetStatus("Failed to launch installer");
+		return false;
+	}
+
+	// The OS replaces the running process once the user confirms the install,
+	// so the client must keep running instead of quitting like on Windows/Linux.
+	return true;
+#elif defined(CONF_PLATFORM_LINUX)
+	char aArchivePath[IO_MAX_PATH_LENGTH];
+	char aUpdaterPath[IO_MAX_PATH_LENGTH];
+	char aInstallDir[IO_MAX_PATH_LENGTH];
+	char aExePath[IO_MAX_PATH_LENGTH];
+	char aPid[32];
+
+	m_pStorage->GetBinaryPath(m_aArchivePath, aArchivePath, sizeof(aArchivePath));
+	if(!m_pStorage->FileExists(aArchivePath, IStorage::TYPE_ABSOLUTE))
+	{
+		SetStatus("Downloaded archive missing");
+		return false;
+	}
+
+	m_pStorage->GetBinaryPathAbsolute("bestclient-updater", aUpdaterPath, sizeof(aUpdaterPath));
+	m_pStorage->GetBinaryPathAbsolute(PLAT_CLIENT_EXEC, aExePath, sizeof(aExePath));
+	str_copy(aInstallDir, aExePath, sizeof(aInstallDir));
+	StripFilename(aInstallDir);
+
+	str_format(aPid, sizeof(aPid), "%d", process_id());
+	const char *apArguments[] = {aPid, aArchivePath, aInstallDir, aExePath};
+
+	if(process_execute(aUpdaterPath, EShellExecuteWindowState::FOREGROUND, apArguments, std::size(apArguments)) == INVALID_PROCESS)
+	{
+		SetStatus("Failed to launch updater");
+		return false;
+	}
+
+	m_pClient->Quit();
+	return true;
 #else
-	SetStatus("Archive updater is only available on Windows");
+	SetStatus("Archive updater is only available on Windows and Linux");
 	return false;
 #endif
+}
+
+void CUpdater::CheckForUpdate()
+{
+	const EUpdaterState State = GetCurrentState();
+	if(State == IUpdater::GETTING_MANIFEST || State == IUpdater::DOWNLOADING)
+		return;
+
+#if !defined(CONF_FAMILY_WINDOWS) && !defined(CONF_PLATFORM_LINUX) && !defined(CONF_PLATFORM_ANDROID)
+	if(m_pClient)
+		m_pClient->ViewLink(GITHUB_LATEST_RELEASE_URL);
+	return;
+#endif
+
+	m_aLatestVersion[0] = '\0';
+	m_aArchiveName[0] = '\0';
+	m_aArchiveUrl[0] = '\0';
+	StartReleaseFetch();
 }
 
 void CUpdater::InitiateUpdate()
@@ -456,13 +558,13 @@ void CUpdater::InitiateUpdate()
 	if(State == IUpdater::GETTING_MANIFEST || State == IUpdater::DOWNLOADING)
 		return;
 
-#if !defined(CONF_FAMILY_WINDOWS)
-	if(m_pClient)
-		m_pClient->ViewLink(GITHUB_LATEST_RELEASE_URL);
-	return;
-#endif
+	if((State == IUpdater::VERSION_AVAILABLE || State == IUpdater::FAIL) && m_aArchiveUrl[0] != '\0')
+	{
+		StartArchiveDownload();
+		return;
+	}
 
-	StartReleaseFetch();
+	CheckForUpdate();
 }
 
 void CUpdater::ApplyUpdateAndRestart()
@@ -476,6 +578,21 @@ void CUpdater::ApplyUpdateAndRestart()
 
 void CUpdater::Update()
 {
+	if(g_Config.m_BcAutoUpdate != 0)
+	{
+		const EUpdaterState State = GetCurrentState();
+		if(State == IUpdater::VERSION_AVAILABLE)
+			InitiateUpdate();
+		else if(State == IUpdater::NEED_RESTART)
+			ApplyUpdateAndRestart();
+	}
+
+	if(m_bAutoCheckPending && m_pHttp && GetCurrentState() == CLEAN)
+	{
+		m_bAutoCheckPending = false;
+		CheckForUpdate();
+	}
+
 	if(!m_pCurrentTask)
 		return;
 
@@ -489,17 +606,15 @@ void CUpdater::Update()
 	if(m_pCurrentTask->State() != EHttpState::DONE || m_pCurrentTask->StatusCode() >= 400)
 	{
 		ResetTask();
-		SetStatus("Update download failed");
+		SetStatus("Update check failed");
 		SetCurrentState(IUpdater::FAIL);
 		return;
 	}
 
 	if(m_TaskKind == ETaskKind::FETCH_RELEASE)
 	{
-		if(ParseReleaseTask())
-			StartArchiveDownload();
-		else
-			ResetTask();
+		ParseReleaseTask();
+		ResetTask();
 		return;
 	}
 
