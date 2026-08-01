@@ -2833,6 +2833,8 @@ if(CLIENT)
     components/bestclient/3d_particles.h
     components/bestclient/admin_panel.cpp
     components/bestclient/admin_panel.h
+    components/bestclient/automargin.cpp
+    components/bestclient/automargin.h
     components/bestclient/clientindicator/browser_cache.cpp
     components/bestclient/clientindicator/browser_cache.h
     components/bestclient/clientindicator/client_indicator.cpp
@@ -2845,10 +2847,10 @@ if(CLIENT)
     components/bestclient/cherry_gifs.h
     components/bestclient/clans/clans.cpp
     components/bestclient/clans/clans.h
-    components/bestclient/cherry_gifs_cache.cpp
-    components/bestclient/cherry_gifs_cache.h
     components/bestclient/chat_bubbles.cpp
     components/bestclient/chat_bubbles.h
+    components/bestclient/cloud_input.cpp
+    components/bestclient/cloud_input.h
     components/bestclient/fast_actions.cpp
     components/bestclient/fast_actions.h
     components/bestclient/fast_practice.cpp
@@ -2876,6 +2878,8 @@ if(CLIENT)
     components/bestclient/rollback_demo.h
     components/bestclient/self_time_cp.cpp
     components/bestclient/self_time_cp.h
+    components/bestclient/show_points.cpp
+    components/bestclient/show_points.h
     components/bestclient/subsystem_runtime.h
     components/bestclient/translate.cpp
     components/bestclient/translate.h
@@ -3243,10 +3247,29 @@ if(CLIENT)
   list(APPEND TARGETS_LINK bestclient-voice-server)
 
   if(WIN32)
+    # The updater is a small self-contained binary that replaces files and relaunches the
+    # client — behaviour that antivirus heuristics score harshly. Ship it with the same
+    # version resource, manifest and icon as the client so it isn't an anonymous
+    # metadata-less executable, which is a strong signal on its own.
+    set(VERSION_COMPANY "${CLIENT_EXECUTABLE} Team")
+    set(VERSION_PRODUCT_NAME "BestClient")
+    configure_file("other/versioninfo/updater.versioninfo.rc.in" "updater.versioninfo.rc")
+    configure_file("other/manifest/updater.manifest.in" "updater.manifest")
+    if(NOT MINGW)
+      set(UPDATER_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/updater.manifest")
+    else()
+      configure_file("other/manifest/updater.rc" "updater.rc" COPYONLY)
+      set(UPDATER_MANIFEST "${CMAKE_CURRENT_BINARY_DIR}/updater.rc")
+    endif()
     add_executable(bestclient-updater WIN32
       src/tools/bestclient_updater.cpp
+      other/icons/DDNet.rc
+      "${CMAKE_CURRENT_BINARY_DIR}/updater.versioninfo.rc"
+      ${UPDATER_MANIFEST}
+      ${ZLIB_DEP}
     )
-    target_link_libraries(bestclient-updater shell32)
+    target_link_libraries(bestclient-updater shell32 ${ZLIB_LIBRARIES})
+    target_include_directories(bestclient-updater SYSTEM PRIVATE ${ZLIB_INCLUDE_DIRS})
     set_property(TARGET bestclient-updater PROPERTY OUTPUT_NAME "bestclient-updater")
     list(APPEND TARGETS_OWN bestclient-updater)
     list(APPEND TARGETS_LINK bestclient-updater)

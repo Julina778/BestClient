@@ -71,12 +71,6 @@ enum
 
 void CMenus::RenderSettingsBestClient(CUIRect MainView)
 {
-	if(m_AssetsEditorState.m_VisualsEditorOpen && m_AssetsEditorState.m_FullscreenOpen)
-	{
-		RenderAssetsEditorScreen(*Ui()->Screen());
-		return;
-	}
-
 	// Match original old-layout: shift content up past the 20px margin so tab bar
 	// appears 8px from the panel border instead of 20px from content area start.
 	MainView.y -= 20.0f;
@@ -870,8 +864,6 @@ void CMenus::RenderSettingsBestClientVisuals(CUIRect MainView)
 		g_Config.m_BcNameplateGradientAnimateSpeed = DefaultConfig::BcNameplateGradientAnimateSpeed;
 	}
 	GradientTitleLabel.VSplitRight(MarginSmall, &GradientTitleLabel, nullptr);
-	DrawBcMenuBadge(Graphics(), Ui(), TextRender(), &GradientTitleLabel, Localize("NEW"), 12.0f,
-		ColorRGBA(0.25f, 0.85f, 0.40f, 1.0f), ColorRGBA(0.10f, 0.60f, 0.25f, 1.0f), MarginSmall);
 	Ui()->DoLabel(&GradientTitleLabel, Localize("Gradient"), HeadlineFontSize, TEXTALIGN_ML);
 
 	MainView.HSplitTop(MarginSmall, nullptr, &MainView);
@@ -1723,7 +1715,7 @@ void CMenus::RenderSettingsBestClientVisuals(CUIRect MainView)
 	const bool MusicPlayerShowStaticColor = MusicPlayerEnabled && g_Config.m_BcMusicPlayerColorMode == 0;
 	static float s_MusicPlayerRevealPhase = 0.0f;
 	UpdateModuleRevealPhase(s_MusicPlayerRevealPhase, MusicPlayerEnabled, Client()->RenderFrameTime());
-	const float MusicPlayerExpandedTargetHeight = (MarginSmall + LineSize) * 8.0f + (MusicPlayerShowStaticColor ? MusicPlayerColorPickerSpacing + MusicPlayerColorPickerLineSize : 0.0f);
+	const float MusicPlayerExpandedTargetHeight = (MarginSmall + LineSize) * 5.0f + (MusicPlayerShowStaticColor ? MusicPlayerColorPickerSpacing + MusicPlayerColorPickerLineSize : 0.0f);
 	const float MusicPlayerExpandedHeight = MusicPlayerExpandedTargetHeight * BCUiAnimations::EaseOutCubic(s_MusicPlayerRevealPhase);
 	const float MusicPlayerContentHeight = LineSize + MarginSmall + LineSize + MusicPlayerExpandedHeight;
 
@@ -1751,11 +1743,8 @@ void CMenus::RenderSettingsBestClientVisuals(CUIRect MainView)
 	{
 		g_Config.m_BcMusicPlayerColorMode = DefaultConfig::BcMusicPlayerColorMode;
 		g_Config.m_BcMusicPlayerStaticColor = DefaultConfig::BcMusicPlayerStaticColor;
-		g_Config.m_BcMusicPlayerSizeMode = DefaultConfig::BcMusicPlayerSizeMode;
 		g_Config.m_BcMusicPlayerTextScale = DefaultConfig::BcMusicPlayerTextScale;
 		g_Config.m_BcMusicPlayerVisualizerMode = DefaultConfig::BcMusicPlayerVisualizerMode;
-		g_Config.m_BcMusicPlayerVisualizerSensitivity = DefaultConfig::BcMusicPlayerVisualizerSensitivity;
-		g_Config.m_BcMusicPlayerVisualizerSmoothing = DefaultConfig::BcMusicPlayerVisualizerSmoothing;
 		g_Config.m_BcMusicPlayerVisualizerRounding = DefaultConfig::BcMusicPlayerVisualizerRounding;
 		g_Config.m_BcMusicPlayerVisualizerColumns = DefaultConfig::BcMusicPlayerVisualizerColumns;
 	}
@@ -1790,13 +1779,14 @@ void CMenus::RenderSettingsBestClientVisuals(CUIRect MainView)
 		static CUi::SDropDownState s_MusicPlayerColorModeState;
 		static CScrollRegion s_MusicPlayerColorModeScrollRegion;
 		s_MusicPlayerColorModeState.m_SelectionPopupContext.m_pScrollRegion = &s_MusicPlayerColorModeScrollRegion;
-		const char *apMusicPlayerColorModes[4] = {
-			Localize("Static color"),
-			Localize("Cover accent color"),
-			Localize("Dominant cover color"),
+		const char *apMusicPlayerColorModes[3] = {
+			Localize("Static"),
+			Localize("Cover"),
 			Localize("Translucent"),
 		};
-		g_Config.m_BcMusicPlayerColorMode = std::clamp(g_Config.m_BcMusicPlayerColorMode, 0, 3);
+		if(g_Config.m_BcMusicPlayerColorMode > 2)
+			g_Config.m_BcMusicPlayerColorMode = 2;
+		g_Config.m_BcMusicPlayerColorMode = std::clamp(g_Config.m_BcMusicPlayerColorMode, 0, 2);
 		g_Config.m_BcMusicPlayerColorMode = Ui()->DoDropDown(&MusicPlayerColorModeSelect, g_Config.m_BcMusicPlayerColorMode, apMusicPlayerColorModes, (int)std::size(apMusicPlayerColorModes), s_MusicPlayerColorModeState);
 
 		if(MusicPlayerShowStaticColor)
@@ -1805,22 +1795,6 @@ void CMenus::RenderSettingsBestClientVisuals(CUIRect MainView)
 			MainView.HSplitTop(MusicPlayerColorPickerSpacing, nullptr, &MainView);
 			DoLine_ColorPicker(&s_MusicPlayerStaticColorButton, MusicPlayerColorPickerLineSize, MusicPlayerColorPickerLabelSize, MusicPlayerColorPickerSpacing, &MainView, Localize("Static color"), &g_Config.m_BcMusicPlayerStaticColor, ColorRGBA(0.34f, 0.53f, 0.79f, 1.0f), false);
 		}
-
-		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
-		MainView.HSplitTop(LineSize, &Button, &MainView);
-		CUIRect MusicPlayerSizeModeLabel, MusicPlayerSizeModeSelect;
-		Button.VSplitLeft(150.0f, &MusicPlayerSizeModeLabel, &MusicPlayerSizeModeSelect);
-		Ui()->DoLabel(&MusicPlayerSizeModeLabel, Localize("Size mode"), 14.0f, TEXTALIGN_ML);
-
-		static CUi::SDropDownState s_MusicPlayerSizeModeState;
-		static CScrollRegion s_MusicPlayerSizeModeScrollRegion;
-		s_MusicPlayerSizeModeState.m_SelectionPopupContext.m_pScrollRegion = &s_MusicPlayerSizeModeScrollRegion;
-		const char *apMusicPlayerSizeModes[2] = {
-			Localize("Normal"),
-			Localize("Mini"),
-		};
-		g_Config.m_BcMusicPlayerSizeMode = std::clamp(g_Config.m_BcMusicPlayerSizeMode, 0, 1);
-		g_Config.m_BcMusicPlayerSizeMode = Ui()->DoDropDown(&MusicPlayerSizeModeSelect, g_Config.m_BcMusicPlayerSizeMode, apMusicPlayerSizeModes, (int)std::size(apMusicPlayerSizeModes), s_MusicPlayerSizeModeState);
 
 		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
 		MainView.HSplitTop(LineSize, &Button, &MainView);
@@ -1845,14 +1819,6 @@ void CMenus::RenderSettingsBestClientVisuals(CUIRect MainView)
 
 		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
 		MainView.HSplitTop(LineSize, &Button, &MainView);
-		Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerSensitivity, &g_Config.m_BcMusicPlayerVisualizerSensitivity, &Button, Localize("Sensitivity"), 50, 300, &CUi::ms_LinearScrollbarScale, 0u, "%");
-
-		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
-		MainView.HSplitTop(LineSize, &Button, &MainView);
-		Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerSmoothing, &g_Config.m_BcMusicPlayerVisualizerSmoothing, &Button, Localize("Smoothing"), 0, 100, &CUi::ms_LinearScrollbarScale, 0u, "%");
-
-		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
-		MainView.HSplitTop(LineSize, &Button, &MainView);
 		Ui()->DoScrollbarOption(&g_Config.m_BcMusicPlayerVisualizerColumns, &g_Config.m_BcMusicPlayerVisualizerColumns, &Button, Localize("Columns"), 5, 10);
 
 		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
@@ -1863,22 +1829,18 @@ void CMenus::RenderSettingsBestClientVisuals(CUIRect MainView)
 
 		static CButtonContainer s_MusicPlayerVisualizerRoundingCube;
 		static CButtonContainer s_MusicPlayerVisualizerRoundingSoft;
-		static CButtonContainer s_MusicPlayerVisualizerRoundingPill;
-		const int MusicPlayerRoundingPreset = g_Config.m_BcMusicPlayerVisualizerRounding < 100 ? 0 : (g_Config.m_BcMusicPlayerVisualizerRounding < 300 ? 1 : 2);
-		CUIRect MusicPlayerCubeButton, MusicPlayerSoftButton, MusicPlayerPillButton, MusicPlayerRoundingRest;
+		if(g_Config.m_BcMusicPlayerVisualizerRounding > 200)
+			g_Config.m_BcMusicPlayerVisualizerRounding = 200;
+		const int MusicPlayerRoundingPreset = g_Config.m_BcMusicPlayerVisualizerRounding < 100 ? 0 : 1;
+		CUIRect MusicPlayerCubeButton, MusicPlayerSoftButton;
 		const float MusicPlayerRoundingSpacing = 2.0f;
-		const float MusicPlayerRoundingButtonWidth = (MusicPlayerRoundingButtons.w - MusicPlayerRoundingSpacing * 2.0f) / 3.0f;
-		MusicPlayerRoundingButtons.VSplitLeft(MusicPlayerRoundingButtonWidth, &MusicPlayerCubeButton, &MusicPlayerRoundingRest);
-		MusicPlayerRoundingRest.VSplitLeft(MusicPlayerRoundingSpacing, nullptr, &MusicPlayerRoundingRest);
-		MusicPlayerRoundingRest.VSplitLeft(MusicPlayerRoundingButtonWidth, &MusicPlayerSoftButton, &MusicPlayerRoundingRest);
-		MusicPlayerRoundingRest.VSplitLeft(MusicPlayerRoundingSpacing, nullptr, &MusicPlayerRoundingRest);
-		MusicPlayerPillButton = MusicPlayerRoundingRest;
+		const float MusicPlayerRoundingButtonWidth = (MusicPlayerRoundingButtons.w - MusicPlayerRoundingSpacing) / 2.0f;
+		MusicPlayerRoundingButtons.VSplitLeft(MusicPlayerRoundingButtonWidth, &MusicPlayerCubeButton, &MusicPlayerSoftButton);
+		MusicPlayerSoftButton.VSplitLeft(MusicPlayerRoundingSpacing, nullptr, &MusicPlayerSoftButton);
 		if(DoButton_Menu(&s_MusicPlayerVisualizerRoundingCube, Localize("Cube"), MusicPlayerRoundingPreset == 0, &MusicPlayerCubeButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
 			g_Config.m_BcMusicPlayerVisualizerRounding = 0;
-		if(DoButton_Menu(&s_MusicPlayerVisualizerRoundingSoft, Localize("Soft"), MusicPlayerRoundingPreset == 1, &MusicPlayerSoftButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
+		if(DoButton_Menu(&s_MusicPlayerVisualizerRoundingSoft, Localize("Soft"), MusicPlayerRoundingPreset == 1, &MusicPlayerSoftButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
 			g_Config.m_BcMusicPlayerVisualizerRounding = 200;
-		if(DoButton_Menu(&s_MusicPlayerVisualizerRoundingPill, Localize("Pill"), MusicPlayerRoundingPreset == 2, &MusicPlayerPillButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
-			g_Config.m_BcMusicPlayerVisualizerRounding = 400;
 
 		Ui()->ClipDisable();
 	}
@@ -2096,11 +2058,13 @@ void CMenus::RenderSettingsBestClientVisuals(CUIRect MainView)
 	// Aspect ratio (right column block)
 	RightColumn.HSplitTop(MarginBetweenViews, nullptr, &RightColumn);
 
+	const bool AspectBlocked = GameClient()->IsAspectRatioBlockedByFng();
 	const int AspectMode = g_Config.m_BcCustomAspectRatioMode >= 0 ? g_Config.m_BcCustomAspectRatioMode : (g_Config.m_BcCustomAspectRatio > 0 ? 1 : 0);
 	const bool AspectCustomMode = AspectMode == 2;
 	const float AspectHeaderHeight = LineSize + MarginSmall + LineSize + MarginSmall + LineSize;
 	const float AspectExpandedHeight = AspectCustomMode ? (MarginSmall + LineSize + MarginSmall + LineSize) : 0.0f;
-	const float AspectBlockHeight = AspectHeaderHeight + AspectExpandedHeight;
+	const float AspectBlockedHintHeight = AspectBlocked ? (MarginSmall + LineSize) : 0.0f;
+	const float AspectBlockHeight = AspectHeaderHeight + AspectExpandedHeight + AspectBlockedHintHeight;
 
 	CUIRect AspectBlock;
 	RightColumn.HSplitTop(AspectBlockHeight, &AspectBlock, &RightColumn);
@@ -2286,6 +2250,15 @@ void CMenus::RenderSettingsBestClientVisuals(CUIRect MainView)
 		s_LastSyncedDen = -1;
 	}
 
+	if(AspectBlocked)
+	{
+		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
+		MainView.HSplitTop(LineSize, &Label, &MainView);
+		TextRender()->TextColor(1.0f, 0.4f, 0.4f, 1.0f);
+		Ui()->DoLabel(&Label, Localize("Looks like you're on a server where this feature is forbidden"), 14.0f, TEXTALIGN_ML);
+		TextRender()->TextColor(TextRender()->DefaultTextColor());
+	}
+
 	const float RightColumnEndY = RightColumn.y;
 	CUIRect VisualsScrollContentRect;
 	VisualsScrollContentRect.x = MainView.x;
@@ -2397,12 +2370,12 @@ void CMenus::RenderSettingsBestClientGameplay(CUIRect MainView)
 		InputsBlock.HSplitTop(MarginSmall, nullptr, &InputsBlock);
 		InputsBlock.HSplitTop(LineSize, &Button, &InputsBlock);
 		{
-			static CButtonContainer s_InputsFast, s_InputsBest, s_InputsSaiko, s_InputsDelta, s_InputsF;
+			static CButtonContainer s_InputsFast, s_InputsBest, s_InputsSaiko, s_InputsDelta, s_InputsF, s_InputsCloud;
 			CUIRect ButtonsRect = Button;
 			const float Spacing = 2.0f;
-			const float InputButtonWidth = (ButtonsRect.w - Spacing * 4.0f) / 5.0f;
+			const float InputButtonWidth = (ButtonsRect.w - Spacing * 5.0f) / 6.0f;
 
-			CUIRect FastButton, BestButton, SaikoButton, DeltaButton, FButton;
+			CUIRect FastButton, BestButton, SaikoButton, DeltaButton, FButton, CloudButton;
 			ButtonsRect.VSplitLeft(InputButtonWidth, &FastButton, &ButtonsRect);
 			ButtonsRect.VSplitLeft(Spacing, nullptr, &ButtonsRect);
 			ButtonsRect.VSplitLeft(InputButtonWidth, &BestButton, &ButtonsRect);
@@ -2411,13 +2384,16 @@ void CMenus::RenderSettingsBestClientGameplay(CUIRect MainView)
 			ButtonsRect.VSplitLeft(Spacing, nullptr, &ButtonsRect);
 			ButtonsRect.VSplitLeft(InputButtonWidth, &DeltaButton, &ButtonsRect);
 			ButtonsRect.VSplitLeft(Spacing, nullptr, &ButtonsRect);
-			FButton = ButtonsRect;
+			ButtonsRect.VSplitLeft(InputButtonWidth, &FButton, &ButtonsRect);
+			ButtonsRect.VSplitLeft(Spacing, nullptr, &ButtonsRect);
+			CloudButton = ButtonsRect;
 
 			FastButton.HMargin(2.0f, &FastButton);
 			BestButton.HMargin(2.0f, &BestButton);
 			SaikoButton.HMargin(2.0f, &SaikoButton);
 			DeltaButton.HMargin(2.0f, &DeltaButton);
 			FButton.HMargin(2.0f, &FButton);
+			CloudButton.HMargin(2.0f, &CloudButton);
 
 			if(DoButton_Menu(&s_InputsFast, "Fast", InputsMode == BC_INPUTS_FAST, &FastButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_L))
 				g_Config.m_BcInputs = BC_INPUTS_FAST;
@@ -2427,8 +2403,10 @@ void CMenus::RenderSettingsBestClientGameplay(CUIRect MainView)
 				g_Config.m_BcInputs = BC_INPUTS_SAIKO;
 			if(DoButton_Menu(&s_InputsDelta, "Delta", InputsMode == BC_INPUTS_DELTA, &DeltaButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
 				g_Config.m_BcInputs = BC_INPUTS_DELTA;
-			if(DoButton_Menu(&s_InputsF, "F", InputsMode == BC_INPUTS_F, &FButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
+			if(DoButton_Menu(&s_InputsF, "F", InputsMode == BC_INPUTS_F, &FButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_NONE))
 				g_Config.m_BcInputs = BC_INPUTS_F;
+			if(DoButton_Menu(&s_InputsCloud, "Cloud", InputsMode == BC_INPUTS_CLOUD, &CloudButton, BUTTONFLAG_LEFT, nullptr, IGraphics::CORNER_R))
+				g_Config.m_BcInputs = BC_INPUTS_CLOUD;
 		}
 
 		if(InputsMode == BC_INPUTS_FAST)
@@ -2525,6 +2503,16 @@ void CMenus::RenderSettingsBestClientGameplay(CUIRect MainView)
 			InputsBlock.HSplitTop(MarginSmall, nullptr, &InputsBlock);
 			InputsBlock.HSplitTop(LineSize, &Content, &InputsBlock);
 			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcFInputOthers, Localize("F input others"), &g_Config.m_BcFInputOthers, &Content, LineSize);
+		}
+		else if(InputsMode == BC_INPUTS_CLOUD)
+		{
+			InputsBlock.HSplitTop(MarginSmall, nullptr, &InputsBlock);
+			InputsBlock.HSplitTop(LineSize, &Button, &InputsBlock);
+			DoTickAmountSlider(&g_Config.m_BcCloudInputAmount, &Button, Localize("Prediction offset"), 0, 500);
+
+			InputsBlock.HSplitTop(MarginSmall, nullptr, &InputsBlock);
+			InputsBlock.HSplitTop(LineSize, &Content, &InputsBlock);
+			DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcCloudInputOthers, Localize("Cloud input others"), &g_Config.m_BcCloudInputOthers, &Content, LineSize);
 		}
 
 		Ui()->ClipDisable();
@@ -2625,7 +2613,7 @@ void CMenus::RenderSettingsBestClientGameplay(CUIRect MainView)
 	else
 		s_OptimizerFpsFogRevealPhase = OptimizerFpsFogExpanded ? 1.0f : 0.0f;
 	const float OptimizerFpsFogExpandedHeight = (4.0f * (MarginSmall + LineSize)) * BCUiAnimations::EaseOutCubic(s_OptimizerFpsFogRevealPhase);
-	const float OptimizerExpandedHeight = (4.0f * (MarginSmall + LineSize)) * BCUiAnimations::EaseOutCubic(s_OptimizerRevealPhase) + OptimizerFpsFogExpandedHeight;
+	const float OptimizerExpandedHeight = (3.0f * (MarginSmall + LineSize)) * BCUiAnimations::EaseOutCubic(s_OptimizerRevealPhase) + OptimizerFpsFogExpandedHeight;
 	const float OptimizerHeaderHeight = LineSize + MarginSmall + LineSize;
 	const float OptimizerBlockHeight = OptimizerHeaderHeight + OptimizerExpandedHeight;
 
@@ -2665,10 +2653,6 @@ void CMenus::RenderSettingsBestClientGameplay(CUIRect MainView)
 		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
 		MainView.HSplitTop(LineSize, &Content, &MainView);
 		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcOptimizerDdnetPriorityHigh, Localize("DDNet priority: High"), &g_Config.m_BcOptimizerDdnetPriorityHigh, &Content, LineSize);
-
-		MainView.HSplitTop(MarginSmall, nullptr, &MainView);
-		MainView.HSplitTop(LineSize, &Content, &MainView);
-		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcOptimizerDiscordPriorityBelowNormal, Localize("Discord priority: Below Normal"), &g_Config.m_BcOptimizerDiscordPriorityBelowNormal, &Content, LineSize);
 
 		if(OptimizerFpsFogExpandedHeight > 0.5f)
 		{
@@ -2775,8 +2759,6 @@ void CMenus::RenderSettingsBestClientGameplay(CUIRect MainView)
 	SelfTimeCpBlockBg.Draw(BlockColor, IGraphics::CORNER_ALL, 10.0f);
 
 	SelfTimeCpBlock.HSplitTop(LineSize, &Label, &SelfTimeCpBlock);
-	DrawBcMenuBadge(Graphics(), Ui(), TextRender(), &Label, Localize("NEW"), 12.0f,
-		ColorRGBA(0.25f, 0.85f, 0.40f, 1.0f), ColorRGBA(0.10f, 0.60f, 0.25f, 1.0f), MarginSmall);
 	Ui()->DoLabel(&Label, Localize("Self timeCP"), HeadlineFontSize, TEXTALIGN_ML);
 	SelfTimeCpBlock.HSplitTop(MarginSmall, nullptr, &SelfTimeCpBlock);
 
@@ -3275,7 +3257,7 @@ void CMenus::RenderSettingsBestClientOthers(CUIRect MainView)
 	const float RealHitboxColorHeight = g_Config.m_BcShowRealHitbox ? RealHitboxColorLineSize + RealHitboxColorLineSpacing : 0.0f;
 	const float AutoLockDelayHeight = g_Config.m_BcAutoTeamLock ? LineSize : 0.0f;
 	const float SpecMovedNotifyTextHeight = g_Config.m_BcSpecMovedNotify ? LineSize : 0.0f;
-	const float MiscBlockHeight = LineSize + MarginSmall + AutoUpdateHeight + 17.0f * LineSize + AutoLockDelayHeight + SpecMovedNotifyTextHeight + RealHitboxColorHeight;
+	const float MiscBlockHeight = LineSize + MarginSmall + AutoUpdateHeight + 18.0f * LineSize + AutoLockDelayHeight + SpecMovedNotifyTextHeight + RealHitboxColorHeight;
 	CUIRect MiscBlock;
 	Column.HSplitTop(MiscBlockHeight, &MiscBlock, &Column);
 
@@ -3315,13 +3297,14 @@ void CMenus::RenderSettingsBestClientOthers(CUIRect MainView)
 		Ui()->DoEditBox(&s_SpecMovedNotifyTextInput, &TextField, 14.0f);
 	}
 	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcScoreboardTeamGradients, Localize("Gradient team colors"), &g_Config.m_BcScoreboardTeamGradients, &MiscBlock, LineSize);
+	CUIRect ShowPointsButtonView;
+	MiscBlock.HSplitTop(LineSize, &ShowPointsButtonView, &MiscBlock);
+	DrawBcMenuBadge(Graphics(), Ui(), TextRender(), &ShowPointsButtonView, Localize("NEW"), 11.0f,
+		ColorRGBA(0.25f, 0.85f, 0.40f, 1.0f), ColorRGBA(0.10f, 0.60f, 0.25f, 1.0f), MarginSmall);
+	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcShowPointsInTab, Localize("Show points in tab"), &g_Config.m_BcShowPointsInTab, &ShowPointsButtonView, LineSize);
 	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcMastersrv, Localize("Use BestClient MasterServer"), &g_Config.m_BcMastersrv, &MiscBlock, LineSize);
 	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcShowhudDummyCoordIndicator, Localize("Show player below indicator"), &g_Config.m_BcShowhudDummyCoordIndicator, &MiscBlock, LineSize);
-	CUIRect CheckpointButtonView;
-	MiscBlock.HSplitTop(LineSize, &CheckpointButtonView, &MiscBlock);
-	DrawBcMenuBadge(Graphics(), Ui(), TextRender(), &CheckpointButtonView, Localize("NEW"), 11.0f,
-		ColorRGBA(0.25f, 0.85f, 0.40f, 1.0f), ColorRGBA(0.10f, 0.60f, 0.25f, 1.0f), MarginSmall);
-	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcShowCorrectCheckpoint, Localize("Show correct checkpoint"), &g_Config.m_BcShowCorrectCheckpoint, &CheckpointButtonView, LineSize);
+	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcShowCorrectCheckpoint, Localize("Show correct checkpoint"), &g_Config.m_BcShowCorrectCheckpoint, &MiscBlock, LineSize);
 	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcShowRealHitbox, Localize("Show real hitbox"), &g_Config.m_BcShowRealHitbox, &MiscBlock, LineSize);
 	DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_BcAutoTeamLock, Localize("Lock team automatically after joining"), &g_Config.m_BcAutoTeamLock, &MiscBlock, LineSize);
 	if(g_Config.m_BcAutoTeamLock)
@@ -3449,8 +3432,6 @@ void CMenus::RenderSettingsBestClientOthers(CUIRect MainView)
 	ChatFilterBlockBg.Draw(BlockColor, IGraphics::CORNER_ALL, 10.0f);
 
 	ChatFilterBlock.HSplitTop(LineSize, &Label, &ChatFilterBlock);
-	DrawBcMenuBadge(Graphics(), Ui(), TextRender(), &Label, Localize("NEW"), 12.0f,
-		ColorRGBA(0.25f, 0.85f, 0.40f, 1.0f), ColorRGBA(0.10f, 0.60f, 0.25f, 1.0f), MarginSmall);
 	Ui()->DoLabel(&Label, Localize("Chat Filter"), HeadlineFontSize, TEXTALIGN_ML);
 	ChatFilterBlock.HSplitTop(MarginSmall, nullptr, &ChatFilterBlock);
 
@@ -3813,35 +3794,6 @@ void CMenus::RenderSettingsBestClientInfo(CUIRect MainView)
 		Client()->ViewLink("https://bestclient.fun");
 	// "Check update" rendered without action (not yet ported)
 	DoButtonLineSize_Menu(&s_CheckUpdateButton, Localize("Check update"), 0, &ButtonRight, LineSize, false, nullptr, IGraphics::CORNER_ALL, 5.0f, 0.0f, ColorRGBA(0.0f, 0.0f, 0.0f, 0.25f));
-
-	// ── Editors ────────────────────────────────────────────────────────────
-	LeftView.HSplitTop(MarginSmall, nullptr, &LeftView);
-	LeftView.HSplitTop(HeadlineHeight, &Label, &LeftView);
-	Ui()->DoLabel(&Label, Localize("Editors"), HeadlineFontSize, TEXTALIGN_ML);
-	LeftView.HSplitTop(MarginSmall, nullptr, &LeftView);
-	{
-		const float LSize = 20.0f;
-		CUIRect EditorLabel, EditorButton;
-
-		LeftView.HSplitTop(LSize, &EditorLabel, &LeftView);
-		Ui()->DoLabel(&EditorLabel, Localize("Create mixed assets or jump to the name plate editor."), 14.0f, TEXTALIGN_ML);
-		LeftView.HSplitTop(5.0f, nullptr, &LeftView);
-		static CButtonContainer s_AssetsEditorButton;
-		LeftView.HSplitTop(LSize + 4.0f, &EditorButton, &LeftView);
-		if(DoButton_Menu(&s_AssetsEditorButton, Localize("Assets editor"), 0, &EditorButton))
-		{
-			m_AssetsEditorState.m_VisualsEditorOpen = true;
-			m_AssetsEditorState.m_FullscreenOpen = true;
-			if(!m_AssetsEditorState.m_VisualsEditorInitialized)
-			{
-				AssetsEditorReloadAssets();
-				AssetsEditorResetPartSlots();
-				AssetsEditorEnsureDefaultExportNames();
-				AssetsEditorSyncExportNameFromType();
-				m_AssetsEditorState.m_VisualsEditorInitialized = true;
-			}
-		}
-	}
 
 	// ── Config Files (anchored to the bottom of the left column) ──────────
 	LeftView = LowerLeftView;

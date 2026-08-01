@@ -391,7 +391,7 @@ void CClient::SendInput()
 
 			m_aInputs[i][m_aCurrentInput[i]].m_Tick = m_aPredTick[g_Config.m_ClDummy];
 			m_aInputs[i][m_aCurrentInput[i]].m_PredictedTime = m_PredictedTime.Get(Now);
-			m_aInputs[i][m_aCurrentInput[i]].m_PredictionMargin = PredictionMargin() * time_freq() / 1000;
+			m_aInputs[i][m_aCurrentInput[i]].m_PredictionMargin = (int64_t)PredictionMargin() * time_freq() / 10000;
 			if(g_Config.m_TcSmoothPredictionMargin)
 				m_aInputs[i][m_aCurrentInput[i]].m_PredictionMargin = m_PredictedTime.GetMargin(Now);
 			m_aInputs[i][m_aCurrentInput[i]].m_Time = Now;
@@ -2312,7 +2312,7 @@ void CClient::ProcessServerPacket(CNetChunk *pPacket, int Conn, bool Dummy)
 						{
 							m_PredictedTime.Init(GameTick * time_freq() / GameTickSpeed());
 							m_PredictedTime.SetAdjustSpeed(CSmoothTime::ADJUSTDIRECTION_UP, 1000.0f);
-							m_PredictedTime.UpdateMargin(PredictionMargin() * time_freq() / 1000);
+							m_PredictedTime.UpdateMargin((int64_t)PredictionMargin() * time_freq() / 10000);
 						}
 						m_aGameTime[Conn].Init((GameTick - 1) * time_freq() / GameTickSpeed());
 						m_aapSnapshots[Conn][SNAP_PREV] = m_aSnapshotStorage[Conn].m_pFirst;
@@ -2947,8 +2947,9 @@ void CClient::Update()
 					(g_Config.m_BcInputs == BC_INPUTS_BEST && g_Config.m_BcBestInputAmount > 0) ||
 					(g_Config.m_BcInputs == BC_INPUTS_SAIKO && g_Config.m_BcSaikoInputAmount > 0) ||
 					(g_Config.m_BcInputs == BC_INPUTS_DELTA && g_Config.m_BcDeltaInputAmount > 0) ||
-					(g_Config.m_BcInputs == BC_INPUTS_F && g_Config.m_BcFInputAmount > 0);
-				if(HasFastInput && g_Config.m_BcInputs == BC_INPUTS_SAIKO)
+					(g_Config.m_BcInputs == BC_INPUTS_F && g_Config.m_BcFInputAmount > 0) ||
+					(g_Config.m_BcInputs == BC_INPUTS_CLOUD && g_Config.m_BcCloudInputAmount > 0);
+				if(HasFastInput && (g_Config.m_BcInputs == BC_INPUTS_SAIKO || g_Config.m_BcInputs == BC_INPUTS_CLOUD))
 				{
 					GameClient()->CheckNewInput();
 					Repredict = true;
@@ -3138,7 +3139,7 @@ void CClient::Update()
 		m_ReconnectTime = 0;
 	}
 
-	m_PredictedTime.UpdateMargin(PredictionMargin() * time_freq() / 1000);
+	m_PredictedTime.UpdateMargin((int64_t)PredictionMargin() * time_freq() / 10000);
 }
 
 void CClient::RegisterInterfaces()
@@ -5081,7 +5082,19 @@ int main(int argc, const char **argv)
 			g_Config.m_ClAntiPingWeapons = 1;
 		}
 	}
-	g_Config.m_ClConfigVersion = 1;
+	if(g_Config.m_ClConfigVersion < 2)
+	{
+		// cl_prediction_margin switched from whole ms to 0.1 ms units.
+		// Old clients persisted cl_config_version as 1. Their default margin (10ms) was often
+		// omitted from the config file; after this update that loads as the new default 100
+		// (= 10.0ms already in tenths) and must NOT be scaled again.
+		// Same for a brand-new install (version 0 + default 100).
+		// Note: an old explicit value of exactly 100ms is indistinguishable from the omitted
+		// default and stays at 10.0ms — that case was rare (TClient UI capped at 75).
+		if(g_Config.m_ClPredictionMargin != 100)
+			g_Config.m_ClPredictionMargin = std::clamp(g_Config.m_ClPredictionMargin * 10, 1, 3000);
+	}
+	g_Config.m_ClConfigVersion = 2;
 
 	// parse the command line arguments
 	pConsole->SetUnknownCommandCallback(UnknownArgumentCallback, pClient);
@@ -5336,60 +5349,13 @@ std::optional<SWarning> CClient::CurrentWarning()
 
 int CClient::MaxLatencyTicks() const
 {
-	return GameTickSpeed() + (PredictionMargin() * GameTickSpeed()) / 1000;
+	return GameTickSpeed() + ((int64_t)PredictionMargin() * GameTickSpeed()) / 10000;
 }
 
 int CClient::PredictionMargin() const
 {
-	if(!m_ServerCapabilities.m_SyncWeaponInput)
-		return 10;
-
-	int PredictionMargin = g_Config.m_ClPredictionMargin;
-	if(!g_Config.m_BcAutoMargin)
-		return PredictionMargin;
-
-	int FastInputMargin = 0;
-	if(g_Config.m_BcInputs == BC_INPUTS_FAST)
-		FastInputMargin = std::max(0, g_Config.m_TcFastInputAmount);
-	else if(g_Config.m_BcInputs == BC_INPUTS_BEST)
-		FastInputMargin = (std::max(0, g_Config.m_BcBestInputAmount) + 2) / 5;
-	else if(g_Config.m_BcInputs == BC_INPUTS_SAIKO)
-		FastInputMargin = (std::max(0, g_Config.m_BcSaikoInputAmount) + 2) / 5;
-	else if(g_Config.m_BcInputs == BC_INPUTS_DELTA)
-		FastInputMargin = (std::max(0, g_Config.m_BcDeltaInputAmount) + 2) / 5;
-	else if(g_Config.m_BcInputs == BC_INPUTS_F)
-		FastInputMargin = (std::max(0, g_Config.m_BcFInputAmount) + 25) / 50;
-
-	const int BaseMargin = std::max(PredictionMargin, FastInputMargin);
-	const int64_t Now = time_get();
-	const int LivePredictionMs = std::max(0, (int)((m_PredictedTime.Get(Now) - m_aGameTime[g_Config.m_ClDummy].Get(Now)) * 1000 / (float)time_freq()));
-
-	if(m_AutoMarginLastSampleTime == 0)
-	{
-		m_AutoMarginLastSampleTime = Now;
-		m_AutoMarginLatencyAverageMs = LivePredictionMs;
-		m_AutoMarginLatencyJitterMs = 0.0f;
-	}
-	else if(Now > m_AutoMarginLastSampleTime + time_freq() / 20)
-	{
-		// Track current latency and its spread so auto margin can react to unstable links in real time.
-		const float LatencyDelta = std::abs((float)LivePredictionMs - m_AutoMarginLatencyAverageMs);
-		m_AutoMarginLatencyAverageMs += (LivePredictionMs - m_AutoMarginLatencyAverageMs) * 0.15f;
-		m_AutoMarginLatencyJitterMs += (LatencyDelta - m_AutoMarginLatencyJitterMs) * 0.15f;
-		m_AutoMarginLastSampleTime = Now;
-	}
-
-	const int BaseMaxLatencyTicks = GameTickSpeed() + (BaseMargin * GameTickSpeed()) / 1000;
-	const bool ConnectionProblems = m_aNetClient[g_Config.m_ClDummy].GotProblems(BaseMaxLatencyTicks * time_freq() / GameTickSpeed());
-	const CServerBrowser::CServerEntry *pCurrentServerEntry = const_cast<CServerBrowser &>(m_ServerBrowser).Find(ServerAddress());
-	const bool HasMeasuredPing = pCurrentServerEntry != nullptr && !pCurrentServerEntry->m_Info.m_LatencyIsEstimated && pCurrentServerEntry->m_Info.m_Latency >= 0;
-	const float MeasuredPingMargin = HasMeasuredPing ? pCurrentServerEntry->m_Info.m_Latency * 0.5f : 0.0f;
-	const float LiveConnectionMargin = std::max({MeasuredPingMargin, m_AutoMarginLatencyAverageMs, (float)LivePredictionMs});
-	const float ExcessLatencyMargin = std::max(0.0f, LiveConnectionMargin - BaseMargin) / 6.0f;
-	const float JitterMargin = std::max(0.0f, m_AutoMarginLatencyJitterMs - 2.0f) * 0.75f;
-	const float ConnectionMargin = BaseMargin + ExcessLatencyMargin + JitterMargin + (ConnectionProblems ? 10.0f : 0.0f);
-
-	return std::clamp(round_to_int(ConnectionMargin), 1, 300);
+	// Returns prediction margin in 0.1 ms units
+	return m_ServerCapabilities.m_SyncWeaponInput ? g_Config.m_ClPredictionMargin : 100;
 }
 
 int CClient::UdpConnectivity(int NetType)

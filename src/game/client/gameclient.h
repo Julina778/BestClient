@@ -86,8 +86,10 @@
 #include "components/tclient/trails.h"
 #include "components/bestclient/3d_particles.h"
 #include "components/bestclient/admin_panel.h"
+#include "components/bestclient/automargin.h"
 #include "components/bestclient/cherry_gifs.h"
 #include "components/bestclient/chat_bubbles.h"
+#include "components/bestclient/cloud_input.h"
 #include "components/bestclient/fast_actions.h"
 #include "components/bestclient/fast_practice.h"
 #include "components/bestclient/gif_bubbles.h"
@@ -99,6 +101,7 @@
 #include "components/bestclient/quick_binds.h"
 #include "components/bestclient/rollback_demo.h"
 #include "components/bestclient/self_time_cp.h"
+#include "components/bestclient/show_points.h"
 #include "components/bestclient/translate.h"
 #include "components/bestclient/voice/voice.h"
 #include "components/bestclient/clans/clans.h"
@@ -249,6 +252,7 @@ public:
 	CGifBubbles m_GifBubbles; // BestClient
 	CChatBubbles m_ChatBubbles; // BestClient
 	CFastPractice m_FastPractice; // BestClient
+	CCloudInput m_CloudInput; // BestClient
 	CBgDraw m_BgDraw;
 	CTClient m_TClient;
 	CTrails m_Trails;
@@ -259,9 +263,11 @@ public:
 	CRollbackDemo m_RollbackDemo; // BestClient
 	CQuickBinds m_QuickBinds; // BestClient
 	CSelfTimeCp m_SelfTimeCp; // BestClient
+	CShowPoints m_ShowPoints; // BestClient
 	CClientIndicator m_ClientIndicator; // BestClient
 	CMusicPlayer m_MusicPlayer; // BestClient
 	CAdminPanel m_AdminPanel; // BestClient
+	CBcAutoMargin m_BcAutoMargin; // BestClient
 	CVoiceChat m_VoiceChat; // BestClient
 	CClans m_Clans; // BestClient
 	CHudEditor m_HudEditor; // BestClient
@@ -779,6 +785,8 @@ public:
 
 	void ApplyPreInputs(int Tick, bool Direct, CGameWorld &GameWorld);
 	bool GetDummyFastInput(CNetObj_PlayerInput &DummyFastInput, const CNetObj_PlayerInput *pDummyInputData, const class CCharacter *pDummyChar, int LocalTee, int DummyTee) const;
+	bool IsCloudInputMode() const;
+	bool IsFastInputLocalClient(int ClientId) const;
 
 	int m_aNextChangeInfo[NUM_DUMMIES];
 
@@ -809,7 +817,7 @@ public:
 	bool PredictDummy() const
 	{
 		// BestClient: in fast practice the predicted dummy is a fixed practice participant
-		if(m_FastPractice.Enabled())
+		if(m_FastPractice.Active())
 		{
 			const int FastPracticeDummyId = m_FastPractice.CurrentPracticeDummyId();
 			return FastPracticeDummyId >= 0 && m_Snap.m_LocalClientId >= 0 && !m_aClients[FastPracticeDummyId].m_Paused;
@@ -1068,17 +1076,11 @@ private:
 	void RenderEyeComfortOverlay(); // BestClient
 
 	// BestClient: optimizer
-	void OptimizerSetDdnetPriorityHigh();
-	void OptimizerSetDiscordPriorityBelowNormal();
 	void OptimizerUpdateProcessPriorities();
 	void RenderOptimizerFpsFogRect();
 	unsigned long m_OptimizerDdnetPrevPriorityClass = 0;
 	unsigned long m_OptimizerDdnetLastSetPriorityClass = 0;
 	bool m_OptimizerDdnetPriorityHighActive = false;
-	bool m_OptimizerDiscordPriorityBelowNormalActive = false;
-	std::vector<unsigned long> m_vOptimizerDiscordPids;
-	float m_OptimizerDiscordLastRescanTime = -1.0f;
-	float m_OptimizerDiscordLastReapplyTime = -1.0f;
 
 	int m_aLastUpdateTick[MAX_CLIENTS] = {0};
 	void DetectStrongHook();
@@ -1137,9 +1139,12 @@ private:
 public:
 	// TClient
 	int m_SmoothTick = 0;
-	float m_SmoothIntraTick = 0;
+	float m_SmoothIntraTick = 0.0f;
+	int m_aCloudSmoothTick[2] = {};
+	float m_aCloudSmoothIntraTick[2] = {};
 	bool CheckNewInput() override;
 	bool IsSnapTapBlockedByCommunity() const;
+	bool IsAspectRatioBlockedByFng() const;
 	std::optional<CServerInfo> m_ConnectServerInfo = std::nullopt;
 	void SetConnectInfo(const NETADDR *pAddress) override;
 };

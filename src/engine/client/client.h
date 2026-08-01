@@ -228,10 +228,6 @@ class CClient : public IClient, public CDemoPlayer::IListener
 	int64_t m_CurrentServerCurrentPingTime = -1; // >= 0 request running
 	int64_t m_CurrentServerNextPingTime = -1; // >= 0 should request
 
-	mutable int64_t m_AutoMarginLastSampleTime = 0;
-	mutable float m_AutoMarginLatencyAverageMs = 0.0f;
-	mutable float m_AutoMarginLatencyJitterMs = 0.0f;
-
 	// version info
 	struct CVersionInfo
 	{
@@ -266,7 +262,7 @@ class CClient : public IClient, public CDemoPlayer::IListener
 
 	void UpdateDemoIntraTimers();
 	int MaxLatencyTicks() const;
-	int PredictionMargin() const;
+	int PredictionMargin() const; // returns margin in 0.1 ms units
 
 	std::shared_ptr<ILogger> m_pFileLogger = nullptr;
 	std::shared_ptr<ILogger> m_pStdoutLogger = nullptr;
