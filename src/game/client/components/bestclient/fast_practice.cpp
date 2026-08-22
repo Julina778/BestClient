@@ -591,11 +591,11 @@ bool CFastPractice::ApplyAnchorToCharacter(CGameWorld &World, const SAnchorData 
 	if(Anchor.m_HasDDNet)
 	{
 		CNetObj_DDNetCharacter DDNetObj = Anchor.m_DDNet;
-		pChar->Read(&CharObj, &DDNetObj, true);
+		pChar->Read(&CharObj, &DDNetObj, nullptr, true);
 	}
 	else
 	{
-		pChar->Read(&CharObj, nullptr, true);
+		pChar->Read(&CharObj, nullptr, nullptr, true);
 	}
 
 	CNetObj_PlayerInput NeutralInput = {};
@@ -679,6 +679,17 @@ void CFastPractice::Enable()
 		m_EnableDummyClientId = -1;
 	}
 	m_RequireDummy = m_EnableDummyClientId >= 0;
+
+	// Solo blocks player/dummy interaction (hammerfly, hook, collision), so refuse to start.
+	if(m_RequireDummy &&
+		(GameClient()->m_aClients[m_EnableLocalClientId].m_Solo || GameClient()->m_aClients[m_EnableDummyClientId].m_Solo))
+	{
+		EchoPractice("you and dummy must not be in solo");
+		m_EnableLocalClientId = -1;
+		m_EnableDummyClientId = -1;
+		m_RequireDummy = false;
+		return;
+	}
 
 	if(!Rebuild())
 	{
@@ -948,13 +959,14 @@ void CFastPractice::StoreInput(const CNetObj_PlayerInput &Input, bool Dummy)
 const CNetObj_PlayerInput *CFastPractice::GetStoredInput(int Tick, bool Dummy) const
 {
 	const int Index = Dummy ? 1 : 0;
+	const SStoredInput *pBest = nullptr;
 	for(int i = 0; i < INPUT_HISTORY_SIZE; i++)
 	{
 		const SStoredInput &Slot = m_aaStoredInputs[Index][i];
-		if(Slot.m_Tick == Tick)
-			return &Slot.m_Input;
+		if(Slot.m_Tick >= 0 && Slot.m_Tick <= Tick && (!pBest || pBest->m_Tick < Slot.m_Tick))
+			pBest = &Slot;
 	}
-	return nullptr;
+	return pBest ? &pBest->m_Input : nullptr;
 }
 
 void CFastPractice::BuildLiveInput(CNetObj_PlayerInput &OutInput, bool Dummy) const
@@ -1354,6 +1366,9 @@ void CFastPractice::TickPracticeWorld()
 
 		if(pDummyChar && g_Config.m_ClDummyHammer)
 		{
+			// Keep the tick-local hammer input from the vanilla send cadence. The input
+			// history uses carry-forward semantics, so sparse dummy packets do not turn
+			// into repeated fire edges during fast-input prediction.
 			DummyNeutralizedInput = pDummyInputData ? *pDummyInputData : CNetObj_PlayerInput{};
 			pDummyInputData = &DummyNeutralizedInput;
 			const vec2 Dir = pLocalChar->Core()->m_Pos - pDummyChar->Core()->m_Pos;
@@ -1544,7 +1559,10 @@ void CFastPractice::SyncFromPrediction()
 	if(Pending.m_HasPendingTeleport)
 	{
 		if(CCharacter *pChar = m_PracticeWorld.GetCharacterById(LocalClientId))
+		{
 			ApplyPracticeTeleport(LocalClientId, pChar, ClampToPracticePlayableBounds(Pending.m_PendingTeleportPos));
+			FinishMutation(LocalClientId, DummyClientId, pChar, false);
+		}
 		Pending.m_HasPendingTeleport = false;
 	}
 
@@ -2026,6 +2044,26 @@ void CFastPractice::FinishMutation(int LocalClientId, int DummyClientId, CCharac
 		if(m_RequireDummy && DummyClientId >= 0)
 			NormalizeWeaponSelectionInput(m_PracticeWorld.GetCharacterById(DummyClientId));
 	}
+
+	// Teleports/resets zero the character Fire counter. Matching it to the current live
+	// (released) Fire prevents CountInput from treating the next real input as a fresh press
+	// (which looked like a phantom shot/hammer after /tc).
+	auto SyncFireAfterMutation = [&](CCharacter *pTarget, bool Dummy) {
+		if(!pTarget)
+			return;
+		CNetObj_PlayerInput Live{};
+		BuildLiveInput(Live, Dummy);
+		CNetObj_PlayerInput Input = *pTarget->LatestInput();
+		Input.m_Fire = ReleasedFireState(Live.m_Fire);
+		Input.m_WantedWeapon = 0;
+		Input.m_NextWeapon = 0;
+		Input.m_PrevWeapon = 0;
+		pTarget->SetInput(&Input);
+		pTarget->ResetInput();
+	};
+	SyncFireAfterMutation(pChar, GameClient()->m_IsDummySwapping != 0);
+	if(m_RequireDummy && DummyClientId >= 0)
+		SyncFireAfterMutation(m_PracticeWorld.GetCharacterById(DummyClientId), (GameClient()->m_IsDummySwapping ^ 1) != 0);
 
 	m_SuppressFireOnNextPredictTick = true;
 	m_InputSuppressTicks = std::max(m_InputSuppressTicks, 2);

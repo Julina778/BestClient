@@ -1,5 +1,6 @@
 /* Copyright © 2026 BestProject Team */
 #include "music_player.h"
+#include "music_player_lyrics.h"
 
 #include "visualizer/analyzer.h"
 #include "visualizer/service.h"
@@ -14,17 +15,16 @@
 #include <engine/font_icons.h>
 #include <engine/graphics.h>
 #include <engine/shared/config.h>
-#include <engine/shared/http.h>
+#include <engine/http.h>
 #include <engine/shared/jobs.h>
 #include <engine/storage.h>
 #include <engine/textrender.h>
 
 #include <generated/client_data.h>
 
-#include <game/client/components/chat.h>
 #include <game/client/components/hud_layout.h>
 #include <game/client/components/media_decoder.h>
-#include <game/client/components/scoreboard.h>
+#include <game/client/bc_ui_animations.h>
 #include <game/client/gameclient.h>
 #include <game/client/ui.h>
 #include <game/localization.h>
@@ -42,7 +42,6 @@
 #include <cstring>
 #include <memory>
 #include <mutex>
-#include <numeric>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -83,6 +82,7 @@ namespace
 	static constexpr float VISUALIZER_ATTACK_RATE = 46.0f;
 	static constexpr float VISUALIZER_RELEASE_RATE = 19.0f;
 	static constexpr int COVER_BAR_TINT_CELLS = MUSIC_PLAYER_MAX_VISUALIZER_BARS * COVER_BAR_SEGMENTS;
+	static constexpr int HUD_PUSH_ANIMATION_DURATION_MS = 420;
 
 	static CUIRect HudToUiRect(const CUIRect &HudRect, const CUIRect &UiScreen, float HudWidth, float HudHeight)
 	{
@@ -308,13 +308,6 @@ namespace
 		if(!Path.empty() && Path[0] != '/')
 			Path.insert(Path.begin(), '/');
 		return UrlDecode(Path);
-	}
-
-	static float EaseOutCubic(float t)
-	{
-		t = std::clamp(t, 0.0f, 1.0f);
-		const float Inv = 1.0f - t;
-		return 1.0f - Inv * Inv * Inv;
 	}
 
 	static std::string BuildSnapshotTrackKey(const SNowPlayingSnapshot &Snapshot)
@@ -556,6 +549,7 @@ namespace
 
 		bool ParseMetadata(DBusMessageIter VariantIter, SNowPlayingSnapshot &Out) const
 		{
+			std::string AlbumArtist;
 			DBusMessageIter MetadataVariant;
 			dbus_message_iter_recurse(&VariantIter, &MetadataVariant);
 			if(dbus_message_iter_get_arg_type(&MetadataVariant) != DBUS_TYPE_ARRAY)
@@ -577,6 +571,10 @@ namespace
 					else if(str_comp(pKey, "xesam:artist") == 0)
 					{
 						VariantToJoinedStringArray(ValueVariantIter, Out.m_Artist);
+					}
+					else if(str_comp(pKey, "xesam:albumArtist") == 0)
+					{
+						VariantToJoinedStringArray(ValueVariantIter, AlbumArtist);
 					}
 					else if(str_comp(pKey, "xesam:album") == 0)
 					{
@@ -603,6 +601,8 @@ namespace
 				if(!dbus_message_iter_next(&MetadataArray))
 					break;
 			}
+			if(Out.m_Artist.empty())
+				Out.m_Artist = std::move(AlbumArtist);
 			return true;
 		}
 
@@ -1376,27 +1376,6 @@ namespace
 		return std::clamp(g_Config.m_BcMusicPlayerHudColorAlpha / 100.0f, 0.0f, 1.0f);
 	}
 
-	static float MusicPlayerAnimationDurationSeconds()
-	{
-		return 0.18f;
-	}
-
-	static float MusicPlayerAnimationSpeed(float ReferenceSpeed)
-	{
-		constexpr float REFERENCE_DURATION_SECONDS = 0.18f;
-		return ReferenceSpeed * (REFERENCE_DURATION_SECONDS / MusicPlayerAnimationDurationSeconds());
-	}
-
-	static float MusicPlayerVisualizerColumnWidthScale()
-	{
-		return 1.0f;
-	}
-
-	static float MusicPlayerVisualizerGapScale()
-	{
-		return 1.0f;
-	}
-
 	static int MusicPlayerVisualizerColumns()
 	{
 		return std::clamp(g_Config.m_BcMusicPlayerVisualizerColumns, 5, 10);
@@ -1410,12 +1389,12 @@ namespace
 	static float MusicPlayerVisualizerGap(bool MiniMode, float Scale, float WidthScale)
 	{
 		// Same gap for Soft and Cube (Cube = Soft without rounding).
-		return (MiniMode ? 0.48f : 0.70f) * Scale * WidthScale * MusicPlayerVisualizerGapScale() + 0.40f * Scale * WidthScale;
+		return (MiniMode ? 0.48f : 0.70f) * Scale * WidthScale + 0.40f * Scale * WidthScale;
 	}
 
 	static float MusicPlayerVisualizerBarWidth(bool MiniMode, float Scale, float WidthScale)
 	{
-		return (MiniMode ? 1.65f : 1.55f) * Scale * WidthScale * MusicPlayerVisualizerColumnWidthScale();
+		return (MiniMode ? 1.65f : 1.55f) * Scale * WidthScale;
 	}
 
 	static float MusicPlayerVisualizerWidth(bool MiniMode, float Scale, float WidthScale, float ExpandT)
@@ -1424,7 +1403,7 @@ namespace
 		const float InnerPadX = MusicPlayerVisualizerInnerPadX(MiniMode, Scale, WidthScale);
 		const float Gap = MusicPlayerVisualizerGap(MiniMode, Scale, WidthScale);
 		const float BarW = MusicPlayerVisualizerBarWidth(MiniMode, Scale, WidthScale);
-		const float ExpandExtraW = MiniMode ? 0.0f : 1.6f * Scale * WidthScale * MusicPlayerVisualizerColumnWidthScale() * ExpandT;
+		const float ExpandExtraW = MiniMode ? 0.0f : 1.6f * Scale * WidthScale * ExpandT;
 		return InnerPadX * 2.0f + NumBars * BarW + maximum(0, NumBars - 1) * Gap + ExpandExtraW;
 	}
 
@@ -1450,8 +1429,287 @@ namespace
 		return Text;
 	}
 
-	static float ComputeCompactTextSlotWidth(ITextRender *pTextRender, const SGameTimerDisplay &GameTimer, float TitleFont, float Scale, float WidthScale)
+	static float ComputeMusicPlayerTextWidth(ITextRender *pTextRender, const std::string &Text, float FontSize)
 	{
+		if(pTextRender == nullptr)
+			return FontSize * 5.0f;
+		return pTextRender->TextWidth(FontSize, Text.c_str(), -1, -1.0f);
+	}
+
+	static float LyricsBelowTimerFont(float Scale, float TextScale)
+	{
+		return 5.5f * Scale * TextScale;
+	}
+
+	static float LyricsBelowTimerPadY(float Scale)
+	{
+		return 1.15f * Scale;
+	}
+
+	static float LyricsBelowTimerPadX(float Scale, float WidthScale)
+	{
+		return 2.8f * Scale * WidthScale;
+	}
+
+	static float LyricsBelowTimerBlockHeight(float Scale, float TextScale)
+	{
+		return LyricsBelowTimerFont(Scale, TextScale) + LyricsBelowTimerPadY(Scale) * 2.0f;
+	}
+
+	static float LyricsBelowTimerFillet(float Scale)
+	{
+		return 1.85f * Scale;
+	}
+
+	// Fills the concave shoulder where a centered timer tab meets the main pill.
+	static void DrawLyricsTimerConcaveJunction(IGraphics *pGraphics, float JunctionX, float JunctionY, float Radius, bool LeftSide, ColorRGBA Color)
+	{
+		if(pGraphics == nullptr || Radius <= 0.001f || Color.a <= 0.001f)
+			return;
+
+		const int NumSegments = 8;
+		const float Cx = LeftSide ? (JunctionX - Radius) : (JunctionX + Radius);
+		const float Cy = JunctionY + Radius;
+		const float Angle0 = -pi / 2.0f;
+		const float Angle1 = LeftSide ? 0.0f : -pi;
+
+		pGraphics->TextureClear();
+		pGraphics->QuadsBegin();
+		pGraphics->SetColor(Color);
+		for(int i = 0; i < NumSegments; i += 2)
+		{
+			const float A1 = mix(Angle0, Angle1, i / (float)NumSegments);
+			const float A2 = mix(Angle0, Angle1, (i + 1) / (float)NumSegments);
+			const float A3 = mix(Angle0, Angle1, (i + 2) / (float)NumSegments);
+			const IGraphics::CFreeformItem Item(
+				JunctionX, JunctionY,
+				Cx + std::cos(A1) * Radius, Cy + std::sin(A1) * Radius,
+				Cx + std::cos(A3) * Radius, Cy + std::sin(A3) * Radius,
+				Cx + std::cos(A2) * Radius, Cy + std::sin(A2) * Radius);
+			pGraphics->QuadsDrawFreeform(&Item, 1);
+		}
+		pGraphics->QuadsEnd();
+	}
+
+	// Like DrawRect, but leaves a gap in the bottom radius band so a timer stem can
+	// continue the fill without a double-blended horizontal seam. Honors Corners the
+	// same way DrawRectExt does (edge-snapped sides drop rounding).
+	static void DrawRoundedRectBottomGap(IGraphics *pGraphics, float X, float Y, float W, float H, float Radius, int Corners, float GapX0, float GapX1, ColorRGBA Color)
+	{
+		if(pGraphics == nullptr || W <= 0.0f || H <= 0.0f || Color.a <= 0.001f)
+			return;
+
+		float R = std::clamp(Radius, 0.0f, minimum(W, H) * 0.5f);
+		GapX0 = std::clamp(GapX0, X, X + W);
+		GapX1 = std::clamp(GapX1, GapX0, X + W);
+		const bool RoundTL = (Corners & IGraphics::CORNER_TL) != 0;
+		const bool RoundTR = (Corners & IGraphics::CORNER_TR) != 0;
+		const bool RoundBL = (Corners & IGraphics::CORNER_BL) != 0;
+		const bool RoundBR = (Corners & IGraphics::CORNER_BR) != 0;
+
+		pGraphics->TextureClear();
+		pGraphics->QuadsBegin();
+		pGraphics->SetColor(Color);
+
+		if(R <= 0.001f || Corners == 0)
+		{
+			IGraphics::CQuadItem Item(X, Y, W, H);
+			pGraphics->QuadsDrawTL(&Item, 1);
+			pGraphics->QuadsEnd();
+			return;
+		}
+
+		const int NumSegments = 8;
+		const float SegmentsAngle = pi / 2.0f / (float)NumSegments;
+		for(int i = 0; i < NumSegments; i += 2)
+		{
+			const float A1 = i * SegmentsAngle;
+			const float A2 = (i + 1) * SegmentsAngle;
+			const float A3 = (i + 2) * SegmentsAngle;
+			const float Ca1 = std::cos(A1);
+			const float Ca2 = std::cos(A2);
+			const float Ca3 = std::cos(A3);
+			const float Sa1 = std::sin(A1);
+			const float Sa2 = std::sin(A2);
+			const float Sa3 = std::sin(A3);
+
+			IGraphics::CFreeformItem aCornerItems[4];
+			size_t NumCornerItems = 0;
+			if(RoundTL)
+			{
+				aCornerItems[NumCornerItems++] = IGraphics::CFreeformItem(
+					X + R, Y + R,
+					X + (1.0f - Ca1) * R, Y + (1.0f - Sa1) * R,
+					X + (1.0f - Ca3) * R, Y + (1.0f - Sa3) * R,
+					X + (1.0f - Ca2) * R, Y + (1.0f - Sa2) * R);
+			}
+			if(RoundTR)
+			{
+				aCornerItems[NumCornerItems++] = IGraphics::CFreeformItem(
+					X + W - R, Y + R,
+					X + W - R + Ca1 * R, Y + (1.0f - Sa1) * R,
+					X + W - R + Ca3 * R, Y + (1.0f - Sa3) * R,
+					X + W - R + Ca2 * R, Y + (1.0f - Sa2) * R);
+			}
+			if(RoundBL && GapX0 > X + R + 0.01f)
+			{
+				aCornerItems[NumCornerItems++] = IGraphics::CFreeformItem(
+					X + R, Y + H - R,
+					X + (1.0f - Ca1) * R, Y + H - R + Sa1 * R,
+					X + (1.0f - Ca3) * R, Y + H - R + Sa3 * R,
+					X + (1.0f - Ca2) * R, Y + H - R + Sa2 * R);
+			}
+			if(RoundBR && GapX1 < X + W - R - 0.01f)
+			{
+				aCornerItems[NumCornerItems++] = IGraphics::CFreeformItem(
+					X + W - R, Y + H - R,
+					X + W - R + Ca1 * R, Y + H - R + Sa1 * R,
+					X + W - R + Ca3 * R, Y + H - R + Sa3 * R,
+					X + W - R + Ca2 * R, Y + H - R + Sa2 * R);
+			}
+			if(NumCornerItems > 0)
+				pGraphics->QuadsDrawFreeform(aCornerItems, NumCornerItems);
+		}
+
+		IGraphics::CQuadItem aQuads[12];
+		size_t NumQuads = 0;
+		aQuads[NumQuads++] = IGraphics::CQuadItem(X + R, Y, W - R * 2.0f, R); // top
+		aQuads[NumQuads++] = IGraphics::CQuadItem(X, Y + R, R, H - R * 2.0f); // left
+		aQuads[NumQuads++] = IGraphics::CQuadItem(X + W - R, Y + R, R, H - R * 2.0f); // right
+
+		// Square fills for edge-snapped corners (same as DrawRectExt).
+		if(!RoundTL)
+			aQuads[NumQuads++] = IGraphics::CQuadItem(X, Y, R, R);
+		if(!RoundTR)
+			aQuads[NumQuads++] = IGraphics::CQuadItem(X + W, Y, -R, R);
+		if(!RoundBL)
+			aQuads[NumQuads++] = IGraphics::CQuadItem(X, Y + H, R, -R);
+		if(!RoundBR)
+			aQuads[NumQuads++] = IGraphics::CQuadItem(X + W, Y + H, -R, -R);
+
+		// Center split so the timer stem owns the whole middle column under the top band.
+		const float CenterTop = Y + R;
+		const float CenterFullH = maximum(0.0f, H - R * 2.0f);
+		const float MidLeftW = maximum(0.0f, GapX0 - (X + R));
+		const float MidRightW = maximum(0.0f, (X + W - R) - GapX1);
+		if(MidLeftW > 0.01f)
+			aQuads[NumQuads++] = IGraphics::CQuadItem(X + R, CenterTop, MidLeftW, CenterFullH);
+		if(MidRightW > 0.01f)
+			aQuads[NumQuads++] = IGraphics::CQuadItem(GapX1, CenterTop, MidRightW, CenterFullH);
+
+		// Bottom radius band split around the timer stem gap.
+		const float BottomY = Y + H - R;
+		if(RoundBL)
+		{
+			const float BottomLeftW = maximum(0.0f, GapX0 - (X + R));
+			if(BottomLeftW > 0.01f)
+				aQuads[NumQuads++] = IGraphics::CQuadItem(X + R, BottomY, BottomLeftW, R);
+		}
+		else
+		{
+			const float FlatLeftW = maximum(0.0f, GapX0 - X);
+			if(FlatLeftW > 0.01f)
+				aQuads[NumQuads++] = IGraphics::CQuadItem(X, BottomY, FlatLeftW, R);
+		}
+		if(RoundBR)
+		{
+			const float BottomRightX = maximum(X + R, GapX1);
+			const float BottomRightW = maximum(0.0f, (X + W - R) - BottomRightX);
+			if(BottomRightW > 0.01f)
+				aQuads[NumQuads++] = IGraphics::CQuadItem(BottomRightX, BottomY, BottomRightW, R);
+		}
+		else
+		{
+			const float FlatRightW = maximum(0.0f, X + W - GapX1);
+			if(FlatRightW > 0.01f)
+				aQuads[NumQuads++] = IGraphics::CQuadItem(GapX1, BottomY, FlatRightW, R);
+		}
+
+		pGraphics->QuadsDrawTL(aQuads, NumQuads);
+		pGraphics->QuadsEnd();
+	}
+
+	static CUIRect MakeLyricsTimerTabRect(const CUIRect &View, float TabWidth, float TabHeight)
+	{
+		CUIRect Tab;
+		Tab.w = TabWidth;
+		Tab.h = TabHeight;
+		Tab.x = View.x + (View.w - Tab.w) * 0.5f;
+		Tab.y = View.y + View.h;
+		return Tab;
+	}
+
+	static void DrawMusicPlayerPanelWithTimerTab(IGraphics *pGraphics, const CUIRect &View, float TabWidth, float TabHeight, float Fillet, float Rounding, ColorRGBA Color, float CanvasWidth, float CanvasHeight)
+	{
+		if(pGraphics == nullptr || View.w <= 0.0f || View.h <= 0.0f)
+			return;
+
+		const float TabW = std::clamp(TabWidth, 0.0f, View.w);
+		const float TabH = maximum(0.0f, TabHeight);
+		const int BodyCorners = HudLayout::BackgroundCorners(IGraphics::CORNER_ALL, View.x, View.y, View.w, View.h, CanvasWidth, CanvasHeight);
+		if(TabW <= 0.01f || TabH <= 0.01f)
+		{
+			pGraphics->DrawRect(View.x, View.y, View.w, View.h, Color, BodyCorners, Rounding);
+			return;
+		}
+
+		const float R = std::clamp(Rounding, 0.0f, minimum(View.w, View.h) * 0.5f);
+		const float TabX = View.x + (View.w - TabW) * 0.5f;
+		const float JunctionY = View.y + View.h;
+		const float TabRounding = minimum(R * 0.75f, TabH * 0.42f);
+		const float SafeFillet = minimum(Fillet, TabW * 0.35f);
+
+		DrawRoundedRectBottomGap(pGraphics, View.x, View.y, View.w, View.h, R, BodyCorners, TabX, TabX + TabW, Color);
+
+		// One continuous middle column from under the top band through the timer tab.
+		const float StemTop = View.y + R;
+		const float StemH = maximum(0.0f, JunctionY - StemTop) + TabH;
+		// Snap tab bottom corners to the canvas using the combined silhouette height.
+		const int TabCorners = HudLayout::BackgroundCorners(IGraphics::CORNER_B, TabX, StemTop, TabW, StemH, CanvasWidth, CanvasHeight);
+		pGraphics->DrawRect(TabX, StemTop, TabW, StemH, Color, TabCorners, TabRounding);
+
+		if(SafeFillet > 0.05f)
+		{
+			DrawLyricsTimerConcaveJunction(pGraphics, TabX, JunctionY, SafeFillet, true, Color);
+			DrawLyricsTimerConcaveJunction(pGraphics, TabX + TabW, JunctionY, SafeFillet, false, Color);
+		}
+	}
+
+	static std::string FormatMusicPositionMs(int64_t PositionMs)
+	{
+		const int TotalSec = (int)(maximum<int64_t>(0, PositionMs) / 1000);
+		const int Minutes = TotalSec / 60;
+		const int Seconds = TotalSec % 60;
+		char aBuf[32];
+		if(Minutes >= 60)
+			str_format(aBuf, sizeof(aBuf), "%d:%02d:%02d", Minutes / 60, Minutes % 60, Seconds);
+		else
+			str_format(aBuf, sizeof(aBuf), "%d:%02d", Minutes, Seconds);
+		return aBuf;
+	}
+
+	static float ComputeMiniTextSlotWidth(ITextRender *pTextRender, const SNowPlayingSnapshot &Snapshot, const SGameTimerDisplay &GameTimer, float TitleFont, float Scale, float WidthScale, bool LyricsEnabled)
+	{
+		if(LyricsEnabled)
+			return CMusicPlayerLyrics::LyricsTextSlotWidth(Scale, WidthScale);
+
+		if(GameTimer.m_Valid && !GameTimer.m_Text.empty())
+		{
+			const std::string Reference = MusicPlayerReferenceDigits(GameTimer.m_Text);
+			const float TextWidth = ComputeMusicPlayerTextWidth(pTextRender, Reference, TitleFont);
+			const float Padding = (Reference.size() > 5 ? 3.6f : 4.4f) * Scale * WidthScale;
+			return TextWidth + Padding;
+		}
+
+		const float TextWidth = ComputeMusicPlayerTextWidth(pTextRender, MusicPlayerMiniText(Snapshot, GameTimer), TitleFont);
+		return TextWidth + 3.4f * Scale * WidthScale;
+	}
+
+	static float ComputeCompactTextSlotWidth(ITextRender *pTextRender, const SGameTimerDisplay &GameTimer, float TitleFont, float Scale, float WidthScale, bool LyricsEnabled)
+	{
+		if(LyricsEnabled)
+			return CMusicPlayerLyrics::LyricsTextSlotWidth(Scale, WidthScale);
+
 		if(pTextRender == nullptr)
 			return 28.8f * Scale * WidthScale;
 
@@ -1463,27 +1721,6 @@ namespace
 		const float TextWidth = pTextRender->TextWidth(TitleFont, Reference.c_str(), -1, -1.0f);
 		const float Padding = (WideTimer ? 4.2f : 5.4f) * Scale * WidthScale;
 		return TextWidth + Padding;
-	}
-
-	static float ComputeMusicPlayerTextWidth(ITextRender *pTextRender, const std::string &Text, float FontSize)
-	{
-		if(pTextRender == nullptr)
-			return FontSize * 5.0f;
-		return pTextRender->TextWidth(FontSize, Text.c_str(), -1, -1.0f);
-	}
-
-	static float ComputeMiniTextSlotWidth(ITextRender *pTextRender, const SNowPlayingSnapshot &Snapshot, const SGameTimerDisplay &GameTimer, float TitleFont, float Scale, float WidthScale)
-	{
-		if(GameTimer.m_Valid && !GameTimer.m_Text.empty())
-		{
-			const std::string Reference = MusicPlayerReferenceDigits(GameTimer.m_Text);
-			const float TextWidth = ComputeMusicPlayerTextWidth(pTextRender, Reference, TitleFont);
-			const float Padding = (Reference.size() > 5 ? 3.6f : 4.4f) * Scale * WidthScale;
-			return TextWidth + Padding;
-		}
-
-		const float TextWidth = ComputeMusicPlayerTextWidth(pTextRender, MusicPlayerMiniText(Snapshot, GameTimer), TitleFont);
-		return TextWidth + 3.4f * Scale * WidthScale;
 	}
 
 	static float EaseInOutCubic(float t)
@@ -1508,12 +1745,6 @@ namespace
 			mix(A.a, B.a, t));
 	}
 
-	static ColorRGBA WithAlpha(ColorRGBA Color, float Alpha)
-	{
-		Color.a = Alpha;
-		return Color;
-	}
-
 	static void GetCenteredSquareCrop(int CoverW, int CoverH, int &OutCropX, int &OutCropY, int &OutCropSize)
 	{
 		OutCropSize = minimum(CoverW, CoverH);
@@ -1524,11 +1755,6 @@ namespace
 	static bool IsSoftVisualizerRounding()
 	{
 		return g_Config.m_BcMusicPlayerVisualizerRounding >= 100;
-	}
-
-	static bool IsTranslucentColorMode()
-	{
-		return g_Config.m_BcMusicPlayerColorMode == 2;
 	}
 
 	static bool IsCoverVisualizerColorMode()
@@ -1870,13 +2096,8 @@ namespace
 		return BuildPaletteFromAccent(DefaultMusicPlayerAccent());
 	}
 
-	static ColorRGBA MusicPlayerPanelColor(unsigned BackgroundColor, bool BackgroundEnabled, const SMusicPlayerPalette &Palette, float HoverT)
+	static ColorRGBA MusicPlayerPanelColor()
 	{
-		(void)BackgroundColor;
-		(void)BackgroundEnabled;
-		(void)Palette;
-		(void)HoverT;
-		// Panel always matches translucent mode regardless of visualizer color mode.
 		return ColorRGBA(0.0f, 0.0f, 0.0f, 0.4f);
 	}
 
@@ -2158,34 +2379,46 @@ namespace
 		return Rect;
 	}
 
-	static SMusicPlayerMetrics ComputeMusicPlayerMetrics(const HudLayout::SModuleLayout &Layout, float Width, float Height, float SizeT, float CompactTextSlotWidth, float DisplayedTextSlotWidth, bool MiniMode, bool ShowCover, float TextScale)
+	static SMusicPlayerMetrics ComputeMusicPlayerMetrics(const HudLayout::SModuleLayout &Layout, float Width, float Height, float SizeT, float PositionTextSlotWidth, float DisplayedTextSlotWidth, bool MiniMode, bool ShowCover, float TextScale)
 	{
 		SMusicPlayerMetrics Metrics;
 		Metrics.m_Scale = std::clamp(Layout.m_Scale / 100.0f, 0.25f, 3.0f);
 		Metrics.m_WidthScale = Width / maximum(HudLayout::CANVAS_WIDTH, 0.001f);
-		if(MiniMode)
-		{
-			const float TitleFont = 6.0f * Metrics.m_Scale * TextScale;
-			const float PadX = 2.35f * Metrics.m_Scale * Metrics.m_WidthScale;
-			const float PadY = 1.5f * Metrics.m_Scale;
-			const float CoverGap = ShowCover ? 1.35f * Metrics.m_Scale * Metrics.m_WidthScale : 0.0f;
-			const float VisualGap = 1.25f * Metrics.m_Scale * Metrics.m_WidthScale;
-			const float VisualW = MusicPlayerVisualizerWidth(true, Metrics.m_Scale, Metrics.m_WidthScale, 0.0f);
-			Metrics.m_CompactH = maximum(9.0f * Metrics.m_Scale, TitleFont + PadY * 2.0f);
-			const float ArtSize = ShowCover ? maximum(0.0f, Metrics.m_CompactH - 1.7f * Metrics.m_Scale) : 0.0f;
-			const float DesiredWidth = PadX * 2.0f + DisplayedTextSlotWidth + VisualGap + VisualW + ArtSize + CoverGap;
-			Metrics.m_CompactW = minimum(Width, maximum(18.0f * Metrics.m_Scale * Metrics.m_WidthScale, DesiredWidth));
-		}
-		else
-		{
-			Metrics.m_CompactH = 15.5f * Metrics.m_Scale;
-			const float CompactArtSize = ShowCover ? minimum(Metrics.m_CompactH - 1.6f * Metrics.m_Scale, 13.0f * Metrics.m_Scale) : 0.0f;
+
+		auto ComputeCompactW = [&](float TextSlotWidth) {
+			if(MiniMode)
+			{
+				const float TitleFont = 6.0f * Metrics.m_Scale * TextScale;
+				const float PadX = 2.35f * Metrics.m_Scale * Metrics.m_WidthScale;
+				const float PadY = 1.5f * Metrics.m_Scale;
+				const float CoverGap = ShowCover ? 1.35f * Metrics.m_Scale * Metrics.m_WidthScale : 0.0f;
+				const float VisualGap = 1.25f * Metrics.m_Scale * Metrics.m_WidthScale;
+				const float VisualW = MusicPlayerVisualizerWidth(true, Metrics.m_Scale, Metrics.m_WidthScale, 0.0f);
+				const float CompactH = maximum(9.0f * Metrics.m_Scale, TitleFont + PadY * 2.0f);
+				const float ArtSize = ShowCover ? maximum(0.0f, CompactH - 1.7f * Metrics.m_Scale) : 0.0f;
+				const float DesiredWidth = PadX * 2.0f + TextSlotWidth + VisualGap + VisualW + ArtSize + CoverGap;
+				return minimum(Width, maximum(18.0f * Metrics.m_Scale * Metrics.m_WidthScale, DesiredWidth));
+			}
+			const float CompactH = 15.5f * Metrics.m_Scale;
+			const float CompactArtSize = ShowCover ? minimum(CompactH - 1.6f * Metrics.m_Scale, 13.0f * Metrics.m_Scale) : 0.0f;
 			const float CompactVisualW = MusicPlayerVisualizerWidth(false, Metrics.m_Scale, Metrics.m_WidthScale, 0.0f);
 			const float CompactOuterPad = 2.5f * Metrics.m_Scale * Metrics.m_WidthScale;
 			const float CompactInnerGap = 1.15f * Metrics.m_Scale * Metrics.m_WidthScale;
 			const float CompactLeftSection = ShowCover ? CompactArtSize + CompactInnerGap : 0.0f;
-			Metrics.m_CompactW = CompactOuterPad * 2.0f + CompactLeftSection + DisplayedTextSlotWidth + CompactVisualW + CompactInnerGap;
+			return CompactOuterPad * 2.0f + CompactLeftSection + TextSlotWidth + CompactVisualW + CompactInnerGap;
+		};
+
+		if(MiniMode)
+		{
+			const float TitleFont = 6.0f * Metrics.m_Scale * TextScale;
+			const float PadY = 1.5f * Metrics.m_Scale;
+			Metrics.m_CompactH = maximum(9.0f * Metrics.m_Scale, TitleFont + PadY * 2.0f);
 		}
+		else
+		{
+			Metrics.m_CompactH = 15.5f * Metrics.m_Scale;
+		}
+		Metrics.m_CompactW = ComputeCompactW(DisplayedTextSlotWidth);
 
 		Metrics.m_ExpandedH = 25.0f * Metrics.m_Scale;
 		const float ExpandedBaseW = 104.0f * Metrics.m_Scale * Metrics.m_WidthScale;
@@ -2193,12 +2426,20 @@ namespace
 		const float ExpandedTextLeftInset = 1.7f * Metrics.m_Scale * Metrics.m_WidthScale + ExpandedArtSize + (ShowCover ? (0.1f + 1.15f) * Metrics.m_Scale * Metrics.m_WidthScale : 0.0f);
 		const float ExpandedVisualW = MusicPlayerVisualizerWidth(false, Metrics.m_Scale, Metrics.m_WidthScale, 1.0f);
 		const float ExpandedTextRightInset = (1.95f + 1.15f) * Metrics.m_Scale * Metrics.m_WidthScale + ExpandedVisualW;
-		Metrics.m_ExpandedW = maximum(ExpandedBaseW, DisplayedTextSlotWidth + 2.0f * maximum(ExpandedTextLeftInset, ExpandedTextRightInset));
-		if(MiniMode)
-			Metrics.m_ExpandedW = minimum(Width, maximum(Metrics.m_CompactW, Metrics.m_ExpandedW));
-		Metrics.m_CompactRect = MakeMusicPlayerRect(Layout.m_X, Layout.m_Y, Metrics.m_ExpandedW, Width, Height, Metrics.m_CompactW, Metrics.m_CompactH);
-		Metrics.m_ExpandedRect = MakeMusicPlayerRect(Layout.m_X, Layout.m_Y, Metrics.m_ExpandedW, Width, Height, Metrics.m_ExpandedW, Metrics.m_ExpandedH);
-		Metrics.m_ViewRect = MakeMusicPlayerRect(Layout.m_X, Layout.m_Y, Metrics.m_ExpandedW, Width, Height, mix(Metrics.m_CompactW, Metrics.m_ExpandedW, SizeT), mix(Metrics.m_CompactH, Metrics.m_ExpandedH, SizeT));
+		auto ComputeExpandedW = [&](float TextSlotWidth, float CompactW) {
+			float ExpandedW = maximum(ExpandedBaseW, TextSlotWidth + 2.0f * maximum(ExpandedTextLeftInset, ExpandedTextRightInset));
+			if(MiniMode)
+				ExpandedW = minimum(Width, maximum(CompactW, ExpandedW));
+			return ExpandedW;
+		};
+		Metrics.m_ExpandedW = ComputeExpandedW(DisplayedTextSlotWidth, Metrics.m_CompactW);
+		// Keep the layout anchor centered on the non-lyrics (or caller-provided) width so
+		// enabling lyrics grows the pill symmetrically instead of shifting it right.
+		const float AnchorCompactW = ComputeCompactW(PositionTextSlotWidth);
+		const float AnchorExpandedW = ComputeExpandedW(PositionTextSlotWidth, AnchorCompactW);
+		Metrics.m_CompactRect = MakeMusicPlayerRect(Layout.m_X, Layout.m_Y, AnchorExpandedW, Width, Height, Metrics.m_CompactW, Metrics.m_CompactH);
+		Metrics.m_ExpandedRect = MakeMusicPlayerRect(Layout.m_X, Layout.m_Y, AnchorExpandedW, Width, Height, Metrics.m_ExpandedW, Metrics.m_ExpandedH);
+		Metrics.m_ViewRect = MakeMusicPlayerRect(Layout.m_X, Layout.m_Y, AnchorExpandedW, Width, Height, mix(Metrics.m_CompactW, Metrics.m_ExpandedW, SizeT), mix(Metrics.m_CompactH, Metrics.m_ExpandedH, SizeT));
 		Metrics.m_Rounding = minimum(5.0f * Metrics.m_Scale, Metrics.m_ViewRect.h * 0.24f);
 		return Metrics;
 	}
@@ -2435,14 +2676,16 @@ public:
 	int64_t m_LastVisualizerPollTick = 0;
 	float m_ExpandAnim = 0.0f;
 	float m_HoverAnim = 0.0f;
+	float m_HudPushAnim = 0.0f;
 	float m_VisualPositionMs = 0.0f;
 	std::string m_VisualTrackKey;
 	std::string m_PlaybackTrackKey;
 	int64_t m_PlaybackAnchorPositionMs = 0;
 	int64_t m_PlaybackAnchorTick = 0;
+	int64_t m_LastRawSnapshotPositionMs = -1;
 	EMusicPlaybackState m_PlaybackAnchorState = EMusicPlaybackState::STOPPED;
 	std::string m_LastArtKey;
-	std::shared_ptr<CHttpRequest> m_pArtRequest;
+	std::shared_ptr<IHttpRequest> m_pArtRequest;
 	std::shared_ptr<CMusicPlayerArtDecodeJob> m_pArtDecodeJob;
 	std::optional<SMediaDecodedFrames> m_OptArtDecodedFrames;
 	int m_ArtUploadIndex = 0;
@@ -2453,6 +2696,8 @@ public:
 	int64_t m_ArtAnimationStart = 0;
 	std::array<float, VISUALIZER_BARS> m_aVisualizerLevels{};
 	float m_CompactTextSlotWidthAnim = 0.0f;
+	float m_LyricsTimerWidthAnim = 0.0f;
+	float m_LyricsTimerHeightAnim = 0.0f;
 	CMusicPlayer::SHudReservation m_HudReservation;
 	SMusicPlayerPalette m_Palette = DefaultMusicPlayerPalette();
 	ColorRGBA m_Accent = DefaultMusicPlayerAccent();
@@ -2474,6 +2719,7 @@ public:
 	int64_t m_DebugNextVisualizerVerboseTick = 0;
 	std::string m_DebugLastRenderPath;
 	int64_t m_DebugNextRenderVerboseTick = 0;
+	CMusicPlayerLyrics m_Lyrics;
 
 	CImpl()
 	{
@@ -2502,13 +2748,17 @@ public:
 	{
 		m_ExpandAnim = 0.0f;
 		m_HoverAnim = 0.0f;
+		m_HudPushAnim = 0.0f;
 		m_VisualPositionMs = 0.0f;
 		m_VisualTrackKey.clear();
 		m_aVisualizerLevels.fill(0.18f);
 		m_CompactTextSlotWidthAnim = 0.0f;
+		m_LyricsTimerWidthAnim = 0.0f;
+		m_LyricsTimerHeightAnim = 0.0f;
 		m_HudReservation = CMusicPlayer::SHudReservation();
 		m_DebugLastRenderPath.clear();
 		m_DebugNextRenderVerboseTick = 0;
+		m_Lyrics.ClearActiveTrack();
 	}
 
 	bool IsIdle() const
@@ -2530,6 +2780,7 @@ public:
 		m_PlaybackTrackKey.clear();
 		m_PlaybackAnchorPositionMs = 0;
 		m_PlaybackAnchorTick = 0;
+		m_LastRawSnapshotPositionMs = -1;
 		m_PlaybackAnchorState = EMusicPlaybackState::STOPPED;
 		m_VisualTrackKey.clear();
 		m_VisualPositionMs = 0.0f;
@@ -2732,6 +2983,7 @@ public:
 		ResetHudState();
 		ResetPlaybackAnchor();
 		ResetArtwork(pGraphics);
+		m_Lyrics.Reset();
 	}
 
 	void Shutdown(IGraphics *pGraphics)
@@ -2928,7 +3180,7 @@ public:
 		BeginArtLoad(pOwner);
 		if(m_pArtRequest && m_pArtRequest->State() == EHttpState::DONE)
 		{
-			std::shared_ptr<CHttpRequest> pFinished = m_pArtRequest;
+			std::shared_ptr<IHttpRequest> pFinished = m_pArtRequest;
 			m_pArtRequest.reset();
 			if(pFinished->StatusCode() < 200 || pFinished->StatusCode() >= 400)
 			{
@@ -3016,11 +3268,19 @@ public:
 		const bool StateChanged = Snapshot.m_PlaybackState != m_PlaybackAnchorState;
 		const int64_t PredictedPosition = DisplayPositionMs();
 		const int64_t Drift = SnapshotPosition - PredictedPosition;
+		// Media APIs often keep reporting a stale position for a few seconds while we
+		// extrapolate ahead. Hard-resyncing on that negative drift causes a periodic
+		// sawtooth (~1.5–3s) that breaks lyrics timing. Only hard-resync backwards
+		// when the raw snapshot itself moved backwards (real seek).
+		const bool SnapshotSeekedBackwards =
+			m_LastRawSnapshotPositionMs >= 0 &&
+			SnapshotPosition + 500 < m_LastRawSnapshotPositionMs;
 		const bool NeedsHardResync =
 			NewTrack ||
 			m_PlaybackAnchorTick == 0 ||
 			StateChanged ||
-			std::llabs(Drift) > 1500;
+			Drift > 1500 ||
+			(Drift < -1500 && SnapshotSeekedBackwards);
 
 		if(NeedsHardResync)
 		{
@@ -3039,6 +3299,7 @@ public:
 			m_PlaybackAnchorTick = Now;
 		}
 
+		m_LastRawSnapshotPositionMs = SnapshotPosition;
 		m_PlaybackTrackKey = TrackKey;
 		m_PlaybackAnchorState = Snapshot.m_PlaybackState;
 		m_Snapshot = std::move(Snapshot);
@@ -3197,8 +3458,13 @@ public:
 		const float CompactWidthScale = Width / maximum(HudLayout::CANVAS_WIDTH, 0.001f);
 		const float CompactTitleFont = 6.6f * CompactScale * TextScale;
 		const float MiniTitleFont = 6.0f * CompactScale * TextScale;
-		const float CompactTextSlotWidth = ComputeCompactTextSlotWidth(pOwner->TextRender(), GameTimer, CompactTitleFont, CompactScale, CompactWidthScale);
-		const float MiniTextSlotWidth = ComputeMiniTextSlotWidth(pOwner->TextRender(), m_Snapshot, GameTimer, MiniTitleFont, CompactScale, CompactWidthScale);
+		const bool LyricsEnabled = g_Config.m_BcMusicPlayerShowLyrics != 0;
+		const float CompactTextSlotWidthBase = ComputeCompactTextSlotWidth(pOwner->TextRender(), GameTimer, CompactTitleFont, CompactScale, CompactWidthScale, false);
+		const float MiniTextSlotWidthBase = ComputeMiniTextSlotWidth(pOwner->TextRender(), m_Snapshot, GameTimer, MiniTitleFont, CompactScale, CompactWidthScale, false);
+		const float CompactTextSlotWidthLyrics = CMusicPlayerLyrics::LyricsTextSlotWidth(CompactScale, CompactWidthScale);
+		const float MiniTextSlotWidthLyrics = CMusicPlayerLyrics::LyricsTextSlotWidth(CompactScale, CompactWidthScale);
+		float CompactTextSlotWidth = CompactTextSlotWidthBase;
+		float MiniTextSlotWidth = MiniTextSlotWidthBase;
 		const CUIRect UiScreen = *pOwner->Ui()->Screen();
 		if(UiScreen.w <= 0.0f || UiScreen.h <= 0.0f)
 		{
@@ -3217,9 +3483,20 @@ public:
 		const bool FreezeNonChatLayout = !ChatActive && !HudEditorActive &&
 						 (pOwner->GameClient()->m_GameConsole.IsActive() || pOwner->GameClient()->m_Menus.IsActive());
 
+		const float Delta = std::clamp(pOwner->Client()->RenderFrameTime(), 0.0f, 0.1f);
+		if(LyricsEnabled)
+		{
+			m_Lyrics.TickDisplay(Delta);
+			// Compact (non-mini) lyrics title uses 5.25f scale — match RenderMusicPlayer TitleFont.
+			const float CompactLyricsMeasureFont = 5.25f * CompactScale * TextScale;
+			CompactTextSlotWidth = m_Lyrics.PreferredTextSlotWidth(pOwner->TextRender(), CompactLyricsMeasureFont, CompactTextSlotWidthLyrics, CompactScale, CompactWidthScale);
+			MiniTextSlotWidth = m_Lyrics.PreferredTextSlotWidth(pOwner->TextRender(), MiniTitleFont, MiniTextSlotWidthLyrics, CompactScale, CompactWidthScale);
+		}
+
 		const float ProbeT = EaseInOutCubic(m_ExpandAnim);
 		const float ProbeTextSlotWidth = m_CompactTextSlotWidthAnim > 0.0f ? m_CompactTextSlotWidthAnim : (MiniMode ? MiniTextSlotWidth : CompactTextSlotWidth);
-		const SMusicPlayerMetrics ProbeMetrics = ComputeMusicPlayerMetrics(Layout, Width, Height, ProbeT, CompactTextSlotWidth, ProbeTextSlotWidth, MiniMode, ShowCover, TextScale);
+		const float PositionTextSlotWidth = LyricsEnabled ? (MiniMode ? MiniTextSlotWidthBase : CompactTextSlotWidthBase) : (MiniMode ? MiniTextSlotWidth : CompactTextSlotWidth);
+		const SMusicPlayerMetrics ProbeMetrics = ComputeMusicPlayerMetrics(Layout, Width, Height, ProbeT, PositionTextSlotWidth, ProbeTextSlotWidth, MiniMode, ShowCover, TextScale);
 		const CUIRect UiView = HudToUiRect(ProbeMetrics.m_ViewRect, UiScreen, Width, Height);
 		const CUIRect UiExpandedRect = HudToUiRect(ProbeMetrics.m_ExpandedRect, UiScreen, Width, Height);
 		const float UiMargin = 2.5f * ProbeMetrics.m_Scale * UiScreen.h / Height;
@@ -3237,31 +3514,70 @@ public:
 			}
 		}
 
-		const float Delta = std::clamp(pOwner->Client()->RenderFrameTime(), 0.0f, 0.1f);
 		if(m_CompactTextSlotWidthAnim <= 0.0f)
 			m_CompactTextSlotWidthAnim = MiniMode ? MiniTextSlotWidth : CompactTextSlotWidth;
 		if(!FreezeNonChatLayout)
 		{
 			const float TargetExpand = HoverCandidate ? 1.0f : 0.0f;
 			const float WidthTarget = MiniMode ? mix(MiniTextSlotWidth, CompactTextSlotWidth, TargetExpand) : CompactTextSlotWidth;
-			const float WidthSpeed = WidthTarget > m_CompactTextSlotWidthAnim ? MusicPlayerAnimationSpeed(10.0f) : MusicPlayerAnimationSpeed(8.0f);
+			const float WidthSpeed = WidthTarget > m_CompactTextSlotWidthAnim ? 10.0f : 8.0f;
 			m_CompactTextSlotWidthAnim = ApproachAnim(m_CompactTextSlotWidthAnim, WidthTarget, Delta, WidthSpeed);
 			const float TargetGlow = HoverCandidate ? 1.0f : 0.0f;
-			m_HoverAnim = ApproachAnim(m_HoverAnim, TargetGlow, Delta, MusicPlayerAnimationSpeed(8.0f));
-			m_ExpandAnim = ApproachAnim(m_ExpandAnim, TargetExpand, Delta, TargetExpand > m_ExpandAnim ? MusicPlayerAnimationSpeed(8.5f) : MusicPlayerAnimationSpeed(6.0f));
+			m_HoverAnim = ApproachAnim(m_HoverAnim, TargetGlow, Delta, 8.0f);
+			m_ExpandAnim = ApproachAnim(m_ExpandAnim, TargetExpand, Delta, TargetExpand > m_ExpandAnim ? 8.5f : 6.0f);
 		}
 		else
 		{
+			// Keep lyrics width target even when menus freeze hover expand.
+			const float WidthTarget = MiniMode ? MiniTextSlotWidth : CompactTextSlotWidth;
+			const float WidthSpeed = WidthTarget > m_CompactTextSlotWidthAnim ? 10.0f : 8.0f;
+			m_CompactTextSlotWidthAnim = ApproachAnim(m_CompactTextSlotWidthAnim, WidthTarget, Delta, WidthSpeed);
 			m_ExpandAnim = 0.0f;
 			m_HoverAnim = 0.0f;
 		}
 
 		const float SizeT = EaseInOutCubic(m_ExpandAnim);
-		const SMusicPlayerMetrics Metrics = ComputeMusicPlayerMetrics(Layout, Width, Height, SizeT, CompactTextSlotWidth, m_CompactTextSlotWidthAnim, MiniMode, ShowCover, TextScale);
-		m_HudReservation.m_Rect = Metrics.m_ViewRect;
+		const SMusicPlayerMetrics Metrics = ComputeMusicPlayerMetrics(Layout, Width, Height, SizeT, PositionTextSlotWidth, m_CompactTextSlotWidthAnim, MiniMode, ShowCover, TextScale);
+		if(BCUiAnimations::Enabled())
+			BCUiAnimations::UpdatePhase(m_HudPushAnim, m_ExpandAnim, Delta, BCUiAnimations::MsToSeconds(HUD_PUSH_ANIMATION_DURATION_MS));
+		else
+			m_HudPushAnim = m_ExpandAnim;
+
+		const float BaseSlotWidth = MiniMode ? MiniTextSlotWidthBase : CompactTextSlotWidthBase;
+		const float LyricsSlotWidth = MiniMode ? MiniTextSlotWidthLyrics : CompactTextSlotWidthLyrics;
+		const float WidthSpan = maximum(1.0f, LyricsSlotWidth - BaseSlotWidth);
+		// Short titles shrink the text slot below the lyrics max (sometimes even below the
+		// non-lyrics base). Push must stay active whenever lyrics mode is on — neighbors use
+		// ReservationRect for the actual size, and PushAmount only scales that offset.
+		const float LyricsWidthPushT = LyricsEnabled ? 1.0f : std::clamp((m_CompactTextSlotWidthAnim - BaseSlotWidth) / WidthSpan, 0.0f, 1.0f);
+		const bool WantLyricsTimer = LyricsEnabled && g_Config.m_BcMusicPlayerShowCurrentTime != 0;
+		const float TimerHeightTarget = WantLyricsTimer ? LyricsBelowTimerBlockHeight(Metrics.m_Scale, TextScale) : 0.0f;
+		const float TimerHeightSpeed = TimerHeightTarget > m_LyricsTimerHeightAnim ? 10.0f : 8.0f;
+		m_LyricsTimerHeightAnim = ApproachAnim(m_LyricsTimerHeightAnim, TimerHeightTarget, Delta, TimerHeightSpeed);
+
+		float TimerWidthTarget = 0.0f;
+		if(WantLyricsTimer || m_LyricsTimerHeightAnim > 0.01f)
+		{
+			const std::string TimerText = GameTimer.m_Valid ? GameTimer.m_Text : FormatMusicPositionMs(m_Snapshot.m_PositionMs);
+			const float TimerFont = LyricsBelowTimerFont(Metrics.m_Scale, TextScale);
+			const float TimerTextW = pOwner->TextRender() != nullptr ? pOwner->TextRender()->TextWidth(TimerFont, TimerText.c_str(), -1, -1.0f) : TimerFont * 5.0f;
+			TimerWidthTarget = minimum(Metrics.m_ViewRect.w * 0.92f, TimerTextW + LyricsBelowTimerPadX(Metrics.m_Scale, CompactWidthScale) * 2.0f);
+			if(!WantLyricsTimer)
+				TimerWidthTarget = m_LyricsTimerWidthAnim > 0.0f ? m_LyricsTimerWidthAnim : TimerWidthTarget;
+		}
+		if(m_LyricsTimerWidthAnim <= 0.0f && TimerWidthTarget > 0.0f)
+			m_LyricsTimerWidthAnim = TimerWidthTarget;
+		const float TimerWidthSpeed = TimerWidthTarget > m_LyricsTimerWidthAnim ? 10.0f : 8.0f;
+		m_LyricsTimerWidthAnim = ApproachAnim(m_LyricsTimerWidthAnim, WantLyricsTimer ? TimerWidthTarget : (m_LyricsTimerHeightAnim > 0.01f ? TimerWidthTarget : 0.0f), Delta, TimerWidthSpeed);
+
+		CUIRect ReservationRect = Metrics.m_ViewRect;
+		if(m_LyricsTimerHeightAnim > 0.01f && LyricsWidthPushT > 0.001f)
+			ReservationRect.h += m_LyricsTimerHeightAnim * LyricsWidthPushT;
+
+		m_HudReservation.m_Rect = ReservationRect;
 		m_HudReservation.m_Visible = true;
 		m_HudReservation.m_Active = true;
-		m_HudReservation.m_PushAmount = 1.0f;
+		m_HudReservation.m_PushAmount = maximum(BCUiAnimations::EaseOutCubic(m_HudPushAnim), BCUiAnimations::EaseOutCubic(LyricsWidthPushT));
 	}
 };
 
@@ -3307,54 +3623,59 @@ CMusicPlayer::SHudReservation CMusicPlayer::HudReservation() const
 	return m_pImpl->m_HudReservation;
 }
 
-float CMusicPlayer::GetHudPushOffsetForRect(const CUIRect &Rect, float CanvasWidth, float Padding) const
+vec2 CMusicPlayer::GetHudPushOffsetForRect(const CUIRect &Rect, float CanvasWidth, float CanvasHeight, float Padding) const
 {
 	const SHudReservation Reservation = HudReservation();
-	if(!Reservation.m_Visible || !Reservation.m_Active || Reservation.m_PushAmount <= 0.0f || Rect.w <= 0.0f || Rect.h <= 0.0f)
-		return 0.0f;
+	if(!Reservation.m_Visible || !Reservation.m_Active || Reservation.m_PushAmount <= 0.0f || Rect.w <= 0.0f || Rect.h <= 0.0f || CanvasWidth <= 0.0f || CanvasHeight <= 0.0f)
+		return vec2(0.0f, 0.0f);
 
 	const float Gap = maximum(Padding, 2.0f);
 	if(!RectsOverlap(Reservation.m_Rect, Rect, Gap))
-		return 0.0f;
+		return vec2(0.0f, 0.0f);
 
-	const float LeftX = std::clamp(Reservation.m_Rect.x - Gap - Rect.w, 0.0f, maximum(0.0f, CanvasWidth - Rect.w));
-	const float RightX = std::clamp(Reservation.m_Rect.x + Reservation.m_Rect.w + Gap, 0.0f, maximum(0.0f, CanvasWidth - Rect.w));
-	const float LeftOffset = LeftX - Rect.x;
-	const float RightOffset = RightX - Rect.x;
-	const float ChosenOffset = absolute(LeftOffset) <= absolute(RightOffset) ? LeftOffset : RightOffset;
-	return ChosenOffset * Reservation.m_PushAmount;
-}
+	struct SPushCandidate
+	{
+		vec2 m_Offset;
+		float m_Alignment;
+		float m_Distance;
+	};
+	std::array<SPushCandidate, 4> aCandidates{};
+	int CandidateCount = 0;
+	const vec2 RectCenter(Rect.x + Rect.w * 0.5f, Rect.y + Rect.h * 0.5f);
+	const vec2 PlayerCenter(Reservation.m_Rect.x + Reservation.m_Rect.w * 0.5f, Reservation.m_Rect.y + Reservation.m_Rect.h * 0.5f);
+	const vec2 Away = RectCenter - PlayerCenter;
+	const float AwayLength = length(Away);
 
-float CMusicPlayer::GetHudPushDownOffsetForRect(const CUIRect &Rect, float CanvasHeight, float Padding) const
-{
-	const SHudReservation Reservation = HudReservation();
-	if(!Reservation.m_Visible || !Reservation.m_Active || Reservation.m_PushAmount <= 0.0f || Rect.w <= 0.0f || Rect.h <= 0.0f)
-		return 0.0f;
+	auto AddCandidate = [&](vec2 Offset) {
+		const float TargetX = Rect.x + Offset.x;
+		const float TargetY = Rect.y + Offset.y;
+		if(TargetX < -0.001f || TargetY < -0.001f || TargetX + Rect.w > CanvasWidth + 0.001f || TargetY + Rect.h > CanvasHeight + 0.001f)
+			return;
 
-	const float Gap = maximum(Padding, 2.0f);
-	if(!RectsOverlap(Reservation.m_Rect, Rect, Gap))
-		return 0.0f;
+		const float Distance = length(Offset);
+		if(Distance <= 0.001f)
+			return;
 
-	const float TargetY = std::clamp(Reservation.m_Rect.y + Reservation.m_Rect.h + Gap, 0.0f, maximum(0.0f, CanvasHeight - Rect.h));
-	return maximum(0.0f, (TargetY - Rect.y) * Reservation.m_PushAmount);
-}
+		const float Alignment = AwayLength > 0.001f ? dot(Offset / Distance, Away / AwayLength) : 0.0f;
+		aCandidates[CandidateCount++] = {Offset, Alignment, Distance};
+	};
 
-bool CMusicPlayer::GetNowPlayingInfo(SNowPlayingInfo &Out) const
-{
-	Out = SNowPlayingInfo();
-	if(!m_pImpl)
-		return false;
+	AddCandidate(vec2(Reservation.m_Rect.x - Gap - Rect.w - Rect.x, 0.0f));
+	AddCandidate(vec2(Reservation.m_Rect.x + Reservation.m_Rect.w + Gap - Rect.x, 0.0f));
+	AddCandidate(vec2(0.0f, Reservation.m_Rect.y - Gap - Rect.h - Rect.y));
+	AddCandidate(vec2(0.0f, Reservation.m_Rect.y + Reservation.m_Rect.h + Gap - Rect.y));
+	if(CandidateCount == 0)
+		return vec2(0.0f, 0.0f);
 
-	const SNowPlayingSnapshot &Snapshot = m_pImpl->m_Snapshot;
-	if(!Snapshot.m_Valid)
-		return false;
-
-	Out.m_Valid = true;
-	Out.m_Playing = Snapshot.m_PlaybackState == EMusicPlaybackState::PLAYING;
-	Out.m_DurationMs = maximum<int64_t>(0, Snapshot.m_DurationMs);
-	Out.m_PositionMs = maximum<int64_t>(0, m_pImpl->DisplayPositionMs());
-	Out.m_Seed = TrackAnimationSeed(Snapshot);
-	return true;
+	const SPushCandidate *pBest = &aCandidates[0];
+	for(int i = 1; i < CandidateCount; ++i)
+	{
+		const SPushCandidate &Candidate = aCandidates[i];
+		if(Candidate.m_Distance < pBest->m_Distance - 0.001f ||
+			(Candidate.m_Distance <= pBest->m_Distance + 0.001f && Candidate.m_Alignment > pBest->m_Alignment))
+			pBest = &Candidate;
+	}
+	return pBest->m_Offset * Reservation.m_PushAmount;
 }
 
 bool CMusicPlayer::GetHudThemeColor(ColorRGBA &Out, bool ForcePreview) const
@@ -3363,13 +3684,7 @@ bool CMusicPlayer::GetHudThemeColor(ColorRGBA &Out, bool ForcePreview) const
 	if(g_Config.m_BcMusicPlayerUseColorForHud == 0)
 		return false;
 
-	const float Height = HudLayout::CANVAS_HEIGHT;
-	const float Width = Height * Graphics()->ScreenAspect();
-	const auto Layout = HudLayout::Get(HudLayout::MODULE_MUSIC_PLAYER, Width, Height);
-	const bool BackgroundEnabled = Layout.m_BackgroundEnabled;
-	const SMusicPlayerPalette Palette = (!ForcePreview && m_pImpl) ? m_pImpl->m_Palette : DefaultMusicPlayerThemePalette();
-	const float HoverT = (!ForcePreview && m_pImpl) ? EaseOutCubic(m_pImpl->m_HoverAnim) : 0.0f;
-	Out = MusicPlayerPanelColor(Layout.m_BackgroundColor, BackgroundEnabled, Palette, HoverT);
+	Out = MusicPlayerPanelColor();
 	Out.a *= MusicPlayerHudAlphaScale();
 	return true;
 }
@@ -3398,9 +3713,14 @@ CUIRect CMusicPlayer::GetHudEditorRect(bool ForcePreview) const
 	const SGameTimerDisplay GameTimer = BuildGameTimerDisplay(GameClient()->m_Snap.m_pGameInfoObj, Client()->GameTick(g_Config.m_ClDummy), Client()->GameTickSpeed(), true);
 	SNowPlayingSnapshot PreviewSnapshot;
 	PreviewSnapshot.m_Title = "Blinding Lights";
-	const float CompactTextSlotWidth = ComputeCompactTextSlotWidth(TextRender(), GameTimer, CompactTitleFont, LayoutScale, LayoutWidthScale);
-	const float MiniTextSlotWidth = ComputeMiniTextSlotWidth(TextRender(), PreviewSnapshot, GameTimer, MiniTitleFont, LayoutScale, LayoutWidthScale);
-	const SMusicPlayerMetrics Metrics = ComputeMusicPlayerMetrics(Layout, Width, Height, 0.0f, CompactTextSlotWidth, MiniTextSlotWidth, MiniMode, ShowCover, TextScale);
+	const bool LyricsEnabled = g_Config.m_BcMusicPlayerShowLyrics != 0;
+	const float CompactTextSlotWidth = ComputeCompactTextSlotWidth(TextRender(), GameTimer, CompactTitleFont, LayoutScale, LayoutWidthScale, LyricsEnabled);
+	const float MiniTextSlotWidth = ComputeMiniTextSlotWidth(TextRender(), PreviewSnapshot, GameTimer, MiniTitleFont, LayoutScale, LayoutWidthScale, LyricsEnabled);
+	const float CompactTextSlotWidthBase = ComputeCompactTextSlotWidth(TextRender(), GameTimer, CompactTitleFont, LayoutScale, LayoutWidthScale, false);
+	const float MiniTextSlotWidthBase = ComputeMiniTextSlotWidth(TextRender(), PreviewSnapshot, GameTimer, MiniTitleFont, LayoutScale, LayoutWidthScale, false);
+	const float PositionTextSlotWidth = LyricsEnabled ? (MiniMode ? MiniTextSlotWidthBase : CompactTextSlotWidthBase) : (MiniMode ? MiniTextSlotWidth : CompactTextSlotWidth);
+	const float DisplayedTextSlotWidth = MiniMode ? MiniTextSlotWidth : CompactTextSlotWidth;
+	const SMusicPlayerMetrics Metrics = ComputeMusicPlayerMetrics(Layout, Width, Height, 0.0f, PositionTextSlotWidth, DisplayedTextSlotWidth, MiniMode, ShowCover, TextScale);
 	return Metrics.m_ViewRect;
 }
 
@@ -3452,6 +3772,7 @@ void CMusicPlayer::OnUpdate()
 	if(g_Config.m_BcMusicPlayer == 0)
 	{
 		m_pImpl->ResetHudState();
+		m_pImpl->m_Lyrics.Disable();
 		return;
 	}
 	if(m_pImpl->m_Snapshot.m_Valid &&
@@ -3463,6 +3784,21 @@ void CMusicPlayer::OnUpdate()
 	}
 
 	m_pImpl->UpdateArtwork(this);
+	if(g_Config.m_BcMusicPlayerShowLyrics != 0 && m_pImpl->m_Snapshot.m_Valid)
+	{
+		m_pImpl->m_Lyrics.Update(
+			Http(),
+			m_pImpl->m_Snapshot.m_Title.c_str(),
+			m_pImpl->m_Snapshot.m_Artist.c_str(),
+			m_pImpl->m_Snapshot.m_Album.c_str(),
+			m_pImpl->m_Snapshot.m_DurationMs,
+			m_pImpl->DisplayPositionMs(),
+			m_pImpl->m_Snapshot.m_PlaybackState == EMusicPlaybackState::PLAYING);
+	}
+	else
+	{
+		m_pImpl->m_Lyrics.Disable();
+	}
 	m_pImpl->UpdateHudReservation(this);
 }
 
@@ -3518,13 +3854,14 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 	const float LayoutWidthScale = Width / maximum(HudLayout::CANVAS_WIDTH, 0.001f);
 	const float CompactTitleFont = 6.6f * LayoutScale * TextScale;
 	const float MiniTitleFont = 6.0f * LayoutScale * TextScale;
-	const float CompactTextSlotWidth = ComputeCompactTextSlotWidth(TextRender(), GameTimer, CompactTitleFont, LayoutScale, LayoutWidthScale);
-	const float MiniTextSlotWidth = ComputeMiniTextSlotWidth(TextRender(), Snapshot, GameTimer, MiniTitleFont, LayoutScale, LayoutWidthScale);
+	const bool LyricsEnabled = !ForcePreview && g_Config.m_BcMusicPlayerShowLyrics != 0;
+	const float CompactTextSlotWidth = ComputeCompactTextSlotWidth(TextRender(), GameTimer, CompactTitleFont, LayoutScale, LayoutWidthScale, LyricsEnabled);
+	const float MiniTextSlotWidth = ComputeMiniTextSlotWidth(TextRender(), Snapshot, GameTimer, MiniTitleFont, LayoutScale, LayoutWidthScale, LyricsEnabled);
+	const float CompactTextSlotWidthBase = ComputeCompactTextSlotWidth(TextRender(), GameTimer, CompactTitleFont, LayoutScale, LayoutWidthScale, false);
+	const float MiniTextSlotWidthBase = ComputeMiniTextSlotWidth(TextRender(), Snapshot, GameTimer, MiniTitleFont, LayoutScale, LayoutWidthScale, false);
 	const int NumBars = MusicPlayerVisualizerColumns();
-	Graphics()->MapScreen(0.0f, 0.0f, Width, Height);
+	Graphics()->MapScreen(CScreenRect(vec2(0.0f, 0.0f), vec2(Width, Height)));
 
-	const bool BackgroundEnabled = Layout.m_BackgroundEnabled;
-	const unsigned BackgroundColor = Layout.m_BackgroundColor;
 	const CUIRect UiScreen = *Ui()->Screen();
 	const vec2 WindowSize(maximum(1.0f, (float)Graphics()->WindowWidth()), maximum(1.0f, (float)Graphics()->WindowHeight()));
 	const float PixelWidth = Width / WindowSize.x;
@@ -3534,20 +3871,21 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 	const bool AllowInteraction = !ForcePreview && (GameClient()->m_Chat.IsActive() || GameClient()->m_Scoreboard.IsMouseUnlocked());
 
 	const float ExpandT = ForcePreview ? 0.0f : EaseInOutCubic(m_pImpl->m_ExpandAnim);
-	const float HoverT = ForcePreview ? 1.0f : EaseOutCubic(m_pImpl->m_HoverAnim);
+	const float HoverT = ForcePreview ? 1.0f : BCUiAnimations::EaseOutCubic(m_pImpl->m_HoverAnim);
 	const float Delta = std::clamp(Client()->RenderFrameTime(), 0.0f, 0.1f);
 	const float AnimatedTextSlotWidth = ForcePreview ?
 						(MiniMode ? MiniTextSlotWidth : CompactTextSlotWidth) :
 						(m_pImpl->m_CompactTextSlotWidthAnim > 0.0f ? m_pImpl->m_CompactTextSlotWidthAnim : (MiniMode ? MiniTextSlotWidth : CompactTextSlotWidth));
-	const SMusicPlayerMetrics Metrics = ComputeMusicPlayerMetrics(Layout, Width, Height, ExpandT, CompactTextSlotWidth, AnimatedTextSlotWidth, MiniMode, ShowCover, TextScale);
+	const float PositionTextSlotWidth = LyricsEnabled ? (MiniMode ? MiniTextSlotWidthBase : CompactTextSlotWidthBase) : (MiniMode ? MiniTextSlotWidth : CompactTextSlotWidth);
+	const SMusicPlayerMetrics Metrics = ComputeMusicPlayerMetrics(Layout, Width, Height, ExpandT, PositionTextSlotWidth, AnimatedTextSlotWidth, MiniMode, ShowCover, TextScale);
 	const bool CompactMiniLayout = MiniMode && ExpandT < 0.001f &&
 					       absolute(Metrics.m_ViewRect.w - Metrics.m_CompactRect.w) < 0.001f &&
 					       absolute(Metrics.m_ViewRect.h - Metrics.m_CompactRect.h) < 0.001f;
-	const float TextT = CompactMiniLayout ? 1.0f : EaseOutCubic(std::clamp((ExpandT - 0.04f) / 0.96f, 0.0f, 1.0f));
-	const float ControlsT = CompactMiniLayout ? 0.0f : EaseOutCubic(std::clamp((ExpandT - 0.16f) / 0.84f, 0.0f, 1.0f));
+	const float TextT = CompactMiniLayout ? 1.0f : BCUiAnimations::EaseOutCubic(std::clamp((ExpandT - 0.04f) / 0.96f, 0.0f, 1.0f));
+	const float ControlsT = CompactMiniLayout ? 0.0f : BCUiAnimations::EaseOutCubic(std::clamp((ExpandT - 0.16f) / 0.84f, 0.0f, 1.0f));
 	const float Scale = Metrics.m_Scale;
 	const float WidthScale = Metrics.m_WidthScale;
-	CUIRect View = ForcePreview ? Metrics.m_ViewRect : m_pImpl->m_HudReservation.m_Rect;
+	CUIRect View = Metrics.m_ViewRect;
 	SnapRectXToPixelGrid(PixelWidth, View.x, View.w);
 	const float UiFontScale = UiScreen.h / maximum(Height, 1.0f);
 
@@ -3556,21 +3894,25 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 						    m_pImpl->m_Palette;
 	const bool CoverColorMode = IsCoverVisualizerColorMode();
 	const bool StaticVisualizerColorMode = IsStaticVisualizerColorMode();
-	ColorRGBA PanelColor = MusicPlayerPanelColor(BackgroundColor, BackgroundEnabled, Palette, HoverT);
+	ColorRGBA PanelColor = MusicPlayerPanelColor();
 	ColorRGBA GlowColor = ColorRGBA(0.0f, 0.0f, 0.0f, 0.0f);
 	PanelColor.a *= MusicPlayerHudAlphaScale();
 	GlowColor.a *= MusicPlayerHudAlphaScale();
 	const float OuterPad = 0.42f * Scale + HoverT * 0.48f * Scale;
+	const float LyricsTimerFooterH = (!ForcePreview && LyricsEnabled) ? m_pImpl->m_LyricsTimerHeightAnim : ((LyricsEnabled && g_Config.m_BcMusicPlayerShowCurrentTime != 0) ? LyricsBelowTimerBlockHeight(Scale, TextScale) : 0.0f);
+	const float LyricsTimerTabW = (!ForcePreview && LyricsEnabled) ? m_pImpl->m_LyricsTimerWidthAnim : 0.0f;
+	const bool DrawLyricsTimerTab = LyricsTimerFooterH > 0.05f && (ForcePreview || LyricsTimerTabW > 0.05f);
 
 	if(GlowColor.a > 0.001f)
 	{
-		const int Corners = HudLayout::BackgroundCorners(IGraphics::CORNER_ALL, View.x - OuterPad, View.y - OuterPad, View.w + OuterPad * 2.0f, View.h + OuterPad * 2.0f, Width, Height);
-		Graphics()->DrawRect(View.x - OuterPad, View.y - OuterPad, View.w + OuterPad * 2.0f, View.h + OuterPad * 2.0f, GlowColor, Corners, Metrics.m_Rounding + OuterPad);
+		const float GlowH = View.h + (DrawLyricsTimerTab ? LyricsTimerFooterH * 0.55f : 0.0f);
+		const int Corners = HudLayout::BackgroundCorners(IGraphics::CORNER_ALL, View.x - OuterPad, View.y - OuterPad, View.w + OuterPad * 2.0f, GlowH + OuterPad * 2.0f, Width, Height);
+		Graphics()->DrawRect(View.x - OuterPad, View.y - OuterPad, View.w + OuterPad * 2.0f, GlowH + OuterPad * 2.0f, GlowColor, Corners, Metrics.m_Rounding + OuterPad);
 	}
-	if(BackgroundEnabled)
+	if(DrawLyricsTimerTab)
 	{
-		const int Corners = HudLayout::BackgroundCorners(IGraphics::CORNER_ALL, View.x, View.y, View.w, View.h, Width, Height);
-		Graphics()->DrawRect(View.x, View.y, View.w, View.h, PanelColor, Corners, Metrics.m_Rounding);
+		const float TabW = ForcePreview ? minimum(View.w * 0.45f, LyricsBelowTimerFont(Scale, TextScale) * 6.5f) : LyricsTimerTabW;
+		DrawMusicPlayerPanelWithTimerTab(Graphics(), View, TabW, LyricsTimerFooterH, LyricsBelowTimerFillet(Scale), Metrics.m_Rounding, PanelColor, Width, Height);
 	}
 	else
 	{
@@ -3581,47 +3923,39 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 	CUIRect Content = View;
 	Content.Margin(1.70f * Scale, &Content);
 
-	const bool RenderMiniLayout = CompactMiniLayout;
-	const bool RenderCover = ShowCover;
 	const bool RenderVisualizer = true;
-	const float VisualW = MusicPlayerVisualizerWidth(RenderMiniLayout, Scale, WidthScale, ExpandT);
+	// Lerp mini->expanded geometry with ExpandT so lyrics TextArea (equal cover/visualizer
+	// gaps) does not jump sideways when CompactMiniLayout flips off at ExpandT~0.
+	const float LayoutT = ExpandT;
 	const bool HasMusic = Snapshot.m_PlaybackState == EMusicPlaybackState::PLAYING;
-	const float VisualH = RenderMiniLayout ? maximum(0.0f, View.h - 1.8f * Scale) : (HasMusic ? (8.2f * Scale + ExpandT * 2.1f * Scale) : (3.6f * Scale + ExpandT * 0.6f * Scale));
-	CUIRect ArtRect{};
-	CUIRect VisualRect{};
+	const float MiniVisualW = MusicPlayerVisualizerWidth(true, Scale, WidthScale, 0.0f);
+	const float ExpandedVisualW = MusicPlayerVisualizerWidth(false, Scale, WidthScale, 1.0f);
+	const float VisualW = mix(MiniVisualW, ExpandedVisualW, LayoutT);
+	const float MiniVisualH = maximum(0.0f, View.h - 1.8f * Scale);
+	const float ExpandedVisualH = HasMusic ? (8.2f * Scale + 2.1f * Scale) : (3.6f * Scale + 0.6f * Scale);
+	const float VisualH = mix(MiniVisualH, ExpandedVisualH, LayoutT);
+	const float MiniArtSize = ShowCover ? maximum(0.0f, View.h - 1.7f * Scale) : 0.0f;
+	const float ExpandedArtSize = ShowCover ? minimum(View.h - 1.6f * Scale, 13.2f * Scale + 2.2f * Scale) : 0.0f;
+	const float ArtSize = mix(MiniArtSize, ExpandedArtSize, LayoutT);
+	const float CoverPad = mix(0.95f, 1.15f, LayoutT) * Scale * WidthScale;
+	const float VisualPad = mix(1.05f, 1.15f, LayoutT) * Scale * WidthScale;
+	const float VisualRightInset = mix(1.70f, 1.95f, LayoutT) * Scale * WidthScale;
+	CUIRect ArtRect = {Content.x + (ShowCover ? 0.1f * Scale * WidthScale : 0.0f), View.y + (View.h - ArtSize) * 0.5f, ArtSize, ArtSize};
+	CUIRect VisualRect = RenderVisualizer ?
+		CUIRect{View.x + View.w - VisualRightInset - VisualW, View.y + (View.h - VisualH) * 0.5f, VisualW, VisualH} :
+		CUIRect{View.x + View.w, View.y, 0.0f, 0.0f};
 	CUIRect TextArea = Content;
-	if(RenderMiniLayout)
-	{
-		const float MiniVisualPad = 1.05f * Scale * WidthScale;
-		const float MiniCoverPad = 0.95f * Scale * WidthScale;
-		const float MiniArtSize = RenderCover ? maximum(0.0f, View.h - 1.7f * Scale) : 0.0f;
-		ArtRect = {Content.x + (RenderCover ? 0.1f * Scale * WidthScale : 0.0f), View.y + (View.h - MiniArtSize) * 0.5f, MiniArtSize, MiniArtSize};
-		VisualRect = RenderVisualizer ?
-			CUIRect{View.x + View.w - 1.70f * Scale * WidthScale - VisualW, View.y + (View.h - VisualH) * 0.5f, VisualW, VisualH} :
-			CUIRect{View.x + View.w, View.y, 0.0f, 0.0f};
-		TextArea = Content;
-		if(RenderCover)
-			TextArea.x = ArtRect.x + ArtRect.w + MiniCoverPad;
-		TextArea.w = RenderVisualizer ? maximum(0.0f, VisualRect.x - MiniVisualPad - TextArea.x) : maximum(0.0f, Content.x + Content.w - TextArea.x);
-	}
-	else
-	{
-		const float VisualPad = 1.15f * Scale * WidthScale;
-		const float ArtSize = RenderCover ? minimum(View.h - 1.6f * Scale, 13.2f * Scale + ExpandT * 2.2f * Scale) : 0.0f;
-		ArtRect = {Content.x + (RenderCover ? 0.1f * Scale * WidthScale : 0.0f), View.y + (View.h - ArtSize) * 0.5f, ArtSize, ArtSize};
-		VisualRect = RenderVisualizer ?
-			CUIRect{View.x + View.w - 1.95f * Scale * WidthScale - VisualW, View.y + (View.h - VisualH) * 0.5f, VisualW, VisualH} :
-			CUIRect{View.x + View.w, View.y, 0.0f, 0.0f};
-		if(RenderCover)
-			TextArea.x = ArtRect.x + ArtRect.w + 1.15f * Scale * WidthScale;
-		TextArea.w = RenderVisualizer ? maximum(0.0f, VisualRect.x - VisualPad - TextArea.x) : maximum(0.0f, Content.x + Content.w - TextArea.x);
-	}
+	if(ShowCover)
+		TextArea.x = ArtRect.x + ArtRect.w + CoverPad;
+	TextArea.w = RenderVisualizer ? maximum(0.0f, VisualRect.x - VisualPad - TextArea.x) : maximum(0.0f, Content.x + Content.w - TextArea.x);
 	const float TextRight = RenderVisualizer ? VisualRect.x : (Content.x + Content.w);
 	const float TextCenterX = View.x + View.w * 0.5f;
 	const float TextHalfW = maximum(0.0f, minimum(TextCenterX - TextArea.x, TextRight - TextCenterX));
 	CUIRect CenteredTextArea = TextHalfW > 0.0f ? CUIRect{TextCenterX - TextHalfW, TextArea.y, TextHalfW * 2.0f, TextArea.h} : TextArea;
-	CUIRect LayoutTextArea = RenderMiniLayout ? TextArea : CenteredTextArea;
-	if(RenderMiniLayout)
+	// Lyrics with cover: cover->visualizer span (equal gaps). Non-lyrics expanded stays
+	// pill-centered; mini non-lyrics keeps TextArea + insets.
+	CUIRect LayoutTextArea = (LyricsEnabled && ShowCover) ? TextArea : ((CompactMiniLayout && !LyricsEnabled) ? TextArea : CenteredTextArea);
+	if(CompactMiniLayout && !LyricsEnabled)
 	{
 		const float MiniTextInset = 0.35f * Scale * WidthScale;
 		const float MiniTextRightInset = 0.25f * Scale * WidthScale;
@@ -3633,15 +3967,15 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 
 	const float ArtRounding = minimum(2.4f * Scale, ArtRect.w * 0.22f);
 	IGraphics::CTextureHandle ArtTexture;
-	if(RenderCover && ArtRect.w > 0.0f &&
+	if(ShowCover && ArtRect.w > 0.0f &&
 		!m_pImpl->m_vArtFrames.empty() &&
 		MediaDecoder::GetCurrentFrameTexture(m_pImpl->m_vArtFrames, m_pImpl->m_ArtAnimated, m_pImpl->m_ArtAnimationStart, ArtTexture) &&
 		ArtTexture.IsValid())
 	{
-		Graphics()->DrawRect(ArtRect.x, ArtRect.y, ArtRect.w, ArtRect.h, WithAlpha(MixColor(Palette.m_Mid, Palette.m_Dark, 0.42f), 0.38f + 0.08f * HoverT), IGraphics::CORNER_ALL, ArtRounding);
+		Graphics()->DrawRect(ArtRect.x, ArtRect.y, ArtRect.w, ArtRect.h, MixColor(Palette.m_Mid, Palette.m_Dark, 0.42f).WithAlpha(0.38f + 0.08f * HoverT), IGraphics::CORNER_ALL, ArtRounding);
 		DrawRoundedTexture(Graphics(), ArtTexture, ArtRect, ArtRounding, m_pImpl->m_ArtWidth, m_pImpl->m_ArtHeight, MusicArtCropProfile(Snapshot.m_ServiceId));
 	}
-	else if(RenderCover && ArtRect.w > 0.0f)
+	else if(ShowCover && ArtRect.w > 0.0f)
 	{
 		DrawRoundedFallbackArt(Graphics(), g_pData->m_aImages[IMAGE_BCICON].m_Id, ArtRect, Palette, HoverT, Scale, ArtRounding);
 	}
@@ -3651,16 +3985,17 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 	const bool PlayerHovered = TitleHoverAllowed &&
 				   (IsPointInsideRect(View, MousePos, 1.5f * Scale) || IsPointInsideRect(UiViewRect, UiMousePos, 1.5f * Scale * UiFontScale));
 	const std::string TrackTitle = MusicPlayerPrimaryText(Snapshot);
-	const bool ShowGameTimer = GameTimer.m_Valid && (RenderMiniLayout || !PlayerHovered);
+	const bool ShowGameTimer = !LyricsEnabled && GameTimer.m_Valid && (CompactMiniLayout || !PlayerHovered);
 	const std::string Title = ShowGameTimer ? GameTimer.m_Text : TrackTitle;
 	const std::string Artist = Snapshot.m_Artist.empty() ? Localize("Unknown artist") : Snapshot.m_Artist;
-	const float TitleFont = (RenderMiniLayout ? 6.0f : (ShowGameTimer ? 6.6f : 5.25f)) * Scale * TextScale;
+	// Lyrics font follows MiniMode setting, not hover expand, so countdown doesn't resize/jump.
+	const float TitleFont = (LyricsEnabled ? (MiniMode ? 6.0f : 5.25f) : (CompactMiniLayout ? 6.0f : (ShowGameTimer ? 6.6f : 5.25f))) * Scale * TextScale;
 	const float ArtistFont = 3.45f * Scale * TextScale;
-	const bool ShowArtist = !RenderMiniLayout && TextT > 0.38f && ExpandT > 0.42f;
-	const bool MiniControlsVisible = RenderMiniLayout && AllowInteraction && PlayerHovered;
+	const bool ShowArtist = !CompactMiniLayout && TextT > 0.38f && ExpandT > 0.42f;
+	const bool MiniControlsVisible = CompactMiniLayout && AllowInteraction && PlayerHovered;
 	CUIRect TitleRect = LayoutTextArea;
-	TitleRect.h = TitleFont + (RenderMiniLayout ? 1.2f : 1.8f) * Scale;
-	TitleRect.y = ShowArtist ? View.y + (ShowGameTimer ? 3.4f : 4.0f) * Scale : View.y + (View.h - TitleRect.h) * 0.5f - (RenderMiniLayout ? 0.0f : 0.1f * Scale);
+	TitleRect.h = TitleFont + (CompactMiniLayout ? 1.2f : 1.8f) * Scale;
+	TitleRect.y = ShowArtist ? View.y + (ShowGameTimer ? 3.4f : 4.0f) * Scale : View.y + (View.h - TitleRect.h) * 0.5f - (CompactMiniLayout ? 0.0f : 0.1f * Scale);
 	CUIRect ArtistRect = LayoutTextArea;
 	ArtistRect.h = ArtistFont + 1.6f * Scale;
 	ArtistRect.y = TitleRect.y + TitleRect.h - 0.9f * Scale;
@@ -3671,27 +4006,29 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 		TitleRect.y -= 1.0f * PixelHeight;
 	}
 
-	if(RenderVisualizer && (!RenderMiniLayout || !MiniControlsVisible))
+	const float VisualPositionMs = ForcePreview ? (float)Snapshot.m_PositionMs : m_pImpl->VisualPositionMs(Delta);
+	const float PositionMs = VisualPositionMs;
+
+	if(RenderVisualizer && (!CompactMiniLayout || !MiniControlsVisible))
 	{
-		const float PositionMs = ForcePreview ? (float)Snapshot.m_PositionMs : m_pImpl->VisualPositionMs(Delta);
 		m_pImpl->UpdateVisualizerLevels(this, Snapshot, (int64_t)PositionMs, NumBars, Delta);
 
 		const bool SoftRounding = IsSoftVisualizerRounding();
-		const float VisualInnerPadX = MusicPlayerVisualizerInnerPadX(RenderMiniLayout, Scale, WidthScale);
-		const float VisualInnerPadY = RenderMiniLayout ? maximum(0.8f, 0.9f * Scale) : 0.20f * Scale;
+		const float VisualInnerPadX = mix(MusicPlayerVisualizerInnerPadX(true, Scale, WidthScale), MusicPlayerVisualizerInnerPadX(false, Scale, WidthScale), LayoutT);
+		const float VisualInnerPadY = mix(maximum(0.8f, 0.9f * Scale), 0.20f * Scale, LayoutT);
 		const float VisualInnerW = maximum(0.0f, VisualRect.w - VisualInnerPadX * 2.0f);
 		const float VisualInnerH = maximum(0.0f, VisualRect.h - VisualInnerPadY * 2.0f);
-		const float Gap = MusicPlayerVisualizerGap(RenderMiniLayout, Scale, WidthScale);
-		const float BarW = maximum(PixelWidth, minimum(MusicPlayerVisualizerBarWidth(RenderMiniLayout, Scale, WidthScale), (VisualInnerW - Gap * (NumBars - 1)) / maximum(1.0f, (float)NumBars)));
+		const float Gap = mix(MusicPlayerVisualizerGap(true, Scale, WidthScale), MusicPlayerVisualizerGap(false, Scale, WidthScale), LayoutT);
+		const float BarWMax = mix(MusicPlayerVisualizerBarWidth(true, Scale, WidthScale), MusicPlayerVisualizerBarWidth(false, Scale, WidthScale), LayoutT);
+		const float BarW = maximum(PixelWidth, minimum(BarWMax, (VisualInnerW - Gap * (NumBars - 1)) / maximum(1.0f, (float)NumBars)));
 		const float BarsTotalW = NumBars * BarW + (NumBars - 1) * Gap;
 		const float BarsStartX = VisualRect.x + VisualInnerPadX + maximum(0.0f, (VisualInnerW - BarsTotalW) * 0.5f);
-		const float LaneH = maximum(RenderMiniLayout ? 2.8f * Scale : 5.2f * Scale, VisualInnerH);
+		const float LaneH = maximum(mix(2.8f * Scale, 5.2f * Scale, LayoutT), VisualInnerH);
 		const float LaneY = VisualRect.y + VisualInnerPadY + (VisualInnerH - LaneH) * 0.5f;
 		const float BaseMidY = LaneY + LaneH * 0.5f;
 		const int VisualizerMode = std::clamp(g_Config.m_BcMusicPlayerVisualizerMode, 0, 2);
-		// Mini stays centered; normal layout respects Bottom / Center / Up.
-		const bool CenterMode = RenderMiniLayout || VisualizerMode == 1;
-		const bool UpMode = !RenderMiniLayout && VisualizerMode == 2;
+		const bool CenterMode = VisualizerMode == 1;
+		const bool UpMode = VisualizerMode == 2;
 		const bool UseCoverVisualizerColor = CoverColorMode && (m_pImpl->m_HasCoverTint || m_pImpl->m_HasCoverBarTint);
 		const float ContentAlpha = std::clamp(0.86f + 0.08f * HoverT, 0.0f, 1.0f);
 		const std::array<ColorRGBA, COVER_BAR_TINT_CELLS> &aVisualizerBarColors = m_pImpl->UpdateVisualizerBarColors(NumBars, Delta, UseCoverVisualizerColor);
@@ -3735,14 +4072,14 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 		}
 	}
 
-	const float ControlsRenderT = RenderMiniLayout ? HoverT : ControlsT;
-	const float ControlsYOffset = RenderMiniLayout ? 0.0f : (1.0f - ControlsT) * 0.75f * Scale;
+	const float ControlsRenderT = CompactMiniLayout ? HoverT : ControlsT;
+	const float ControlsYOffset = CompactMiniLayout ? 0.0f : (1.0f - ControlsT) * 0.75f * Scale;
 	const float ControlsCenterX = View.x + View.w * 0.5f;
 	const float ButtonY = View.y + View.h - 7.2f * Scale + ControlsYOffset;
 	CUIRect PrevRect;
 	CUIRect PlayRect;
 	CUIRect NextRect;
-	if(RenderMiniLayout)
+	if(CompactMiniLayout)
 	{
 		const float MiniControlScale = std::clamp(TextScale, 0.8f, 1.5f);
 		const float MiniButtonH = 3.75f * Scale * MiniControlScale;
@@ -3764,7 +4101,7 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 	const CUIRect UiPrevRect = HudToUiRect(PrevRect, UiScreen, Width, Height);
 	const CUIRect UiPlayRect = HudToUiRect(PlayRect, UiScreen, Width, Height);
 	const CUIRect UiNextRect = HudToUiRect(NextRect, UiScreen, Width, Height);
-	const bool ControlsInteractive = AllowInteraction && (RenderMiniLayout ? MiniControlsVisible : ControlsT > 0.45f);
+	const bool ControlsInteractive = AllowInteraction && (CompactMiniLayout ? MiniControlsVisible : ControlsT > 0.45f);
 	const bool Clicked = ControlsInteractive && (Ui()->MouseButtonClicked(0) || Input()->KeyPress(KEY_MOUSE_1));
 	const bool PrevHovered = ControlsInteractive && Snapshot.m_CanPrev &&
 				 (IsPointInsideRect(PrevRect, MousePos, 1.2f * Scale) || IsPointInsideRect(UiPrevRect, UiMousePos, 1.2f * Scale * UiFontScale));
@@ -3788,16 +4125,52 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 	Props.m_EllipsisAtEnd = true;
 	Props.m_MaxWidth = UiTextArea.w;
 
+	CUIRect BelowTimerHud{};
+	std::string BelowTimerText;
+	bool ShowBelowGameTimer = false;
+	const bool ShowLyricsTimer = DrawLyricsTimerTab;
+	if(ShowLyricsTimer)
+	{
+		ShowBelowGameTimer = GameTimer.m_Valid;
+		BelowTimerText = ShowBelowGameTimer ? GameTimer.m_Text : FormatMusicPositionMs((int64_t)PositionMs);
+		const float TabW = ForcePreview ? minimum(View.w * 0.45f, LyricsBelowTimerFont(Scale, TextScale) * 6.5f) : maximum(LyricsTimerTabW, 1.0f);
+		BelowTimerHud = MakeLyricsTimerTabRect(View, TabW, LyricsTimerFooterH);
+	}
+
 	Ui()->MapScreen();
-	ColorRGBA TitleColor = WithAlpha(ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f), 0.98f);
+	const float UiTitleFont = TitleFont * UiFontScale;
+	if(LyricsEnabled)
+	{
+		m_pImpl->m_Lyrics.Render(TextRender(), Ui(), UiTitleRect, UiTitleFont, Delta);
+
+		if(ShowLyricsTimer)
+		{
+			const CUIRect UiBelowTimer = HudToUiRect(BelowTimerHud, UiScreen, Width, Height);
+			const float BelowFontUi = LyricsBelowTimerFont(Scale, TextScale) * UiFontScale;
+			const float HeightT = std::clamp(LyricsTimerFooterH / maximum(0.001f, LyricsBelowTimerBlockHeight(Scale, TextScale)), 0.0f, 1.0f);
+			ColorRGBA BelowColor = ColorRGBA(1.0f, 1.0f, 1.0f, 0.92f * HeightT);
+			if(ShowBelowGameTimer && GameTimer.m_Warning)
+				BelowColor = ColorRGBA(1.0f, 0.25f, 0.25f, (GameTimer.m_Blink ? 0.5f : 1.0f) * HeightT);
+			TextRender()->TextColor(BelowColor);
+			const float BelowWidth = TextRender()->TextWidth(BelowFontUi, BelowTimerText.c_str(), -1, -1.0f);
+			TextRender()->Text(
+				UiBelowTimer.x + (UiBelowTimer.w - BelowWidth) * 0.5f,
+				UiBelowTimer.y + (UiBelowTimer.h - BelowFontUi) * 0.5f,
+				BelowFontUi,
+				BelowTimerText.c_str(),
+				-1.0f);
+		}
+	}
+	else
+	{
+	ColorRGBA TitleColor = ColorRGBA(1.0f, 1.0f, 1.0f, 1.0f).WithAlpha(0.98f);
 	if(ShowGameTimer && GameTimer.m_Warning)
 		TitleColor = ColorRGBA(1.0f, 0.25f, 0.25f, GameTimer.m_Blink ? 0.5f : 1.0f);
 	TextRender()->TextColor(TitleColor);
-	const float UiTitleFont = TitleFont * UiFontScale;
 	const float TitleWidth = TextRender()->TextWidth(UiTitleFont, Title.c_str(), -1, -1.0f);
 	if(ShowGameTimer)
 	{
-		if(RenderMiniLayout)
+		if(CompactMiniLayout)
 		{
 			if(TitleWidth > UiTitleRect.w)
 			{
@@ -3858,12 +4231,13 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 			Ui()->DoLabel(&UiTitleRect, Title.c_str(), UiTitleFont, TEXTALIGN_MC, Props);
 		}
 	}
+	}
 	if(ShowArtist)
 	{
-		TextRender()->TextColor(WithAlpha(MixColor(Palette.m_Light, ColorRGBA(0.78f, 0.81f, 0.86f, 1.0f), 0.35f), 0.94f * TextT));
+		TextRender()->TextColor(MixColor(Palette.m_Light, ColorRGBA(0.78f, 0.81f, 0.86f, 1.0f), 0.35f).WithAlpha(0.94f * TextT));
 		Ui()->DoLabel(&UiArtistRect, Artist.c_str(), ArtistFont * UiFontScale, TEXTALIGN_MC, Props);
 	}
-	if(ControlsRenderT > 0.001f && (!RenderMiniLayout || MiniControlsVisible))
+	if(ControlsRenderT > 0.001f && (!CompactMiniLayout || MiniControlsVisible))
 	{
 		auto RenderButtonIcon = [&](const CUIRect &Rect, const char *pIcon, bool Enabled, bool Hovered) {
 			TextRender()->SetFontPreset(EFontPreset::ICON_FONT);
@@ -3879,7 +4253,7 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 		RenderButtonIcon(UiNextRect, FontIcon::FORWARD_STEP, Snapshot.m_CanNext, NextHovered);
 	}
 
-	Graphics()->MapScreen(0.0f, 0.0f, Width, Height);
+	Graphics()->MapScreen(CScreenRect(vec2(0.0f, 0.0f), vec2(Width, Height)));
 	TextRender()->TextColor(TextRender()->DefaultTextColor());
 	TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
 }

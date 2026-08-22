@@ -28,7 +28,7 @@
 
 struct OpusEncoder;
 struct OpusDecoder;
-class CHttpRequest;
+class IHttpRequest;
 
 class CVoiceChat : public CComponent
 {
@@ -235,6 +235,8 @@ private:
 	bool m_PushToTalkPressed = false;
 	int64_t m_AutoActivationUntilTick = 0;
 	float m_MicLevel = 0.0f;
+	float m_MicLevelTarget = 0.0f;
+	bool m_MicLevelVisible = false;
 	float m_MicLimiterGain = 1.0f;
 	float m_AutoNsNoiseFloor = 0.0f;
 	float m_AutoNsGate = 1.0f;
@@ -262,7 +264,7 @@ private:
 	int m_LastOutputDevice = -2;
 	std::vector<CVoiceServerEntry> m_vServerEntries;
 	std::vector<CButtonContainer> m_ServerRowButtons;
-	std::shared_ptr<CHttpRequest> m_pServerListTask = nullptr;
+	std::shared_ptr<IHttpRequest> m_pServerListTask = nullptr;
 	std::string m_AdvertisedRoomKey;
 	std::string m_AdvertisedPlayerName;
 	int m_AdvertisedGameClientId = BestClientVoice::INVALID_GAME_CLIENT_ID - 1;

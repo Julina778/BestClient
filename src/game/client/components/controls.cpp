@@ -2,7 +2,8 @@
 /* If you are missing that file, acquire a complete release at teeworlds.com.                */
 #include "controls.h"
 
-#include <base/math.h>
+#include <base/dbg.h>
+#include <base/mem.h>
 #include <base/time.h>
 #include <base/vmath.h>
 
@@ -12,11 +13,10 @@
 #include <generated/protocol.h>
 
 #include <game/client/components/camera.h>
-#include <game/client/components/chat.h>
-#include <game/client/components/menus.h>
-#include <game/client/components/scoreboard.h>
 #include <game/client/gameclient.h>
 #include <game/collision.h>
+
+#include <algorithm>
 
 CControls::CControls()
 {
@@ -78,6 +78,9 @@ void CControls::ConKeyInputState(IConsole::IResult *pResult, void *pUserData)
 {
 	CInputState *pState = (CInputState *)pUserData;
 
+	if(pState->m_pControls->GameClient()->m_SwapTimer.IsInputFrozen())
+		return;
+
 	if(pState->m_pControls->GameClient()->m_GameInfo.m_BugDDRaceInput && pState->m_pControls->GameClient()->m_Snap.m_SpecInfo.m_Active)
 		return;
 
@@ -87,6 +90,9 @@ void CControls::ConKeyInputState(IConsole::IResult *pResult, void *pUserData)
 void CControls::ConKeyInputCounter(IConsole::IResult *pResult, void *pUserData)
 {
 	CInputState *pState = (CInputState *)pUserData;
+
+	if(pState->m_pControls->GameClient()->m_SwapTimer.IsInputFrozen())
+		return;
 
 	if((pState->m_pControls->GameClient()->m_GameInfo.m_BugDDRaceInput && pState->m_pControls->GameClient()->m_Snap.m_SpecInfo.m_Active) || pState->m_pControls->GameClient()->m_Spectator.IsActive())
 		return;
@@ -187,7 +193,7 @@ void CControls::OnMessage(int Msg, void *pRawMsg)
 		if(g_Config.m_ClAutoswitchWeapons)
 			m_aInputData[g_Config.m_ClDummy].m_WantedWeapon = pMsg->m_Weapon + 1;
 		// We don't really know ammo count, until we'll switch to that weapon, but any non-zero count will suffice here
-		m_aAmmoCount[maximum(0, pMsg->m_Weapon % NUM_WEAPONS)] = 10;
+		m_aAmmoCount[std::max(0, pMsg->m_Weapon % NUM_WEAPONS)] = 10;
 	}
 }
 
@@ -219,6 +225,8 @@ int CControls::SnapInput(int *pData)
 		m_aInputData[g_Config.m_ClDummy].m_PlayerFlags = PLAYERFLAG_CHATTING;
 	else if(GameClient()->m_Menus.IsActive())
 		m_aInputData[g_Config.m_ClDummy].m_PlayerFlags = PLAYERFLAG_IN_MENU;
+	else if(GameClient()->m_SwapTimer.IsInputFrozen()) // BestClient swap peek spectate
+		m_aInputData[g_Config.m_ClDummy].m_PlayerFlags = 0;
 	else
 		m_aInputData[g_Config.m_ClDummy].m_PlayerFlags = PLAYERFLAG_PLAYING;
 
@@ -264,7 +272,8 @@ int CControls::SnapInput(int *pData)
 	// we freeze the input if chat or menu is activated
 	if(!(m_aInputData[g_Config.m_ClDummy].m_PlayerFlags & PLAYERFLAG_PLAYING))
 	{
-		if(!GameClient()->m_GameInfo.m_BugDDRaceInput)
+		// Always clear leftover movement while swap-peeking; DDRace skips ResetInput for chat/menu.
+		if(!GameClient()->m_GameInfo.m_BugDDRaceInput || GameClient()->m_SwapTimer.IsInputFrozen())
 			ResetInput(g_Config.m_ClDummy);
 
 		mem_copy(pData, &m_aInputData[g_Config.m_ClDummy], sizeof(m_aInputData[0]));
@@ -356,6 +365,7 @@ int CControls::SnapInput(int *pData)
 				pDummyInput->m_Fire++;
 
 			pDummyInput->m_Hook = g_Config.m_ClDummyHook;
+			m_aInputData[!g_Config.m_ClDummy] = *pDummyInput;
 		}
 
 		// stress testing
@@ -404,7 +414,7 @@ void CControls::OnRender()
 	if(g_Config.m_ClAutoswitchWeaponsOutOfAmmo && !GameClient()->m_GameInfo.m_UnlimitedAmmo && GameClient()->m_Snap.m_pLocalCharacter)
 	{
 		// Keep track of ammo count, we know weapon ammo only when we switch to that weapon, this is tracked on server and protocol does not track that
-		m_aAmmoCount[maximum(0, GameClient()->m_Snap.m_pLocalCharacter->m_Weapon % NUM_WEAPONS)] = GameClient()->m_Snap.m_pLocalCharacter->m_AmmoCount;
+		m_aAmmoCount[std::max(0, GameClient()->m_Snap.m_pLocalCharacter->m_Weapon % NUM_WEAPONS)] = GameClient()->m_Snap.m_pLocalCharacter->m_AmmoCount;
 		// Autoswitch weapon if we're out of ammo
 		if(m_aInputData[g_Config.m_ClDummy].m_Fire % 2 != 0 &&
 			GameClient()->m_Snap.m_pLocalCharacter->m_AmmoCount == 0 &&
@@ -444,8 +454,11 @@ void CControls::OnRender()
 
 bool CControls::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
 {
-	if(GameClient()->m_Snap.m_pGameInfoObj && (GameClient()->m_Snap.m_pGameInfoObj->m_GameStateFlags & GAMESTATEFLAG_PAUSED))
+	if(GameClient()->IsWorldPaused())
 		return false;
+
+	if(GameClient()->m_SwapTimer.IsInputFrozen()) // BestClient
+		return true;
 
 	if(CursorType == IInput::CURSOR_JOYSTICK && g_Config.m_InpControllerAbsolute && GameClient()->m_Snap.m_pGameInfoObj && !GameClient()->m_Snap.m_SpecInfo.m_Active)
 	{
@@ -519,9 +532,9 @@ void CControls::UpdateSnapTapState(int Dummy, bool LeftPressed, bool RightPresse
 int CControls::ResolveMovementDirection(int Dummy, bool LeftPressed, bool RightPressed, bool UpdateState)
 {
 	// Edge detection must only ever be driven by the authoritative tick-rate caller (SnapInput). Fast-input
-	// prediction (CheckNewInput) polls this every render frame and would otherwise consume the press/release
-	// transition before SnapInput sees it, leaving the wrong tee misprioritized and causing a visible
-	// misprediction stutter whenever the opposite direction is tapped while one is held.
+	// prediction (CheckNewInput / cloud input) polls this every render frame and would otherwise consume the
+	// press/release transition before SnapInput sees it, leaving the wrong tee misprioritized and causing a
+	// visible misprediction stutter whenever the opposite direction is tapped while one is held.
 	if(UpdateState)
 		UpdateSnapTapState(Dummy, LeftPressed, RightPressed);
 
@@ -621,7 +634,7 @@ float CControls::GetMaxMouseDistance() const
 	float FollowFactor = (g_Config.m_ClDyncam ? g_Config.m_ClDyncamFollowFactor : g_Config.m_ClMouseFollowfactor) / 100.0f;
 	float DeadZone = g_Config.m_ClDyncam ? g_Config.m_ClDyncamDeadzone : g_Config.m_ClMouseDeadzone;
 	float MaxDistance = g_Config.m_ClDyncam ? g_Config.m_ClDyncamMaxDistance : g_Config.m_ClMouseMaxDistance;
-	return minimum((FollowFactor != 0 ? CameraMaxDistance / FollowFactor + DeadZone : MaxDistance), MaxDistance);
+	return std::min(FollowFactor != 0.0f ? CameraMaxDistance / FollowFactor + DeadZone : MaxDistance, MaxDistance);
 }
 
 bool CControls::CheckNewInput()

@@ -6,9 +6,12 @@
 #include "render.h"
 
 #include <base/color.h>
+#include <base/types.h>
 #include <base/vmath.h>
 
 #include <engine/client.h>
+
+class CSnapshotBuffer;
 #include <engine/client/enums.h>
 #include <engine/console.h>
 #include <engine/shared/config.h>
@@ -90,6 +93,10 @@
 #include "components/bestclient/cherry_gifs.h"
 #include "components/bestclient/chat_bubbles.h"
 #include "components/bestclient/cloud_input.h"
+#include "components/bestclient/edgehelper.h"
+#include "components/bestclient/physicball.h"
+#include "components/bestclient/process_priority.h"
+#include "components/bestclient/spec_pause_radio.h"
 #include "components/bestclient/fast_actions.h"
 #include "components/bestclient/fast_practice.h"
 #include "components/bestclient/gif_bubbles.h"
@@ -102,7 +109,9 @@
 #include "components/bestclient/rollback_demo.h"
 #include "components/bestclient/self_time_cp.h"
 #include "components/bestclient/show_points.h"
+#include "components/bestclient/swap_timer.h"
 #include "components/bestclient/translate.h"
+#include "components/bestclient/twitch_chat.h"
 #include "components/bestclient/voice/voice.h"
 #include "components/bestclient/clans/clans.h"
 #include "components/tclient/warlist.h"
@@ -112,6 +121,7 @@
 #include "components/pie_menu.h"
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 class IMap;
@@ -166,6 +176,8 @@ public:
 	bool m_DDRaceTeam;
 
 	bool m_PredictEvents;
+
+	bool m_Supports128Teams;
 };
 
 class CSnapEntities
@@ -251,8 +263,12 @@ public:
 	CGifWheel m_GifWheel; // BestClient
 	CGifBubbles m_GifBubbles; // BestClient
 	CChatBubbles m_ChatBubbles; // BestClient
+	CPhysicBalls m_PhysicBalls; // BestClient (from Entity-Client)
+	CProcessPriority m_ProcessPriority; // BestClient (from Entity-Client)
+	CSpecPauseRadio m_SpecPauseRadio; // BestClient (from Entity-Client)
 	CFastPractice m_FastPractice; // BestClient
 	CCloudInput m_CloudInput; // BestClient
+	CEdgeHelper m_EdgeHelper; // BestClient (from RushieClient)
 	CBgDraw m_BgDraw;
 	CTClient m_TClient;
 	CTrails m_Trails;
@@ -269,8 +285,10 @@ public:
 	CAdminPanel m_AdminPanel; // BestClient
 	CBcAutoMargin m_BcAutoMargin; // BestClient
 	CVoiceChat m_VoiceChat; // BestClient
+	CTwitchChat m_TwitchChat; // BestClient
 	CClans m_Clans; // BestClient
 	CHudEditor m_HudEditor; // BestClient
+	CSwapTimer m_SwapTimer; // BestClient
 	CPet m_Pet;
 	CPlayerIndicator m_PlayerIndicator;
 	COutlines m_Outlines;
@@ -350,11 +368,13 @@ private:
 	static void ConchainSpecialInfoupdate(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 	static void ConchainSpecialDummyInfoupdate(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 	static void ConchainRefreshSkins(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
+	static void ConchainRefreshSkinMaxWidth(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 	static void ConchainRefreshEventSkins(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 	static void ConchainSpecialDummy(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
 
 	static void ConTuneParam(IConsole::IResult *pResult, void *pUserData);
 	static void ConTuneZone(IConsole::IResult *pResult, void *pUserData);
+	static void ConTuneLock(IConsole::IResult *pResult, void *pUserData);
 	static void ConMapbug(IConsole::IResult *pResult, void *pUserData);
 
 	static void ConchainMenuMap(IConsole::IResult *pResult, void *pUserData, IConsole::FCommandCallback pfnCallback, void *pCallbackUserData);
@@ -495,6 +515,10 @@ public:
 			const CNetObj_DDNetCharacter *m_pPrevExtendedData;
 			bool m_HasExtendedData;
 			bool m_HasExtendedDisplayInfo;
+
+			CNetObj_CharacterTuning m_Tuning;
+			const CNetObj_CharacterTuning *m_pPrevTuning;
+			bool m_HasTuning;
 		};
 		CCharacterInfo m_aCharacters[MAX_CLIENTS];
 	};
@@ -587,9 +611,6 @@ public:
 		vec2 m_ImprovedPredPos = vec2(0, 0);
 		vec2 m_PrevImprovedPredPos = vec2(0, 0);
 		bool m_ValidAntipingSmooth = false;
-		//vec2 m_DebugVector = vec2(0, 0);
-		//vec2 m_DebugVector2 = vec2(0, 0);
-		//vec2 m_DebugVector3 = vec2(0, 0);
 		float m_Uncertainty = 0.0f;
 		float m_VolleyBallAngle = 0.0f;
 		bool m_IsVolleyBall = false;
@@ -716,12 +737,12 @@ public:
 	template<typename T>
 	void ApplySkin7InfoFromGameMsg(const T *pMsg, int ClientId, int Conn);
 	void ApplySkin7InfoFromSnapObj(const protocol7::CNetObj_De_ClientInfo *pObj, int ClientId) override;
-	int OnDemoRecSnap7(class CSnapshot *pFrom, class CSnapshot *pTo, int Conn) override;
+	int OnDemoRecSnap7(CSnapshot *pFrom, CSnapshotBuffer *pTo, int Conn) override;
 	void *TranslateGameMsg(int *pMsgId, CUnpacker *pUnpacker, int Conn);
-	int TranslateSnap(CSnapshot *pSnapDstSix, CSnapshot *pSnapSrcSeven, int Conn, bool Dummy) override;
+	int TranslateSnap(CSnapshotBuffer *pSnapDstSix, CSnapshot *pSnapSrcSeven, int Conn, bool Dummy) override;
 	void OnMessage(int MsgId, CUnpacker *pUnpacker, int Conn, bool Dummy) override;
 	void InvalidateSnapshot() override;
-	void OnNewSnapshot() override;
+	void OnNewSnapshot(bool DummySwapped) override;
 	void OnPredict() override;
 	void OnActivateEditor() override;
 	void OnDummySwap() override;
@@ -799,6 +820,7 @@ public:
 	bool m_ReceivedDDNetPlayer;
 	bool m_ReceivedDDNetPlayerFinishTimes;
 	bool m_ReceivedDDNetPlayerFinishTimesMillis;
+	bool m_ReceivedPreInput = false;
 
 	class CTeamsCore m_Teams;
 
@@ -807,23 +829,18 @@ public:
 	int LastRaceTick() const;
 	int CurrentRaceTime() const;
 
-	bool IsTeamPlay() const { return m_Snap.m_pGameInfoObj && m_Snap.m_pGameInfoObj->m_GameFlags & GAMEFLAG_TEAMS; }
+	bool IsTeamPlay() const;
+	bool IsWorldPaused() const;
+	bool IsDemoPlaybackPaused() const;
+	float GetAnimationPlaybackSpeed() const;
 
-	bool AntiPingPlayers() const { return m_FastPractice.ForcePredictPlayers() || (g_Config.m_ClAntiPing && g_Config.m_ClAntiPingPlayers && !m_Snap.m_SpecInfo.m_Active && Client()->State() != IClient::STATE_DEMOPLAYBACK); }
-	bool AntiPingGrenade() const { return m_FastPractice.ForcePredictGrenade() || (g_Config.m_ClAntiPing && g_Config.m_ClAntiPingGrenade && !m_Snap.m_SpecInfo.m_Active && Client()->State() != IClient::STATE_DEMOPLAYBACK); }
-	bool AntiPingWeapons() const { return m_FastPractice.ForcePredictWeapons() || (g_Config.m_ClAntiPing && g_Config.m_ClAntiPingWeapons && !m_Snap.m_SpecInfo.m_Active && Client()->State() != IClient::STATE_DEMOPLAYBACK); }
-	bool AntiPingGunfire() const { return m_FastPractice.ForcePredictGunfire() || (AntiPingGrenade() && AntiPingWeapons() && g_Config.m_ClAntiPingGunfire); }
+	int AntiPingPlayers() const;
+	bool AntiPingGrenade() const;
+	bool AntiPingWeapons() const;
+	bool AntiPingGunfire() const;
 	bool Predict() const;
-	bool PredictDummy() const
-	{
-		// BestClient: in fast practice the predicted dummy is a fixed practice participant
-		if(m_FastPractice.Active())
-		{
-			const int FastPracticeDummyId = m_FastPractice.CurrentPracticeDummyId();
-			return FastPracticeDummyId >= 0 && m_Snap.m_LocalClientId >= 0 && !m_aClients[FastPracticeDummyId].m_Paused;
-		}
-		return g_Config.m_ClPredictDummy && Client()->DummyConnected() && m_Snap.m_LocalClientId >= 0 && m_PredictedDummyId >= 0 && !m_aClients[m_PredictedDummyId].m_Paused;
-	}
+	bool PredictDummy() const;
+
 	const CTuningParams *GetTuning(int i) const { return &m_aTuningList[i]; }
 	ColorRGBA GetDDTeamColor(int DDTeam, float Lightness = 0.5f) const;
 	void FormatClientId(int ClientId, char (&aClientId)[16], EClientIdFormat Format) const;
@@ -1035,6 +1052,7 @@ public:
 	vec2 GetSmoothPos(int ClientId);
 	vec2 GetFreezePos(int ClientId);
 	vec2 GetFastInputPos(int ClientId);
+	vec2 BcGetCursorWorldPos() const;
 
 	int m_MultiViewTeam;
 	float m_MultiViewPersonalZoom;
@@ -1065,6 +1083,20 @@ private:
 	int m_aEnableSpectatorCount[NUM_DUMMIES]; // current setting as sent to the server, -1 if not yet sent
 
 	std::vector<std::shared_ptr<CManagedTeeRenderInfo>> m_vpManagedTeeRenderInfos;
+
+	class CImageAsset
+	{
+	public:
+		bool IsLoaded() const { return m_ImageInfo.m_pData != nullptr; }
+
+		char m_aPath[IO_MAX_PATH_LENGTH];
+		bool m_IsDefault;
+		CImageInfo m_ImageInfo;
+		std::optional<CImageInfo> m_FallbackImageInfo;
+	};
+
+	CImageAsset LoadAssetFromPath(const char *pPath, bool AsDir, int AssetId, const char *pDirectory) const;
+
 	void UpdateManagedTeeRenderInfos();
 
 	void UpdateLocalTuning();
@@ -1073,14 +1105,13 @@ private:
 	void UpdateRenderedCharacters();
 	void HandlePredictedEvents(int Tick);
 
+	void OnInput(const IInput::CEvent &Event);
+
 	void RenderEyeComfortOverlay(); // BestClient
 
 	// BestClient: optimizer
-	void OptimizerUpdateProcessPriorities();
 	void RenderOptimizerFpsFogRect();
-	unsigned long m_OptimizerDdnetPrevPriorityClass = 0;
-	unsigned long m_OptimizerDdnetLastSetPriorityClass = 0;
-	bool m_OptimizerDdnetPriorityHighActive = false;
+	int m_WasWindowActive = 1;
 
 	int m_aLastUpdateTick[MAX_CLIENTS] = {0};
 	void DetectStrongHook();
@@ -1102,6 +1133,9 @@ private:
 	// tunings for every zone on the map, 0 is a global tune
 	CTuningParams m_aTuningList[TuneZone::NUM];
 	CTuningParams *TuningList() { return m_aTuningList; }
+
+	LOCKED_TUNES m_aLockedTuning[TuneZone::NUM];
+	LOCKED_TUNES *LockedTuning() { return m_aLockedTuning; }
 
 	float m_LastShowDistanceZoom;
 	float m_LastZoom;
@@ -1140,8 +1174,6 @@ public:
 	// TClient
 	int m_SmoothTick = 0;
 	float m_SmoothIntraTick = 0.0f;
-	int m_aCloudSmoothTick[2] = {};
-	float m_aCloudSmoothIntraTick[2] = {};
 	bool CheckNewInput() override;
 	bool IsSnapTapBlockedByCommunity() const;
 	bool IsAspectRatioBlockedByFng() const;

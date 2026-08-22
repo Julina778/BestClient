@@ -56,7 +56,7 @@ public:
 	int DoButton_Toggle(const void *pId, int Checked, const CUIRect *pRect, bool Active, unsigned Flags = BUTTONFLAG_LEFT);
 	int DoButton_Menu(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, unsigned Flags = BUTTONFLAG_LEFT, const char *pImageName = nullptr, int Corners = IGraphics::CORNER_ALL, float Rounding = 5.0f, float FontFactor = 0.0f, ColorRGBA Color = ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f));
 	int DoButton_MenuEx(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, unsigned Flags, const char *pImageName, int Corners, float Rounding, float FontFactor, ColorRGBA Color, bool AlwaysColoredImage);
-	int DoButton_MenuTab(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, int Corners, SUIAnimator *pAnimator = nullptr, const ColorRGBA *pDefaultColor = nullptr, const ColorRGBA *pActiveColor = nullptr, const ColorRGBA *pHoverColor = nullptr, float EdgeRounding = 10.0f, const CCommunityIcon *pCommunityIcon = nullptr);
+	int DoButton_MenuTab(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, int Corners, SUIAnimator *pAnimator = nullptr, const ColorRGBA *pDefaultColor = nullptr, const ColorRGBA *pActiveColor = nullptr, const ColorRGBA *pHoverColor = nullptr, float EdgeRounding = 10.0f, const CCommunityIcon *pCommunityIcon = nullptr, bool AnimateChecked = true, int HoverCorners = IGraphics::CORNER_NONE, float HoverRounding = -1.0f);
 
 	int DoButton_CheckBox_Common(const void *pId, const char *pText, const char *pBoxText, const CUIRect *pRect, unsigned Flags);
 	int DoButton_CheckBox(const void *pId, const char *pText, int Checked, const CUIRect *pRect);
@@ -75,11 +75,9 @@ private:
 	ColorHSLA DoLine_ColorPicker(CButtonContainer *pResetId, float LineSize, float LabelSize, float BottomMargin, CUIRect *pMainRect, const char *pText, unsigned int *pColorValue, ColorRGBA DefaultColor, bool CheckBoxSpacing = true, int *pCheckBoxValue = nullptr, bool Alpha = false, bool ShowReset = true);
 	ColorHSLA DoButton_ColorPicker(const CUIRect *pRect, unsigned int *pHslaColor, bool Alpha);
 
-	void DoLaserPreview(const CUIRect *pRect, ColorHSLA OutlineColor, ColorHSLA InnerColor, int LaserType);
 	int DoButton_GridHeader(const void *pId, const char *pText, int Checked, const CUIRect *pRect, int Align = TEXTALIGN_ML);
 	int DoButton_Favorite(const void *pButtonId, const void *pParentId, bool Checked, const CUIRect *pRect);
 
-	bool m_SkinListScrollToSelected = false;
 	std::optional<std::chrono::nanoseconds> m_SkinList7LastRefreshTime;
 	std::optional<std::chrono::nanoseconds> m_SkinPartsList7LastRefreshTime;
 
@@ -647,12 +645,8 @@ protected:
 	void UpdateCommunityCache(bool Force);
 
 	// found in menus_settings.cpp
-	void RenderLanguageSettings(CUIRect MainView);
-	bool RenderLanguageSelection(CUIRect MainView);
-	void RenderThemeSelection(CUIRect MainView);
-	void RenderSettingsGeneral(CUIRect MainView);
-	void RenderSettingsPlayer(CUIRect MainView);
-	void RenderSettingsTee(CUIRect MainView);
+	void RenderSettings(CUIRect MainView);
+	bool RenderHslaScrollbars(CUIRect *pRect, unsigned int *pColor, bool Alpha, float DarkestLight);
 	struct SPopupSettingsCountrySelectionContext
 	{
 		CMenus *m_pMenus;
@@ -661,22 +655,55 @@ protected:
 		bool m_New;
 	};
 	static CUi::EPopupMenuFunctionResult PopupSettingsCountrySelection(void *pContext, CUIRect View, bool Active);
-	void RenderSettingsTee7(CUIRect MainView);
-	void RenderSettingsTeeCustom7(CUIRect MainView);
-	void RenderSkinSelection7(CUIRect MainView);
-	void RenderSkinPartSelection7(CUIRect MainView);
-	void RenderSettingsGraphics(CUIRect MainView);
-	void RenderSettingsSound(CUIRect MainView);
-	void RenderSettings(CUIRect MainView);
-	void RenderSettingsCustom(CUIRect MainView);
+
+	// found in menus_settings_assets.cpp
+	void RenderSettingsAssets(CUIRect MainView);
+
+	// found in menus_settings_appearance.cpp
+	void RenderSettingsAppearance(CUIRect MainView);
+	void DoLaserPreview(const CUIRect *pRect, ColorHSLA OutlineColor, ColorHSLA InnerColor, int LaserType);
 
 	// found in menus_settings_controls.cpp
 	// TODO: Change PopupConfirm to avoid using a function pointer to a CMenus
 	//       member function, to move this function to CMenusSettingsControls
 	void ResetSettingsControls();
 
+	// found in menus_settings_credits.cpp
+	void RenderSettingsCredits(CUIRect MainView);
+
+	// found in menus_settings_ddnet.cpp
+	void RenderSettingsDDNet(CUIRect MainView);
+
+	// found in menus_settings_general.cpp
+	void RenderSettingsGeneral(CUIRect MainView);
+	void RenderThemeSelection(CUIRect MainView);
+
+	// found in menus_settings_graphics.cpp
+	void RenderSettingsGraphics(CUIRect MainView);
+
+	// found in menus_settings_language.cpp
+	void RenderLanguageSettings(CUIRect MainView);
+	bool RenderLanguageSelection(CUIRect MainView);
+
+	// found in menus_settings_player.cpp
+	void RenderSettingsPlayer(CUIRect MainView);
+
+	// found in menus_settings_sound.cpp
+	void RenderSettingsSound(CUIRect MainView);
+
+	// found in menus_settings_tee.cpp
+	void RenderSettingsTee(CUIRect MainView);
+	void RenderSettingsTee7(CUIRect MainView);
+	bool m_SkinListScrollToSelected = false;
+
+	// found in menus_settings_tee7.cpp
+	void RenderSettingsTeeCustom7(CUIRect MainView);
+	void RenderSkinSelection7(CUIRect MainView);
+	void RenderSkinPartSelection7(CUIRect MainView);
+
 	std::vector<CButtonContainer> m_vButtonContainersNamePlateShow = {{}, {}, {}, {}};
 	std::vector<CButtonContainer> m_vButtonContainersNamePlateKeyPresses = {{}, {}, {}, {}};
+	std::vector<CButtonContainer> m_vButtonContainersAntiPingPlayers = {{}, {}, {}};
 
 	class CMapListItem
 	{
@@ -781,6 +808,7 @@ public:
 		SETTINGS_BESTCLIENT,
 		SETTINGS_PROFILES,
 		SETTINGS_CONFIGS,
+		SETTINGS_CREDITS,
 
 		SETTINGS_LENGTH,
 	};
@@ -928,10 +956,6 @@ private:
 	void RenderInGameNetwork(CUIRect MainView);
 	void RenderGhost(CUIRect MainView);
 
-	// found in menus_settings.cpp
-	void RenderSettingsDDNet(CUIRect MainView);
-	void RenderSettingsAppearance(CUIRect MainView);
-
 	// found in menus_bestclient.cpp
 	struct SPopupVoiceModerationContext
 	{
@@ -982,6 +1006,15 @@ public:
 		bool m_IsDefault = false;
 	};
 
+	enum
+	{
+		ASSETS_EDITOR_COLOR_BLEND_TEELIKE = 0,
+		ASSETS_EDITOR_COLOR_BLEND_SCREEN,
+		ASSETS_EDITOR_COLOR_BLEND_MULTIPLY,
+		ASSETS_EDITOR_COLOR_BLEND_OVERLAY,
+		ASSETS_EDITOR_COLOR_BLEND_COUNT,
+	};
+
 	struct SAssetsEditorPartSlot
 	{
 		int m_SpriteId = -1;
@@ -997,6 +1030,10 @@ public:
 		int m_SrcH = 0;
 		char m_aFamilyKey[64] = {0};
 		char m_aSourceAsset[64] = {0};
+		bool m_UseCustomColor = false;
+		unsigned m_CustomColor = 65408; // default matches player_color_body
+		int m_ColorBlendMode = ASSETS_EDITOR_COLOR_BLEND_TEELIKE;
+		int m_ColorOpacity = 100; // 0-100
 	};
 
 private:
@@ -1036,6 +1073,8 @@ private:
 		int m_ComposedPreviewHeight = 0;
 		std::vector<SAssetsEditorAssetEntry> m_avAssets[ASSETS_EDITOR_TYPE_COUNT];
 		std::vector<SAssetsEditorPartSlot> m_vPartSlots;
+		int m_ContextMenuSlotIndex = -1;
+		int m_ColorEditSlotIndex = -1;
 	};
 
 	SAssetsEditorState m_AssetsEditorState;
@@ -1061,6 +1100,10 @@ private:
 	void AssetsEditorRenderExitConfirm(const CUIRect &Rect);
 	void AssetsEditorBuildFamilyKey(int Type, const CDataSprite *pSprite, char *pOut, int OutSize);
 	bool AssetsEditorCopyRectScaledNearest(CImageInfo &Dst, const CImageInfo &Src, int DstX, int DstY, int DstW, int DstH, int SrcX, int SrcY, int SrcW, int SrcH);
+	void AssetsEditorColorizeRect(CImageInfo &Image, int X, int Y, int W, int H, const SAssetsEditorPartSlot &Slot) const;
+	void AssetsEditorOpenColorPopup(int SlotIndex, float X, float Y);
+	void AssetsEditorClearSlotCustomColor(int SlotIndex);
+	static CUi::EPopupMenuFunctionResult AssetsEditorPopupColorEditor(void *pContext, CUIRect View, bool Active);
 
 	// found in menus_tclient.cpp
 	void RenderSettingsTClient(CUIRect MainView);
@@ -1082,7 +1125,6 @@ private:
 	int DoButtonNoRect_FontIcon(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, int Corners = IGraphics::CORNER_ALL);
 
 	ColorHSLA RenderHSLColorPicker(const CUIRect *pRect, unsigned int *pColor, bool Alpha);
-	bool RenderHslaScrollbars(CUIRect *pRect, unsigned int *pColor, bool Alpha, float DarkestLight);
 	int DoButtonLineSize_Menu(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, float ButtonLineSize, bool Fake = false, const char *pImageName = nullptr, int Corners = IGraphics::CORNER_ALL, float Rounding = 5.0f, float FontFactor = 0.0f, ColorRGBA Color = ColorRGBA(1.0f, 1.0f, 1.0f, 0.5f));
 };
 #endif

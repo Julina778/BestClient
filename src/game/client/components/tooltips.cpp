@@ -6,7 +6,7 @@
 
 CTooltips::CTooltips()
 {
-	OnReset();
+	CTooltips::OnReset();
 }
 
 void CTooltips::OnReset()
@@ -38,7 +38,7 @@ void CTooltips::SetFadeTime(const void *pId, float Time)
 	}
 }
 
-void CTooltips::DoToolTip(const void *pId, const CUIRect *pNearRect, const char *pText, float WidthHint)
+void CTooltips::DoToolTip(const void *pId, const CUIRect *pNearRect, const char *pText, float WidthHint, ColorRGBA TextColor)
 {
 	uintptr_t Id = reinterpret_cast<uintptr_t>(pId);
 	const auto &[Entry, WasInserted] = m_Tooltips.emplace(Id, CTooltip{
@@ -46,13 +46,16 @@ void CTooltips::DoToolTip(const void *pId, const CUIRect *pNearRect, const char 
 									  *pNearRect,
 									  pText,
 									  WidthHint,
-									  false});
+									  false,
+									  0.75f,
+									  TextColor});
 	CTooltip &Tooltip = Entry->second;
 
 	if(!WasInserted)
 	{
 		Tooltip.m_Rect = *pNearRect; // update in case of window resize
 		Tooltip.m_pText = pText; // update in case of language change
+		Tooltip.m_TextColor = TextColor;
 	}
 
 	Tooltip.m_OnScreen = true;
@@ -106,8 +109,8 @@ void CTooltips::OnRender()
 		Rect.h = BoundingBox.m_H + 2 * Padding;
 
 		const CUIRect *pScreen = Ui()->Screen();
-		Rect.w = minimum(Rect.w, pScreen->w - 2 * Margin);
-		Rect.h = minimum(Rect.h, pScreen->h - 2 * Margin);
+		Rect.w = std::min(Rect.w, pScreen->w - 2 * Margin);
+		Rect.h = std::min(Rect.h, pScreen->h - 2 * Margin);
 
 		// Try the top side.
 		if(Tooltip.m_Rect.y - Rect.h - Margin > pScreen->y)
@@ -150,7 +153,7 @@ void CTooltips::OnRender()
 
 		if(TextContainerIndex.Valid())
 		{
-			ColorRGBA TextColor = TextRender()->DefaultTextColor();
+			ColorRGBA TextColor = Tooltip.m_TextColor;
 			TextColor.a *= AlphaFactor;
 			ColorRGBA OutlineColor = TextRender()->DefaultTextOutlineColor();
 			OutlineColor.a *= AlphaFactor;

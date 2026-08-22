@@ -200,7 +200,7 @@ int CMenus::DoButton_MenuEx(CButtonContainer *pButtonContainer, const char *pTex
 	return Ui()->DoButtonLogic(pButtonContainer, Checked, pRect, Flags);
 }
 
-int CMenus::DoButton_MenuTab(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, int Corners, SUIAnimator *pAnimator, const ColorRGBA *pDefaultColor, const ColorRGBA *pActiveColor, const ColorRGBA *pHoverColor, float EdgeRounding, const CCommunityIcon *pCommunityIcon)
+int CMenus::DoButton_MenuTab(CButtonContainer *pButtonContainer, const char *pText, int Checked, const CUIRect *pRect, int Corners, SUIAnimator *pAnimator, const ColorRGBA *pDefaultColor, const ColorRGBA *pActiveColor, const ColorRGBA *pHoverColor, float EdgeRounding, const CCommunityIcon *pCommunityIcon, bool AnimateChecked, int HoverCorners, float HoverRounding)
 {
 	const bool MouseInside = Ui()->HotItem() == pButtonContainer;
 	CUIRect Rect = *pRect;
@@ -215,7 +215,7 @@ int CMenus::DoButton_MenuTab(CButtonContainer *pButtonContainer, const char *pTe
 			pAnimator->m_Time = Time;
 		}
 
-		pAnimator->m_Active = Checked || MouseInside;
+		pAnimator->m_Active = MouseInside || (AnimateChecked && Checked);
 
 		if(pAnimator->m_Active)
 			pAnimator->m_Value = std::clamp<float>(pAnimator->m_Value + (Time - pAnimator->m_Time).count() / (double)std::chrono::nanoseconds(100ms).count(), 0, 1);
@@ -230,13 +230,17 @@ int CMenus::DoButton_MenuTab(CButtonContainer *pButtonContainer, const char *pTe
 		pAnimator->m_Time = Time;
 	}
 
+	const bool HoverShapeActive = MouseInside || (pAnimator != nullptr && pAnimator->m_Value > 0.0f);
+	const int DrawCorners = Corners | (HoverShapeActive ? HoverCorners : IGraphics::CORNER_NONE);
+	const float DrawRounding = HoverShapeActive && HoverRounding >= 0.0f ? HoverRounding : EdgeRounding;
+
 	if(Checked)
 	{
 		ColorRGBA ColorMenuTab = ms_ColorTabbarActive;
 		if(pActiveColor)
 			ColorMenuTab = *pActiveColor;
 
-		Rect.Draw(ColorMenuTab, Corners, EdgeRounding);
+		Rect.Draw(ColorMenuTab, DrawCorners, DrawRounding);
 	}
 	else
 	{
@@ -246,7 +250,7 @@ int CMenus::DoButton_MenuTab(CButtonContainer *pButtonContainer, const char *pTe
 			if(pHoverColor)
 				HoverColorMenuTab = *pHoverColor;
 
-			Rect.Draw(HoverColorMenuTab, Corners, EdgeRounding);
+			Rect.Draw(HoverColorMenuTab, DrawCorners, DrawRounding);
 		}
 		else
 		{
@@ -254,7 +258,7 @@ int CMenus::DoButton_MenuTab(CButtonContainer *pButtonContainer, const char *pTe
 			if(pDefaultColor)
 				ColorMenuTab = *pDefaultColor;
 
-			Rect.Draw(ColorMenuTab, Corners, EdgeRounding);
+			Rect.Draw(ColorMenuTab, DrawCorners, DrawRounding);
 		}
 	}
 
@@ -344,66 +348,6 @@ int CMenus::DoButton_CheckBox_Common(const void *pId, const char *pText, const c
 	Ui()->DoLabel(&Label, pText, Box.h * CUi::ms_FontmodHeight, TEXTALIGN_ML);
 
 	return Ui()->DoButtonLogic(pId, 0, pRect, Flags);
-}
-
-void CMenus::DoLaserPreview(const CUIRect *pRect, const ColorHSLA LaserOutlineColor, const ColorHSLA LaserInnerColor, const int LaserType)
-{
-	CUIRect Section = *pRect;
-	vec2 From = vec2(Section.x + 30.0f, Section.y + Section.h / 2.0f);
-	vec2 Pos = vec2(Section.x + Section.w - 20.0f, Section.y + Section.h / 2.0f);
-
-	const ColorRGBA OuterColor = color_cast<ColorRGBA>(ColorHSLA(LaserOutlineColor));
-	const ColorRGBA InnerColor = color_cast<ColorRGBA>(ColorHSLA(LaserInnerColor));
-	const float TicksHead = Client()->GlobalTime() * Client()->GameTickSpeed();
-
-	// TicksBody = 4.0 for less laser width for weapon alignment
-	GameClient()->m_Items.RenderLaser(From, Pos, OuterColor, InnerColor, 4.0f, TicksHead, LaserType);
-
-	switch(LaserType)
-	{
-	case LASERTYPE_RIFLE:
-		Graphics()->TextureSet(GameClient()->m_GameSkin.m_SpriteWeaponLaser);
-		Graphics()->SelectSprite(SPRITE_WEAPON_LASER_BODY);
-		Graphics()->QuadsBegin();
-		Graphics()->QuadsSetSubset(0, 0, 1, 1);
-		Graphics()->DrawSprite(Section.x + 30.0f, Section.y + Section.h / 2.0f, 60.0f);
-		Graphics()->QuadsEnd();
-		break;
-	case LASERTYPE_SHOTGUN:
-		Graphics()->TextureSet(GameClient()->m_GameSkin.m_SpriteWeaponShotgun);
-		Graphics()->SelectSprite(SPRITE_WEAPON_SHOTGUN_BODY);
-		Graphics()->QuadsBegin();
-		Graphics()->QuadsSetSubset(0, 0, 1, 1);
-		Graphics()->DrawSprite(Section.x + 30.0f, Section.y + Section.h / 2.0f, 60.0f);
-		Graphics()->QuadsEnd();
-		break;
-	case LASERTYPE_DRAGGER:
-	{
-		CTeeRenderInfo TeeRenderInfo;
-		TeeRenderInfo.Apply(GameClient()->m_Skins.Find(g_Config.m_ClPlayerSkin));
-		TeeRenderInfo.ApplyColors(g_Config.m_ClPlayerUseCustomColor, g_Config.m_ClPlayerColorBody, g_Config.m_ClPlayerColorFeet);
-		TeeRenderInfo.m_Size = 64.0f;
-		RenderTools()->RenderTee(CAnimState::GetIdle(), &TeeRenderInfo, EMOTE_NORMAL, vec2(-1, 0), Pos);
-		break;
-	}
-	case LASERTYPE_FREEZE:
-	{
-		CTeeRenderInfo TeeRenderInfo;
-		if(g_Config.m_ClShowNinja)
-			TeeRenderInfo.Apply(GameClient()->m_Skins.Find("x_ninja"));
-		else
-			TeeRenderInfo.Apply(GameClient()->m_Skins.Find(g_Config.m_ClPlayerSkin));
-		TeeRenderInfo.m_TeeRenderFlags = TEE_EFFECT_FROZEN;
-		TeeRenderInfo.m_Size = 64.0f;
-		TeeRenderInfo.m_ColorBody = ColorRGBA(1, 1, 1);
-		TeeRenderInfo.m_ColorFeet = ColorRGBA(1, 1, 1);
-		RenderTools()->RenderTee(CAnimState::GetIdle(), &TeeRenderInfo, EMOTE_PAIN, vec2(1, 0), From);
-		GameClient()->m_Effects.FreezingFlakes(From, vec2(32, 32), 1.0f);
-		break;
-	}
-	default:
-		GameClient()->m_Items.RenderLaser(From, From, OuterColor, InnerColor, 4.0f, TicksHead, LaserType);
-	}
 }
 
 bool CMenus::DoLine_RadioMenu(CUIRect &View, const char *pLabel, std::vector<CButtonContainer> &vButtonContainers, const std::vector<const char *> &vLabels, const std::vector<int> &vValues, int &Value)
@@ -567,14 +511,10 @@ void CMenus::RenderMenubar(CUIRect Box, IClient::EClientState ClientState)
 	ColorRGBA QuitColor(1, 0, 0, 0.5f);
 	if(DoButton_MenuTab(&s_QuitButton, FontIcon::POWER_OFF, 0, &Button, IGraphics::CORNER_T, &m_aAnimatorsSmallPage[SMALL_TAB_QUIT], nullptr, nullptr, &QuitColor, 10.0f))
 	{
-		if(GameClient()->Editor()->HasUnsavedData() || (GameClient()->CurrentRaceTime() / 60 >= g_Config.m_ClConfirmQuitTime && g_Config.m_ClConfirmQuitTime >= 0) || m_MenusIngameTouchControls.UnsavedChanges() || GameClient()->m_TouchControls.HasEditingChanges())
-		{
+		if(g_Config.m_BcConfirmQuit || GameClient()->Editor()->HasUnsavedData() || (GameClient()->CurrentRaceTime() / 60 >= g_Config.m_ClConfirmQuitTime && g_Config.m_ClConfirmQuitTime >= 0) || m_MenusIngameTouchControls.UnsavedChanges() || GameClient()->m_TouchControls.HasEditingChanges())
 			m_Popup = POPUP_QUIT;
-		}
 		else
-		{
 			Client()->Quit();
-		}
 	}
 	GameClient()->m_Tooltips.DoToolTip(&s_QuitButton, &Button, Localize("Quit"));
 
@@ -665,10 +605,12 @@ void CMenus::RenderMenubar(CUIRect Box, IClient::EClientState ClientState)
 		GameClient()->m_Tooltips.DoToolTip(&s_StartButton, &Button, Localize("Main menu"));
 
 		const float BrowserButtonWidth = 75.0f;
+		const float BrowserTabRounding = 10.0f;
+		const float BrowserTabHoverRounding = 5.0f;
 		Box.VSplitLeft(10.0f, nullptr, &Box);
 		Box.VSplitLeft(BrowserButtonWidth, &Button, &Box);
 		static CButtonContainer s_InternetButton;
-		if(DoButton_MenuTab(&s_InternetButton, FontIcon::EARTH_AMERICAS, ActivePage == PAGE_INTERNET, &Button, IGraphics::CORNER_T, &m_aAnimatorsBigPage[BIG_TAB_INTERNET]))
+		if(DoButton_MenuTab(&s_InternetButton, FontIcon::EARTH_AMERICAS, ActivePage == PAGE_INTERNET, &Button, IGraphics::CORNER_TL, &m_aAnimatorsBigPage[BIG_TAB_INTERNET], nullptr, nullptr, nullptr, BrowserTabRounding, nullptr, false, IGraphics::CORNER_T, BrowserTabHoverRounding))
 		{
 			NewPage = PAGE_INTERNET;
 		}
@@ -676,7 +618,7 @@ void CMenus::RenderMenubar(CUIRect Box, IClient::EClientState ClientState)
 
 		Box.VSplitLeft(BrowserButtonWidth, &Button, &Box);
 		static CButtonContainer s_LanButton;
-		if(DoButton_MenuTab(&s_LanButton, FontIcon::NETWORK_WIRED, ActivePage == PAGE_LAN, &Button, IGraphics::CORNER_T, &m_aAnimatorsBigPage[BIG_TAB_LAN]))
+		if(DoButton_MenuTab(&s_LanButton, FontIcon::NETWORK_WIRED, ActivePage == PAGE_LAN, &Button, IGraphics::CORNER_NONE, &m_aAnimatorsBigPage[BIG_TAB_LAN], nullptr, nullptr, nullptr, BrowserTabRounding, nullptr, false, IGraphics::CORNER_T, BrowserTabHoverRounding))
 		{
 			NewPage = PAGE_LAN;
 		}
@@ -684,7 +626,9 @@ void CMenus::RenderMenubar(CUIRect Box, IClient::EClientState ClientState)
 
 		Box.VSplitLeft(BrowserButtonWidth, &Button, &Box);
 		static CButtonContainer s_FavoritesButton;
-		if(DoButton_MenuTab(&s_FavoritesButton, FontIcon::STAR, ActivePage == PAGE_FAVORITES, &Button, IGraphics::CORNER_T, &m_aAnimatorsBigPage[BIG_TAB_FAVORITES]))
+		const bool HasFavoriteCommunityTab = !ServerBrowser()->FavoriteCommunities().empty() && Box.w >= BrowserButtonWidth;
+		const int FavoritesCorners = HasFavoriteCommunityTab ? IGraphics::CORNER_NONE : IGraphics::CORNER_TR;
+		if(DoButton_MenuTab(&s_FavoritesButton, FontIcon::STAR, ActivePage == PAGE_FAVORITES, &Button, FavoritesCorners, &m_aAnimatorsBigPage[BIG_TAB_FAVORITES], nullptr, nullptr, nullptr, BrowserTabRounding, nullptr, false, IGraphics::CORNER_T, BrowserTabHoverRounding))
 		{
 			NewPage = PAGE_FAVORITES;
 		}
@@ -722,7 +666,11 @@ void CMenus::RenderMenubar(CUIRect Box, IClient::EClientState ClientState)
 				break;
 			Box.VSplitLeft(BrowserButtonWidth, &Button, &Box);
 			const int Page = PAGE_FAVORITE_COMMUNITY_1 + FavoriteCommunityIndex;
-			if(DoButton_MenuTab(&s_aFavoriteCommunityButtons[FavoriteCommunityIndex], FontIcon::ELLIPSIS, ActivePage == Page, &Button, IGraphics::CORNER_T, &m_aAnimatorsBigPage[BIT_TAB_FAVORITE_COMMUNITY_1 + FavoriteCommunityIndex], nullptr, nullptr, nullptr, 10.0f, m_CommunityIcons.Find(pCommunity->Id())))
+			const bool IsLastVisibleCommunity = FavoriteCommunityIndex + 1 >= ServerBrowser()->FavoriteCommunities().size() ||
+				FavoriteCommunityIndex + 1 >= std::size(s_aFavoriteCommunityButtons) ||
+				Box.w < BrowserButtonWidth;
+			const int CommunityCorners = IsLastVisibleCommunity ? IGraphics::CORNER_TR : IGraphics::CORNER_NONE;
+			if(DoButton_MenuTab(&s_aFavoriteCommunityButtons[FavoriteCommunityIndex], FontIcon::ELLIPSIS, ActivePage == Page, &Button, CommunityCorners, &m_aAnimatorsBigPage[BIT_TAB_FAVORITE_COMMUNITY_1 + FavoriteCommunityIndex], nullptr, nullptr, nullptr, BrowserTabRounding, m_CommunityIcons.Find(pCommunity->Id()), false, IGraphics::CORNER_T, BrowserTabHoverRounding))
 			{
 				NewPage = Page;
 			}
@@ -1215,7 +1163,8 @@ void CMenus::Render()
 	// tab is open. Uses the plain (non-forced) refresh path so it only re-polls the
 	// current list instead of re-requesting DDNet info and force-rebuilding the
 	// community cache every tick, which caused noticeable stutter with a short
-	// refresh interval.
+	// refresh interval. Unchanged master payloads are skipped entirely by the
+	// serverbrowser HTTP layer; changed payloads are applied incrementally.
 	const bool BrowserPageActive = m_MenuPage >= PAGE_INTERNET && m_MenuPage <= PAGE_FAVORITE_COMMUNITY_5;
 	if(BrowserPageActive && g_Config.m_BcAutoServerListRefresh)
 	{
@@ -1229,7 +1178,6 @@ void CMenus::Render()
 			else if(RefreshInterval > 0 && Now - m_LastServerBrowserRefreshTick >= RefreshInterval)
 			{
 				ServerBrowser()->Refresh(ServerBrowser()->GetCurrentType());
-				UpdateCommunityCache(false);
 				m_LastServerBrowserRefreshTick = Now;
 			}
 		}
@@ -2559,84 +2507,20 @@ void CMenus::PopupConfirmDemoReplaceVideo()
 }
 #endif
 
-void CMenus::RenderThemeSelection(CUIRect MainView)
-{
-	const std::vector<CTheme> &vThemes = GameClient()->m_MenuBackground.GetThemes();
-
-	int SelectedTheme = -1;
-	for(int i = 0; i < (int)vThemes.size(); i++)
-	{
-		if(str_comp(vThemes[i].m_Name.c_str(), g_Config.m_ClMenuMap) == 0)
-		{
-			SelectedTheme = i;
-			break;
-		}
-	}
-	const int OldSelected = SelectedTheme;
-
-	static CListBox s_ListBox;
-	s_ListBox.DoHeader(&MainView, Localize("Theme"), 20.0f);
-	s_ListBox.DoStart(20.0f, vThemes.size(), 1, 3, SelectedTheme);
-
-	for(int i = 0; i < (int)vThemes.size(); i++)
-	{
-		const CTheme &Theme = vThemes[i];
-		const CListboxItem Item = s_ListBox.DoNextItem(&Theme.m_Name, i == SelectedTheme);
-
-		if(!Item.m_Visible)
-			continue;
-
-		CUIRect Icon, Label;
-		Item.m_Rect.VSplitLeft(Item.m_Rect.h * 2.0f, &Icon, &Label);
-
-		// draw icon if it exists
-		if(Theme.m_IconTexture.IsValid())
-		{
-			Icon.VMargin(6.0f, &Icon);
-			Icon.HMargin(3.0f, &Icon);
-			Graphics()->TextureSet(Theme.m_IconTexture);
-			Graphics()->QuadsBegin();
-			Graphics()->SetColor(1.0f, 1.0f, 1.0f, 1.0f);
-			IGraphics::CQuadItem QuadItem(Icon.x, Icon.y, Icon.w, Icon.h);
-			Graphics()->QuadsDrawTL(&QuadItem, 1);
-			Graphics()->QuadsEnd();
-		}
-
-		char aName[128];
-		if(Theme.m_Name.empty())
-			str_copy(aName, "(none)");
-		else if(str_comp(Theme.m_Name.c_str(), "auto") == 0)
-			str_copy(aName, "(seasons)");
-		else if(str_comp(Theme.m_Name.c_str(), "rand") == 0)
-			str_copy(aName, "(random)");
-		else if(Theme.m_HasDay && Theme.m_HasNight)
-			str_copy(aName, Theme.m_Name.c_str());
-		else if(Theme.m_HasDay && !Theme.m_HasNight)
-			str_format(aName, sizeof(aName), "%s (day)", Theme.m_Name.c_str());
-		else if(!Theme.m_HasDay && Theme.m_HasNight)
-			str_format(aName, sizeof(aName), "%s (night)", Theme.m_Name.c_str());
-		else // generic
-			str_copy(aName, Theme.m_Name.c_str());
-
-		Ui()->DoLabel(&Label, aName, 16.0f * CUi::ms_FontmodHeight, TEXTALIGN_ML);
-	}
-
-	SelectedTheme = s_ListBox.DoEnd();
-
-	if(OldSelected != SelectedTheme)
-	{
-		const CTheme &Theme = vThemes[SelectedTheme];
-		str_copy(g_Config.m_ClMenuMap, Theme.m_Name.c_str());
-		GameClient()->m_MenuBackground.LoadMenuBackground(Theme.m_HasDay, Theme.m_HasNight);
-	}
-}
-
 void CMenus::SetActive(bool Active)
 {
 	if(Active != m_MenuActive)
 	{
 		Ui()->SetHotItem(nullptr);
 		Ui()->SetActiveItem(nullptr);
+		if(!Active)
+		{
+			// Popups and active line inputs block demo hotkeys via IsPopupOpen() /
+			// text composition. Clear them when hiding the navbar with Escape.
+			Ui()->ClosePopupMenus();
+			if(CLineInput *pActiveInput = CLineInput::GetActiveInput())
+				pActiveInput->Deactivate();
+		}
 	}
 	m_MenuActive = Active;
 	if(!m_MenuActive)
@@ -2653,7 +2537,7 @@ void CMenus::SetActive(bool Active)
 			m_NeedSendDummyinfo = false;
 		}
 
-		if(Client()->State() == IClient::STATE_ONLINE)
+		if(Client()->State() == IClient::STATE_ONLINE || Client()->State() == IClient::STATE_DEMOPLAYBACK)
 		{
 			GameClient()->OnRelease();
 		}
@@ -2689,8 +2573,17 @@ bool CMenus::OnCursorMove(float x, float y, IInput::ECursorType CursorType)
 
 bool CMenus::OnInput(const IInput::CEvent &Event)
 {
-	// Escape key is always handled to activate/deactivate menu
-	if((Event.m_Flags & IInput::FLAG_PRESS && Event.m_Key == KEY_ESCAPE) || IsActive() || s_AspectConfirmWantsInput)
+	// Escape is always handled to activate/deactivate the menu.
+	// While a demo is playing with the navbar hidden, consume keyboard input so
+	// binds cannot steal demo hotkeys (pause/seek/speed) from RenderDemoPlayer.
+	// Leave mouse wheel alone when inactive so zoom binds still work.
+	const bool IsMouseWheel = Event.m_Key == KEY_MOUSE_WHEEL_UP || Event.m_Key == KEY_MOUSE_WHEEL_DOWN ||
+				  Event.m_Key == KEY_MOUSE_WHEEL_LEFT || Event.m_Key == KEY_MOUSE_WHEEL_RIGHT;
+	const bool DemoHotkeys = Client()->State() == IClient::STATE_DEMOPLAYBACK &&
+				 g_Config.m_ClDemoKeyboardShortcuts &&
+				 m_DemoPlayerState == DEMOPLAYER_NONE &&
+				 !IsMouseWheel;
+	if((Event.m_Flags & IInput::FLAG_PRESS && Event.m_Key == KEY_ESCAPE) || IsActive() || s_AspectConfirmWantsInput || DemoHotkeys)
 	{
 		Ui()->OnInput(Event);
 		return true;
@@ -2889,7 +2782,9 @@ void CMenus::OnRender()
 		Ui()->SetActiveItem(nullptr);
 
 	if(IsActive())
-		Render();
+		Ui()->DoBackButton();
+
+	Render();
 
 	// After Render: discard buttons that became active, and suppress hot item next frame
 	if(ShowAspectConfirmOverlay && IsActive())
@@ -2980,6 +2875,7 @@ void CMenus::OnRender()
 			const vec2 RawMouse = Ui()->UpdatedMousePos();
 			CursorPos = vec2(RawMouse.x * pScreen->w / (float)Graphics()->ScreenWidth(), RawMouse.y * pScreen->h / (float)Graphics()->ScreenHeight());
 		}
+		Ui()->RenderBackButton();
 		RenderTools()->RenderCursor(CursorPos, 24.0f);
 	}
 
@@ -3020,7 +2916,7 @@ void CMenus::RenderBackground()
 
 	const float ScreenHeight = 300.0f;
 	const float ScreenWidth = ScreenHeight * Graphics()->ScreenAspect();
-	Graphics()->MapScreen(0.0f, 0.0f, ScreenWidth, ScreenHeight);
+	Graphics()->MapScreen(CScreenRect(vec2(0.0f, 0.0f), vec2(ScreenWidth, ScreenHeight)));
 
 	// render background color
 	Graphics()->TextureClear();
