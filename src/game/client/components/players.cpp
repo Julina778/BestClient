@@ -319,7 +319,7 @@ void CPlayers::RenderHookCollLine(
 		float Alpha = GameClient()->IsOtherTeam(ClientId) ? g_Config.m_ClShowOthersAlpha / 100.0f : 1.0f;
 		Alpha *= (float)g_Config.m_ClHookCollAlpha / 100;
 
-		vec2 ExDirection = Direction;
+		vec2 ExDirection = direction(Angle);
 
 		if(Local && !GameClient()->m_Snap.m_SpecInfo.m_Active && Client()->State() != IClient::STATE_DEMOPLAYBACK)
 		{
@@ -388,7 +388,7 @@ void CPlayers::RenderHookCollLine(
 		float Alpha = GameClient()->IsOtherTeam(ClientId) ? g_Config.m_ClShowOthersAlpha / 100.0f : 1.0f;
 		Alpha *= (float)g_Config.m_ClHookCollAlpha / 100;
 
-		vec2 ExDirection = Direction;
+		vec2 ExDirection = direction(Angle);
 
 		if(Local && !GameClient()->m_Snap.m_SpecInfo.m_Active && Client()->State() != IClient::STATE_DEMOPLAYBACK)
 		{

@@ -294,7 +294,6 @@ void CGameClient::OnConsoleInit()
 					      &m_PlayerIndicator, // TClient
 					      &m_Mod, // TClient
 					      &m_CustomCommunities, // TClient
-					      &m_PlayerPoints,
 					      &m_MusicPlayer, // BestClient
 					      &m_Hud,
 					      &m_Spectator,

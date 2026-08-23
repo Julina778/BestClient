@@ -432,7 +432,7 @@ MACRO_CONFIG_INT(ClShowDJ, al_show_jumps, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE
 MACRO_CONFIG_INT(ClShowJumpsSize, al_show_jumps_size, 80, 0, 150, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Size of double jump indicators")
 
 // Scoreboard
-MACRO_CONFIG_INT(ClScoreboardPoints, al_scoreboard_points, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show points on the scoreboard")
+//MACRO_CONFIG_INT(ClScoreboardPoints, al_scoreboard_points, 1, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Show points on the scoreboard")
 
 // Skin Stealer
 MACRO_CONFIG_INT(ClSkinStealer, al_skin_stealer, 0, 0, 1, CFGFLAG_CLIENT | CFGFLAG_SAVE, "Steal skin after hammering a target")

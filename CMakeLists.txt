@@ -2900,8 +2900,6 @@ if(CLIENT)
     components/particles.h
     components/pie_menu.cpp
     components/pie_menu.h
-    components/player_points.cpp
-    components/player_points.h
     components/players.cpp
     components/players.h
     components/race_demo.cpp

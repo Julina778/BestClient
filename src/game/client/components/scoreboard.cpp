@@ -23,7 +23,6 @@
 #include <game/client/components/bestclient/gradient.h>
 #include <game/client/components/countryflags.h>
 #include <game/client/components/motd.h>
-#include <game/client/components/player_points.h>
 #include <game/client/components/statboard.h>
 #include <game/client/gameclient.h>
 #include <game/client/ui.h>
@@ -684,7 +683,6 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 	const bool TrueMilliseconds = GameClient()->m_ReceivedDDNetPlayerFinishTimesMillis;
 	const int NumPlayers = CountEnd - CountStart;
 	const bool LowScoreboardWidth = Scoreboard.w < 350.0f;
-	const bool ShowPointsAlesstya = g_Config.m_ClScoreboardPoints != 0;
 
 	bool Race7 = Client()->IsSixup() && pGameInfoObj && pGameInfoObj->m_GameFlags & protocol7::GAMEFLAG_RACE;
 
@@ -756,10 +754,7 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 	// Keep 20px left pad so the BestClient indicator (left of score) is not clipped
 	const float ScoreOffset = Scoreboard.x + 20.0f;
 	const float ScoreLength = TextRender()->TextWidth(FontSize, UseTime ? "00:00:00" : "99999");
-	// Points column: placed between Score and Tee (only when enabled)
-	const float PointsLengthAlesstya = ShowPointsAlesstya ? (LowScoreboardWidth ? TextRender()->TextWidth(FontSize, "99999") : TextRender()->TextWidth(FontSize, "999999")) : 0.0f;
-	const float PointsOffsetAlesstya = ScoreOffset + ScoreLength + 10.0f;
-	const float TeeOffset = ShowPointsAlesstya ? (PointsOffsetAlesstya + PointsLengthAlesstya + 10.0f) : (ScoreOffset + ScoreLength + MARGIN);
+	const float TeeOffset = ScoreOffset + ScoreLength + MARGIN;
 	const float TeeLength = 60.0f * TeeSizeMod;
 	const float NameOffset = TeeOffset + TeeLength;
 	const bool ShowPoints = GameClient()->m_ShowPoints.ActiveOnCurrentServer();
@@ -782,12 +777,6 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 	const float HeadlineY = Headline.y + Headline.h / 2.0f - HeadlineFontsize / 2.0f;
 	const char *pScore = UseTime ? Localize("Time") : Localize("Score");
 	TextRender()->Text(ScoreOffset + ScoreLength - TextRender()->TextWidth(HeadlineFontsize, pScore), HeadlineY, HeadlineFontsize, pScore);
-	// Points column header: only render when enabled
-	if(ShowPointsAlesstya)
-	{
-		const char *pPointsLabel = Localize("Points");
-		TextRender()->Text(PointsOffsetAlesstya + PointsLengthAlesstya - TextRender()->TextWidth(HeadlineFontsize, pPointsLabel), HeadlineY, HeadlineFontsize, pPointsLabel);
-	}
 	TextRender()->Text(NameOffset, HeadlineY, HeadlineFontsize, Localize("Name"));
 	if(ShowPoints)
 	{
@@ -974,26 +963,6 @@ void CScoreboard::RenderScoreboard(CUIRect Scoreboard, int Team, int CountStart,
 			{
 				str_format(aBuf, sizeof(aBuf), "%d", std::clamp(pInfo->m_Score, -999, 99999));
 				TextRender()->Text(ScoreOffset + ScoreLength - TextRender()->TextWidth(FontSize, aBuf), ScorePosition.y + (Row.h - FontSize) / 2.0f, FontSize, aBuf);
-			}
-
-			// Points column: render actual points value, right-aligned (only when enabled)
-			if(ShowPointsAlesstya)
-			{
-				char aPointsValue[16];
-				SPlayerPointsResult PointsResult = GameClient()->m_PlayerPoints.GetPoints(ClientData.m_aName);
-				if(PointsResult.m_Status == EPointsStatus::READY)
-				{
-					str_format(aPointsValue, sizeof(aPointsValue), "%d", PointsResult.m_Points);
-				}
-				else if(PointsResult.m_Status == EPointsStatus::FETCHING || PointsResult.m_Status == EPointsStatus::NOT_REQUESTED)
-				{
-					str_copy(aPointsValue, "...");
-				}
-				else // FAILED
-				{
-					str_copy(aPointsValue, "?");
-				}
-				TextRender()->Text(PointsOffsetAlesstya + PointsLengthAlesstya - TextRender()->TextWidth(FontSize, aPointsValue), Row.y + (Row.h - FontSize) / 2.0f, FontSize, aPointsValue);
 			}
 
 			if(g_Config.m_BcClientIndicatorInScoreboard && pInfo->m_ClientId >= 0 && GameClient()->m_ClientIndicator.IsPlayerBestClient(pInfo->m_ClientId))
@@ -1240,18 +1209,6 @@ void CScoreboard::OnRender()
 	if(g_Config.m_ClFocusMode && g_Config.m_ClFocusModeHideScoreboard)
 		return;
 
-	// 当记分板可见时（骗你的,不可见也查），为所有活跃玩家触发查询点
-	if(g_Config.m_ClScoreboardPoints)
-	{
-		for(int i = 0; i < MAX_CLIENTS; i++)
-		{
-			if(GameClient()->m_Snap.m_apPlayerInfos[i] && GameClient()->m_aClients[i].m_Active)
-			{
-				GameClient()->m_PlayerPoints.EnsureQueried(GameClient()->m_aClients[i].m_aName);
-			}
-		}
-	}
-
 	if(!IsActive())
 	{
 		// lock mouse if scoreboard was opened by being dead or game pause
@@ -1284,7 +1241,7 @@ void CScoreboard::OnRender()
 	else
 		str_format(aPlayerCount, sizeof(aPlayerCount), "%d", GameClient()->m_Snap.m_NumPlayers);
 
-	const float ScoreboardSmallWidth = 400.0f + 10.0f;
+	const float ScoreboardSmallWidth = 375.0f + 10.0f;
 	const bool ShowPoints = GameClient()->m_ShowPoints.ActiveOnCurrentServer();
 	int NumScoreboardColumns = 1;
 	if(Teams || (!Teams && NumPlayers > 16 && NumPlayers <= 64))
@@ -1293,8 +1250,8 @@ void CScoreboard::OnRender()
 		NumScoreboardColumns = 3;
 	// Must match PointsLength + gaps in RenderScoreboard: 7.5 + 50 + 7.5 - 2.5 = 62.5
 	const float PointsColumnExtra = 62.5f;
-	const float ScoreboardWidthBase = !Teams && NumPlayers <= 16 ? ScoreboardSmallWidth : 800.0f;
-	const float ScoreboardWidth = ScoreboardWidthBase + (g_Config.m_ClScoreboardPoints == 1 ? 50.0f : 0.0f) + (ShowPoints ? NumScoreboardColumns * PointsColumnExtra : 0.0f);
+	const float ScoreboardWidthBase = !Teams && NumPlayers <= 16 ? ScoreboardSmallWidth : 750.0f;
+	const float ScoreboardWidth = ScoreboardWidthBase + (ShowPoints ? NumScoreboardColumns * PointsColumnExtra : 0.0f);
 	const float TitleHeight = 30.0f;
 
 	// Render the whole scoreboard (including its popups and cursor below) through a locally

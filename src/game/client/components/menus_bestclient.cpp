@@ -168,11 +168,12 @@ void CMenus::RenderSettingsBestClientAlesstya(CUIRect MainView)
 	vec2 AlesstyaScrollOffset(0.0f, 0.0f);
 	CScrollRegionParams AlesstyaScrollParams;
 	AlesstyaScrollParams.m_ScrollUnit = 60.0f;
-	AlesstyaScrollParams.m_Flags = CScrollRegionParams::FLAG_CONTENT_STATIC_WIDTH;
+	//AlesstyaScrollParams.m_Flags = CScrollRegionParams::FLAG_CONTENT_STATIC_WIDTH;
 	AlesstyaScrollParams.m_ScrollbarMargin = 5.0f;
-	s_AlesstyaScrollRegion.Begin(&MainView, &AlesstyaScrollOffset, &AlesstyaScrollParams);
+	//s_AlesstyaScrollRegion.Begin(&MainView, &AlesstyaScrollOffset, &AlesstyaScrollParams);
 
-	MainView.y += AlesstyaScrollOffset.y;
+	//MainView.y += AlesstyaScrollOffset.y;
+	s_AlesstyaScrollRegion.Begin(&MainView, &AlesstyaScrollParams);
 	MainView.VSplitRight(5.0f, &MainView, nullptr);
 	MainView.VSplitLeft(5.0f, nullptr, &MainView);
 
@@ -227,18 +228,6 @@ void CMenus::RenderSettingsBestClientAlesstya(CUIRect MainView)
 			str_format(aBuf, sizeof(aBuf), "al_skin_stealer %d", !g_Config.m_ClSkinStealer);
 			Console()->ExecuteLine(aBuf, IConsole::CLIENT_ID_UNSPECIFIED);
 		}
-		Column.HSplitTop(MarginBetweenViews, nullptr, &Column);
-	}
-
-	// === Scoreboard Points ===
-	{
-		CUIRect Block, Label;
-		BeginBlock(Column, LineSize + MarginSmall + LineSize, Block);
-
-		Block.HSplitTop(LineSize, &Label, &Block);
-		Ui()->DoLabel(&Label, Localize("Scoreboard Points"), HeadlineFontSize, TEXTALIGN_ML);
-		Block.HSplitTop(MarginSmall, nullptr, &Block);
-		DoButton_CheckBoxAutoVMarginAndSet(&g_Config.m_ClScoreboardPoints, Localize("Show player points on the scoreboard"), &g_Config.m_ClScoreboardPoints, &Block, LineSize);
 		Column.HSplitTop(MarginBetweenViews, nullptr, &Column);
 	}
 
