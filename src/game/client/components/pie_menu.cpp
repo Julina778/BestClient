@@ -337,8 +337,9 @@ void CPieMenu::OnRender()
 	float SecondaryInnerRadius = SECONDARY_INNER_RADIUS * Scale * ConfigScale;
 	float SecondaryOuterRadius = SECONDARY_OUTER_RADIUS * Scale * ConfigScale;
 
-	CScreenRect ScreenRect(0.0f, 0.0f, Graphics()->ScreenWidth(), Graphics()->ScreenHeight());
-	Graphics()->MapScreen(ScreenRect);
+	//CScreenRect ScreenRect(0.0f, 0.0f, Graphics()->ScreenWidth(), Graphics()->ScreenHeight());
+	//Graphics()->MapScreen(ScreenRect);
+	Graphics()->MapScreen(0, 0, Graphics()->ScreenWidth(), Graphics()->ScreenHeight());
 
 	// Render each sector (pie slice)
 	std::vector<EMenuOption> EnabledOptions;

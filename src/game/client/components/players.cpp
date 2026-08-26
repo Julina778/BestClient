@@ -454,7 +454,7 @@ void CPlayers::RenderHookCollLine(
 		delete Proj;
 	}
 	vec2 Direction = direction(Angle);
-	vec2 Position = GameClient()->m_aClients[ClientId].m_RenderPos;
+	// vec2 Position = GameClient()->m_aClients[ClientId].m_RenderPos;
 	if(!GameClient()->OptimizerAllowRenderPos(Position))
 		return;
 

@@ -144,7 +144,7 @@ enum
 	NUM_BESTCLIENT_TABS,
 };
 
-static int s_CurBestClientTab = BESTCLIENT_TAB_VISUALS;
+static int s_CurBestClientTab = BESTCLIENT_TAB_ALESSTYA;
 
 void CMenus::RenderSettingsBestClient(CUIRect MainView)
 {
@@ -247,10 +247,10 @@ void CMenus::RenderSettingsBestClientAlesstya(CUIRect MainView)
 	AlesstyaScrollParams.m_ScrollUnit = 60.0f;
 	//AlesstyaScrollParams.m_Flags = CScrollRegionParams::FLAG_CONTENT_STATIC_WIDTH;
 	AlesstyaScrollParams.m_ScrollbarMargin = 5.0f;
-	//s_AlesstyaScrollRegion.Begin(&MainView, &AlesstyaScrollOffset, &AlesstyaScrollParams);
+	s_AlesstyaScrollRegion.Begin(&MainView, &AlesstyaScrollOffset, &AlesstyaScrollParams);
 
-	//MainView.y += AlesstyaScrollOffset.y;
-	s_AlesstyaScrollRegion.Begin(&MainView, &AlesstyaScrollParams);
+	MainView.y += AlesstyaScrollOffset.y;
+	//s_AlesstyaScrollRegion.Begin(&MainView, &AlesstyaScrollParams);
 	MainView.VSplitRight(5.0f, &MainView, nullptr);
 	MainView.VSplitLeft(5.0f, nullptr, &MainView);
 
