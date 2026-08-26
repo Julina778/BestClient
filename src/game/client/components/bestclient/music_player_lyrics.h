@@ -12,7 +12,7 @@
 #include <unordered_map>
 #include <vector>
 
-class IHttpRequest;
+class CHttpRequest;
 class CUi;
 class IHttp;
 class ITextRender;
@@ -104,7 +104,7 @@ private:
 	std::string m_TrackTitle;
 	EDisplayState m_DisplayState = EDisplayState::Idle;
 	std::vector<SLine> m_vLines;
-	std::shared_ptr<IHttpRequest> m_pRequest;
+	std::shared_ptr<CHttpRequest> m_pRequest;
 	std::unordered_map<std::string, SCacheEntry> m_Cache;
 	int64_t m_OfflineRetryAt = 0;
 	float m_NotFoundDisplayMs = 0.0f;
@@ -124,6 +124,7 @@ private:
 	std::string m_LayoutText;
 	float m_LayoutFontSize = 0.0f;
 	std::vector<SCharMetric> m_vCharMetrics;
+	std::vector<STextColorSplit> m_vColorSplits;
 	float m_BaseLineWidth = 0.0f;
 	bool m_LayoutValid = false;
 };

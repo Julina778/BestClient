@@ -106,7 +106,7 @@ void CEdgeHelper::RenderEdgeHelper(bool ForcePreview)
 {
 	const float HudHeight = HudLayout::CANVAS_HEIGHT;
 	const float HudWidth = HudHeight * Graphics()->ScreenAspect();
-	Graphics()->MapScreenToSize(HudWidth, HudHeight);
+	Graphics()->MapScreen(0.0f, 0.0f, HudWidth, HudHeight);
 
 	CUIRect Base = GetRect(ForcePreview);
 	if(Base.w <= 0.0f || Base.h <= 0.0f)
@@ -233,16 +233,21 @@ void CEdgeHelper::RenderEdgeHelperJumpInfo(CUIRect *pBase, float Scale)
 	LeftZone.Margin(SEdgeHelperProperties::ms_ItemSpacing * JumpScale, &LeftZone);
 	RightZone.Margin(SEdgeHelperProperties::ms_ItemSpacing * JumpScale, &RightZone);
 	const float ArrowFontSize = minimum(SEdgeHelperProperties::ms_ArrowsSize * JumpScale, minimum(LeftZone.h, RightZone.h));
-	const float SingleArrowFontSize = ArrowFontSize * 0.75f;
+	// Single-jump positions: like the original rushie implementation, cut off
+	// the top part of the arrow rect and draw the single chevron in the lower
+	// part, so it aligns with (and lights up) the LOWER chevron of the double
+	// arrow instead of appearing centered between the two chevrons.
 	DoIconButton(&RightZone, s_pEdgeInfoAnglesUp, ArrowFontSize, (m_PosX == 56 || m_PosX == 69 || m_PosX == 72 || m_PosX == 84) ? SEdgeHelperProperties::ActionWhiteButtonColor() : SEdgeHelperProperties::WindowColorMedium());
 	if(m_PosX == 62 || m_PosX == 63 || m_PosX == 66 || m_PosX == 81)
 	{
-		DoIconButton(&RightZone, s_pEdgeInfoAngleUp, SingleArrowFontSize, SEdgeHelperProperties::ActionWhiteButtonColor());
+		RightZone.HSplitTop(5.0f * JumpScale, nullptr, &RightZone);
+		DoIconButton(&RightZone, s_pEdgeInfoAngleUp, ArrowFontSize, SEdgeHelperProperties::ActionWhiteButtonColor());
 	}
 	DoIconButton(&LeftZone, s_pEdgeInfoAnglesUp, ArrowFontSize, (m_PosX == 13 || m_PosX == 25 || m_PosX == 28 || m_PosX == 41) ? SEdgeHelperProperties::ActionWhiteButtonColor() : SEdgeHelperProperties::WindowColorMedium());
 	if(m_PosX == 16 || m_PosX == 31)
 	{
-		DoIconButton(&LeftZone, s_pEdgeInfoAngleUp, SingleArrowFontSize, SEdgeHelperProperties::ActionWhiteButtonColor());
+		LeftZone.HSplitTop(5.0f * JumpScale, nullptr, &LeftZone);
+		DoIconButton(&LeftZone, s_pEdgeInfoAngleUp, ArrowFontSize, SEdgeHelperProperties::ActionWhiteButtonColor());
 	}
 
 	const float SeparatorWidth = minimum(4.0f * JumpScale, CenterZone.w * 0.1f);
@@ -254,43 +259,36 @@ void CEdgeHelper::RenderEdgeHelperJumpInfo(CUIRect *pBase, float Scale)
 	CenterZone.VSplitLeft(CenterValueWidth, &CenterZone, &RightZone);
 	RightZone.VSplitLeft(SeparatorWidth, &RightSeparator, &RightZone);
 
-	const auto LowerIt = std::upper_bound(s_aEdgeInfoJumpPositions.begin(), s_aEdgeInfoJumpPositions.end(), m_PosX);
-	const auto UpperIt = std::lower_bound(s_aEdgeInfoJumpPositions.begin(), s_aEdgeInfoJumpPositions.end(), m_PosX);
-	const int Lower = LowerIt == s_aEdgeInfoJumpPositions.begin() ? std::numeric_limits<int>::min() : *std::prev(LowerIt);
-	const int Upper = UpperIt == s_aEdgeInfoJumpPositions.end() ? std::numeric_limits<int>::max() : *UpperIt;
+	const auto CurIt = std::lower_bound(s_aEdgeInfoJumpPositions.begin(), s_aEdgeInfoJumpPositions.end(), m_PosX);
+	const int Upper = CurIt == s_aEdgeInfoJumpPositions.end() ? std::numeric_limits<int>::max() : *CurIt;
+	const int Lower = CurIt == s_aEdgeInfoJumpPositions.begin() ? std::numeric_limits<int>::min() : *std::prev(CurIt);
+	// Highlight the right side only when standing exactly on a jump position:
+	// Lower is strictly below m_PosX, Upper is the first position at/after it.
+	const bool AtJump = CurIt != s_aEdgeInfoJumpPositions.end() && *CurIt == m_PosX;
 	const float ValueFontSize = 12.0f * JumpScale;
 
-	if(m_PosX == Lower || m_PosX == Upper)
-		TextRender()->TextColor(SEdgeHelperProperties::ActionActiveButtonColor());
 	Ui()->DoLabel(&LeftSeparator, "|", ValueFontSize, TEXTALIGN_MC);
-	TextRender()->TextColor(TextRender()->DefaultTextColor());
 
-	if(m_PosX == Upper)
+	if(AtJump)
 		TextRender()->TextColor(SEdgeHelperProperties::ActionActiveButtonColor());
 	Ui()->DoLabel(&RightSeparator, "|", ValueFontSize, TEXTALIGN_MC);
 	TextRender()->TextColor(TextRender()->DefaultTextColor());
 
 	char aBuf[64];
 	str_format(aBuf, sizeof(aBuf), "%02i", m_PosX);
-	if(m_PosX == Lower)
-		TextRender()->TextColor(SEdgeHelperProperties::ActionActiveButtonColor());
 	Ui()->DoLabel(&CenterZone, aBuf, ValueFontSize, TEXTALIGN_MC);
-	TextRender()->TextColor(TextRender()->DefaultTextColor());
 
 	if(Lower == std::numeric_limits<int>::min())
 		str_copy(aBuf, "-");
 	else
 		str_format(aBuf, sizeof(aBuf), "%d", Lower);
-	if(m_PosX == Lower || m_PosX == Upper)
-		TextRender()->TextColor(SEdgeHelperProperties::ActionActiveButtonColor());
 	Ui()->DoLabel(&LeftZone, aBuf, ValueFontSize, TEXTALIGN_MC);
-	TextRender()->TextColor(TextRender()->DefaultTextColor());
 
 	if(Upper == std::numeric_limits<int>::max())
 		str_copy(aBuf, "-");
 	else
 		str_format(aBuf, sizeof(aBuf), "%d", Upper);
-	if(m_PosX == Upper)
+	if(AtJump)
 		TextRender()->TextColor(SEdgeHelperProperties::ActionActiveButtonColor());
 	Ui()->DoLabel(&RightZone, aBuf, ValueFontSize, TEXTALIGN_MC);
 	TextRender()->TextColor(TextRender()->DefaultTextColor());

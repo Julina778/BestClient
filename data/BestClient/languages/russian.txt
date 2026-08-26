@@ -968,9 +968,6 @@ Show percentage
 Show always
 == Показывать всегда
 
-Analyse teleports/freeze
-== Анализ телепортов/фриза
-
 Lock team automatically after joining
 == Автоматически блокировать команду после входа
 
@@ -2294,12 +2291,6 @@ unknown argument for /hitothers
 
 Connection error, see console
 == Ошибка подключения. Подробности в консоли.
-
-CherryGifs error %d: %s
-== Ошибка CherryGifs %d: %s
-
-CherryGifs HTTP error %d
-== Ошибка HTTP CherryGifs: %d
 
 Malformed response (not an object)
 == Сервер вернул некорректный ответ.

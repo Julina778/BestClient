@@ -427,10 +427,13 @@ void CEffects::HammerHit(vec2 Pos, float Alpha, float Volume, bool OtherPlayer)
 
 void CEffects::OnRender()
 {
-	const float Speed = GameClient()->GetAnimationPlaybackSpeed();
+	float Speed = 1.0f;
+	if(Client()->State() == IClient::STATE_DEMOPLAYBACK)
+		Speed = DemoPlayer()->BaseInfo()->m_Speed;
+
 	const int64_t Now = time();
 	auto UpdateClock = [&](bool &Add, int64_t &LastUpdate, int Frequency) {
-		Add = (Now - LastUpdate) / (float)time_freq() * Speed > 1.0f / Frequency;
+		Add = Now - LastUpdate > time_freq() / ((float)Frequency * Speed);
 		if(Add)
 			LastUpdate = Now;
 	};

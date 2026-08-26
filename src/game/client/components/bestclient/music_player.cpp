@@ -15,7 +15,7 @@
 #include <engine/font_icons.h>
 #include <engine/graphics.h>
 #include <engine/shared/config.h>
-#include <engine/http.h>
+#include <engine/shared/http.h>
 #include <engine/shared/jobs.h>
 #include <engine/storage.h>
 #include <engine/textrender.h>
@@ -1324,8 +1324,6 @@ namespace
 	struct SArtworkColorAnalysis
 	{
 		ColorRGBA m_Base = ColorRGBA(0.22f, 0.24f, 0.28f, 1.0f);
-		ColorRGBA m_Dominant = ColorRGBA(0.22f, 0.24f, 0.28f, 1.0f);
-		ColorRGBA m_Brightest = ColorRGBA(0.34f, 0.38f, 0.46f, 1.0f);
 		float m_Luminance = 0.22f;
 		float m_Saturation = 0.0f;
 		bool m_Valid = false;
@@ -2255,10 +2253,6 @@ namespace
 		if(TotalWeight <= 0.0f)
 			return SArtworkColorAnalysis();
 
-		const SBin *pDominantBin = nullptr;
-		float DominantScore = -1.0f;
-		const SBin *pBrightestBin = nullptr;
-		float BrightestScore = -1.0f;
 		const SBin *pBestBin = nullptr;
 		float BestScore = -1.0f;
 		const SBin *pBestVividBin = nullptr;
@@ -2273,22 +2267,6 @@ namespace
 			const float BinG = Bin.m_G / Bin.m_Weight;
 			const float BinB = Bin.m_B / Bin.m_Weight;
 			const float BinValue = maximum(BinR, maximum(BinG, BinB));
-			const float CommonScore = Bin.m_Weight * (0.96f + BinSaturation * 0.16f);
-			if(pDominantBin == nullptr || CommonScore > DominantScore)
-			{
-				pDominantBin = &Bin;
-				DominantScore = CommonScore;
-			}
-			float BrightScore = Bin.m_Weight * (0.22f + BinLuma * 1.75f + BinValue * 0.95f + BinSaturation * 0.90f);
-			if(BinSaturation < 0.06f)
-				BrightScore *= 0.45f;
-			if(BinValue < 0.12f)
-				BrightScore *= 0.18f;
-			if(pBrightestBin == nullptr || BrightScore > BrightestScore)
-			{
-				pBrightestBin = &Bin;
-				BrightestScore = BrightScore;
-			}
 			float Score = Bin.m_Weight * (0.60f + BinSaturation * 1.05f + BinValue * 0.22f + (1.0f - absolute(BinLuma - 0.30f)) * 0.20f);
 			if(BinValue < 0.10f)
 				Score *= 0.22f;
@@ -2322,22 +2300,6 @@ namespace
 		Analysis.m_Luminance = AvgLuma / TotalWeight;
 		Analysis.m_Saturation = AvgSaturation / TotalWeight;
 		Analysis.m_Valid = true;
-		if(pDominantBin != nullptr)
-		{
-			Analysis.m_Dominant = ColorRGBA(
-				pDominantBin->m_R / pDominantBin->m_Weight,
-				pDominantBin->m_G / pDominantBin->m_Weight,
-				pDominantBin->m_B / pDominantBin->m_Weight,
-				1.0f);
-		}
-		if(pBrightestBin != nullptr)
-		{
-			Analysis.m_Brightest = ColorRGBA(
-				pBrightestBin->m_R / pBrightestBin->m_Weight,
-				pBrightestBin->m_G / pBrightestBin->m_Weight,
-				pBrightestBin->m_B / pBrightestBin->m_Weight,
-				1.0f);
-		}
 
 		float SelectedScore = BestScore;
 		if(pBestVividBin != nullptr && (BestVividScore > TotalWeight * 0.018f || BestVividScore > BestScore * 0.18f))
@@ -2358,8 +2320,6 @@ namespace
 		}
 
 		Analysis.m_Base = ClampColor(Analysis.m_Base);
-		Analysis.m_Dominant = ClampColor(Analysis.m_Dominant);
-		Analysis.m_Brightest = ClampColor(Analysis.m_Brightest);
 		Analysis.m_Neutral = Analysis.m_Saturation < 0.11f;
 		if(Analysis.m_Neutral)
 		{
@@ -2685,7 +2645,7 @@ public:
 	int64_t m_LastRawSnapshotPositionMs = -1;
 	EMusicPlaybackState m_PlaybackAnchorState = EMusicPlaybackState::STOPPED;
 	std::string m_LastArtKey;
-	std::shared_ptr<IHttpRequest> m_pArtRequest;
+	std::shared_ptr<CHttpRequest> m_pArtRequest;
 	std::shared_ptr<CMusicPlayerArtDecodeJob> m_pArtDecodeJob;
 	std::optional<SMediaDecodedFrames> m_OptArtDecodedFrames;
 	int m_ArtUploadIndex = 0;
@@ -2759,20 +2719,6 @@ public:
 		m_DebugLastRenderPath.clear();
 		m_DebugNextRenderVerboseTick = 0;
 		m_Lyrics.ClearActiveTrack();
-	}
-
-	bool IsIdle() const
-	{
-		return !m_Snapshot.m_Valid &&
-		       m_LastSnapshotTick == 0 &&
-		       m_LastPollTick == 0 &&
-		       m_LastArtKey.empty() &&
-		       !m_pArtRequest &&
-		       !m_pArtDecodeJob &&
-		       !m_OptArtDecodedFrames.has_value() &&
-		       m_vArtFrames.empty() &&
-		       !m_HudReservation.m_Visible &&
-		       !m_HudReservation.m_Active;
 	}
 
 	void ResetPlaybackAnchor()
@@ -3180,7 +3126,7 @@ public:
 		BeginArtLoad(pOwner);
 		if(m_pArtRequest && m_pArtRequest->State() == EHttpState::DONE)
 		{
-			std::shared_ptr<IHttpRequest> pFinished = m_pArtRequest;
+			std::shared_ptr<CHttpRequest> pFinished = m_pArtRequest;
 			m_pArtRequest.reset();
 			if(pFinished->StatusCode() < 200 || pFinished->StatusCode() >= 400)
 			{
@@ -3265,6 +3211,13 @@ public:
 		const std::string TrackKey = BuildSnapshotTrackKey(Snapshot);
 		const int64_t SnapshotPosition = std::clamp<int64_t>(Snapshot.m_PositionMs, 0, maximum<int64_t>(Snapshot.m_DurationMs, Snapshot.m_PositionMs));
 		const bool NewTrack = TrackKey != m_PlaybackTrackKey;
+		// A duration-only change (e.g. a late mpris:length update from the browser)
+		// is not a new track. Hard-resyncing on it rewinds the anchor to a stale /
+		// frozen snapshot position and replays the lyrics countdown mid-song.
+		const bool TrackIdentityChanged = NewTrack &&
+			(Snapshot.m_ServiceId != m_Snapshot.m_ServiceId ||
+				Snapshot.m_Title != m_Snapshot.m_Title ||
+				Snapshot.m_Artist != m_Snapshot.m_Artist);
 		const bool StateChanged = Snapshot.m_PlaybackState != m_PlaybackAnchorState;
 		const int64_t PredictedPosition = DisplayPositionMs();
 		const int64_t Drift = SnapshotPosition - PredictedPosition;
@@ -3275,12 +3228,16 @@ public:
 		const bool SnapshotSeekedBackwards =
 			m_LastRawSnapshotPositionMs >= 0 &&
 			SnapshotPosition + 500 < m_LastRawSnapshotPositionMs;
+		// Some providers (notably browsers exposing MPRIS) freeze the reported
+		// position and only refresh it on seek. PlaybackStatus flaps around a track
+		// switch then look like a huge backwards jump; rewinding to that frozen
+		// position replays the lyrics countdown. Block backwards hard-resyncs unless
+		// the raw snapshot position itself really moved backwards.
+		const bool StaleRewind = Drift < -1500 && !SnapshotSeekedBackwards;
 		const bool NeedsHardResync =
-			NewTrack ||
+			TrackIdentityChanged ||
 			m_PlaybackAnchorTick == 0 ||
-			StateChanged ||
-			Drift > 1500 ||
-			(Drift < -1500 && SnapshotSeekedBackwards);
+			(!StaleRewind && (StateChanged || Drift > 1500 || Drift < -1500));
 
 		if(NeedsHardResync)
 		{
@@ -3295,7 +3252,9 @@ public:
 		}
 		else
 		{
-			m_PlaybackAnchorPositionMs = SnapshotPosition;
+			// Paused/stopped without a hard resync: hold the predicted position
+			// instead of following the (possibly stale) snapshot position.
+			m_PlaybackAnchorPositionMs = maximum<int64_t>(0, PredictedPosition);
 			m_PlaybackAnchorTick = Now;
 		}
 
@@ -3308,11 +3267,10 @@ public:
 
 	float VisualPositionMs(float Delta)
 	{
-		const std::string TrackKey = BuildSnapshotTrackKey(m_Snapshot);
 		const float Target = (float)DisplayPositionMs();
-		if(TrackKey != m_VisualTrackKey)
+		if(m_PlaybackTrackKey != m_VisualTrackKey)
 		{
-			m_VisualTrackKey = TrackKey;
+			m_VisualTrackKey = m_PlaybackTrackKey;
 			m_VisualPositionMs = Target;
 		}
 		else if(m_Snapshot.m_PlaybackState == EMusicPlaybackState::PLAYING)
@@ -3732,6 +3690,8 @@ void CMusicPlayer::RenderHudEditor(bool ForcePreview)
 void CMusicPlayer::OnUpdate()
 {
 	EnsureImpl();
+	// Migrate configurations from the removed translucent mode to cover colors.
+	g_Config.m_BcMusicPlayerColorMode = std::clamp(g_Config.m_BcMusicPlayerColorMode, 0, 1);
 	if(m_pImpl->m_LastAppliedColorMode != g_Config.m_BcMusicPlayerColorMode ||
 		m_pImpl->m_LastAppliedStaticColor != g_Config.m_BcMusicPlayerStaticColor)
 	{
@@ -3860,7 +3820,7 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 	const float CompactTextSlotWidthBase = ComputeCompactTextSlotWidth(TextRender(), GameTimer, CompactTitleFont, LayoutScale, LayoutWidthScale, false);
 	const float MiniTextSlotWidthBase = ComputeMiniTextSlotWidth(TextRender(), Snapshot, GameTimer, MiniTitleFont, LayoutScale, LayoutWidthScale, false);
 	const int NumBars = MusicPlayerVisualizerColumns();
-	Graphics()->MapScreen(CScreenRect(vec2(0.0f, 0.0f), vec2(Width, Height)));
+	Graphics()->MapScreen(0.0f, 0.0f, Width, Height);
 
 	const CUIRect UiScreen = *Ui()->Screen();
 	const vec2 WindowSize(maximum(1.0f, (float)Graphics()->WindowWidth()), maximum(1.0f, (float)Graphics()->WindowHeight()));
@@ -4253,7 +4213,7 @@ void CMusicPlayer::RenderMusicPlayer(bool ForcePreview)
 		RenderButtonIcon(UiNextRect, FontIcon::FORWARD_STEP, Snapshot.m_CanNext, NextHovered);
 	}
 
-	Graphics()->MapScreen(CScreenRect(vec2(0.0f, 0.0f), vec2(Width, Height)));
+	Graphics()->MapScreen(0.0f, 0.0f, Width, Height);
 	TextRender()->TextColor(TextRender()->DefaultTextColor());
 	TextRender()->SetFontPreset(EFontPreset::DEFAULT_FONT);
 }

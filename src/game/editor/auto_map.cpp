@@ -43,12 +43,12 @@ static int HashLocation(uint32_t Seed, uint32_t Run, uint32_t Rule, uint32_t X, 
 	return Hash % HASH_MAX;
 }
 
-CAutomapper::CAutomapper(CEditorMap *pMap) :
+CAutoMapper::CAutoMapper(CEditorMap *pMap) :
 	CMapObject(pMap)
 {
 }
 
-void CAutomapper::Load(const char *pTileName)
+void CAutoMapper::Load(const char *pTileName)
 {
 	char aPath[IO_MAX_PATH_LENGTH];
 	str_format(aPath, sizeof(aPath), "editor/automap/%s.rules", pTileName);
@@ -87,7 +87,7 @@ void CAutomapper::Load(const char *pTileName)
 				m_vConfigs.push_back(NewConf);
 				int ConfigurationId = m_vConfigs.size() - 1;
 				pCurrentConf = &m_vConfigs[ConfigurationId];
-				str_copy(pCurrentConf->m_aName, pLine, std::min(sizeof(pCurrentConf->m_aName), (size_t)str_length(pLine)));
+				str_copy(pCurrentConf->m_aName, pLine, minimum<int>(sizeof(pCurrentConf->m_aName), str_length(pLine)));
 
 				// add start run
 				CRun NewRun;
@@ -246,10 +246,10 @@ void CAutomapper::Load(const char *pTileName)
 					CPosRule NewPosRule = {x, y, Value, vNewIndexList};
 					pCurrentIndex->m_vRules.push_back(NewPosRule);
 
-					pCurrentConf->m_StartX = std::min(pCurrentConf->m_StartX, NewPosRule.m_X);
-					pCurrentConf->m_StartY = std::min(pCurrentConf->m_StartY, NewPosRule.m_Y);
-					pCurrentConf->m_EndX = std::max(pCurrentConf->m_EndX, NewPosRule.m_X);
-					pCurrentConf->m_EndY = std::max(pCurrentConf->m_EndY, NewPosRule.m_Y);
+					pCurrentConf->m_StartX = minimum(pCurrentConf->m_StartX, NewPosRule.m_X);
+					pCurrentConf->m_StartY = minimum(pCurrentConf->m_StartY, NewPosRule.m_Y);
+					pCurrentConf->m_EndX = maximum(pCurrentConf->m_EndX, NewPosRule.m_X);
+					pCurrentConf->m_EndY = maximum(pCurrentConf->m_EndY, NewPosRule.m_Y);
 
 					if(x == 0 && y == 0)
 					{
@@ -358,13 +358,13 @@ void CAutomapper::Load(const char *pTileName)
 	m_FileLoaded = true;
 }
 
-void CAutomapper::Unload()
+void CAutoMapper::Unload()
 {
 	m_FileLoaded = false;
 	m_vConfigs.clear();
 }
 
-int CAutomapper::CheckIndexFlag(int Flag, const char *pFlag, bool CheckNone) const
+int CAutoMapper::CheckIndexFlag(int Flag, const char *pFlag, bool CheckNone) const
 {
 	if(!str_comp(pFlag, "XFLIP"))
 		Flag |= TILEFLAG_XFLIP;
@@ -378,7 +378,7 @@ int CAutomapper::CheckIndexFlag(int Flag, const char *pFlag, bool CheckNone) con
 	return Flag;
 }
 
-const char *CAutomapper::GetConfigName(int Index) const
+const char *CAutoMapper::GetConfigName(int Index) const
 {
 	if(Index < 0 || Index >= (int)m_vConfigs.size())
 	{
@@ -387,7 +387,7 @@ const char *CAutomapper::GetConfigName(int Index) const
 	return m_vConfigs[Index].m_aName;
 }
 
-void CAutomapper::ProceedLocalized(CLayerTiles *pLayer, CLayerTiles *pGameLayer, int ReferenceId, int ConfigId, int Seed, int X, int Y, int Width, int Height)
+void CAutoMapper::ProceedLocalized(CLayerTiles *pLayer, CLayerTiles *pGameLayer, int ReferenceId, int ConfigId, int Seed, int X, int Y, int Width, int Height)
 {
 	if(!m_FileLoaded || pLayer->m_Readonly || ConfigId < 0 || ConfigId >= (int)m_vConfigs.size())
 		return;
@@ -455,7 +455,7 @@ void CAutomapper::ProceedLocalized(CLayerTiles *pLayer, CLayerTiles *pGameLayer,
 	delete pUpdateGame;
 }
 
-void CAutomapper::Proceed(CLayerTiles *pLayer, CLayerTiles *pGameLayer, int ReferenceId, int ConfigId, int Seed, int SeedOffsetX, int SeedOffsetY)
+void CAutoMapper::Proceed(CLayerTiles *pLayer, CLayerTiles *pGameLayer, int ReferenceId, int ConfigId, int Seed, int SeedOffsetX, int SeedOffsetY)
 {
 	if(!m_FileLoaded || pLayer->m_Readonly || ConfigId < 0 || ConfigId >= (int)m_vConfigs.size())
 		return;

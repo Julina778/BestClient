@@ -591,11 +591,11 @@ bool CFastPractice::ApplyAnchorToCharacter(CGameWorld &World, const SAnchorData 
 	if(Anchor.m_HasDDNet)
 	{
 		CNetObj_DDNetCharacter DDNetObj = Anchor.m_DDNet;
-		pChar->Read(&CharObj, &DDNetObj, nullptr, true);
+		pChar->Read(&CharObj, &DDNetObj, true);
 	}
 	else
 	{
-		pChar->Read(&CharObj, nullptr, nullptr, true);
+		pChar->Read(&CharObj, nullptr, true);
 	}
 
 	CNetObj_PlayerInput NeutralInput = {};
